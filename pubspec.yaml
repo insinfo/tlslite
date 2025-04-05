@@ -1,0 +1,16 @@
+name: tlslite
+version: 1.0.0
+description: A Dart implementation of the TLS protocol.
+
+environment:
+  sdk: '^3.6.0'
+
+dependencies:
+  ffi: any
+  convert: any
+  pointycastle: ^4.0.0
+  crypto: any
+
+dev_dependencies:  
+  test: any
+ 
