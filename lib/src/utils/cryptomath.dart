@@ -20,6 +20,7 @@ import 'package:pointycastle/src/platform_check/platform_check.dart'
 
 // Assumindo que você tem este arquivo com a classe Writer implementada
 import 'codec.dart'; // Importe sua implementação de Writer
+import 'tlshmac.dart';
 
 // --- Helper Functions ---
 
@@ -124,25 +125,9 @@ Uint8List secureHash(Uint8List data, String algorithm) {
 
 /// Retorna um HMAC usando `b` e `k` com `algorithm`.
 Uint8List secureHMAC(Uint8List k, Uint8List b, String algorithm) {
-  late crypto.Hash hashAlgorithm;
-  switch (algorithm.toLowerCase()) {
-    case 'md5':
-      hashAlgorithm = crypto.md5;
-      break;
-    case 'sha1':
-      hashAlgorithm = crypto.sha1;
-      break;
-    case 'sha256':
-      hashAlgorithm = crypto.sha256;
-      break;
-    case 'sha384':
-      hashAlgorithm = crypto.sha384;
-      break;
-    default:
-      throw ArgumentError('Unsupported HMAC algorithm: $algorithm');
-  }
-  final hmac = crypto.Hmac(hashAlgorithm, k);
-  return hmac.convert(b).bytes as Uint8List;
+  final mac = TlsHmac(k, digestmod: algorithm);
+  mac.update(b);
+  return mac.digest();
 }
 
 Uint8List HMAC_MD5(Uint8List k, Uint8List b) {
