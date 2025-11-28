@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+typedef RawAesEncrypt = Uint8List Function(Uint8List block);
+
 /// Abstract class for AES.
 /// Converted to Dart from Python.
 
@@ -21,7 +23,7 @@ abstract class AES {
 
   /// The Initialization Vector (IV) or Nonce.
   /// Length requirements depend on the mode.
-   Uint8List iv;
+  Uint8List iv;
 
   /// Reference to the specific underlying implementation (e.g., platform-specific).
   /// The type 'Object' is used for generality; replace with a more specific
@@ -57,7 +59,6 @@ abstract class AES {
       : this.key = key,
         this.iv = iv,
         name = _calculateName(key.length) {
-
     // Validate key length
     if (!const [16, 24, 32].contains(key.length)) {
       throw ArgumentError(
@@ -71,12 +72,15 @@ abstract class AES {
     }
 
     // Validate IV length based on mode
-    if (mode == aesModeCBC) { // Assuming mode 2 is CBC
-      if (iv.length != blockSize) { // CBC IV must match block size
+    if (mode == aesModeCBC) {
+      // Assuming mode 2 is CBC
+      if (iv.length != blockSize) {
+        // CBC IV must match block size
         throw ArgumentError(
             'Invalid IV length for mode $mode (CBC): ${iv.length}. Must be $blockSize bytes.');
       }
-    } else if (mode == aesModeCTR_OR_GCM) { // Assuming mode 6 needs IV <= block size
+    } else if (mode == aesModeCTR_OR_GCM) {
+      // Assuming mode 6 needs IV <= block size
       if (iv.length > blockSize) {
         // Some modes like CTR/GCM might use variable nonce lengths, but the
         // original code restricts it to <= 16.
@@ -102,7 +106,8 @@ abstract class AES {
         return "aes256";
       default:
         // This should be unreachable due to constructor validation
-        throw StateError('Internal error: Invalid key length ($keyLength) encountered.');
+        throw StateError(
+            'Internal error: Invalid key length ($keyLength) encountered.');
     }
   }
 

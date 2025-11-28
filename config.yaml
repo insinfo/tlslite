@@ -1,0 +1,95 @@
+# dart run ffigen --config config.yaml
+
+ffigen:
+  name: OpenSsl
+  description: Bindings to OpenSSL for DTLS support in Dart.
+  output: 'lib/src/dtls2/src/generated/ffi.dart'
+  headers:
+    entry-points:
+      - /usr/include/openssl/ssl.h
+      - /usr/include/openssl/crypto.h
+      - /usr/include/openssl/evp.h
+      - /usr/include/openssl/err.h
+  preamble: |
+    // ignore_for_file: camel_case_types, non_constant_identifier_names
+    // ignore_for_file: constant_identifier_names, public_member_api_docs
+    // ignore_for_file: unused_field, lines_longer_than_80_chars
+  functions:
+    include:
+      - BIO_ctrl
+      - BIO_new
+      - BIO_read
+      - BIO_s_mem
+      - BIO_write
+      - BIO_free
+      - BIO_ADDR_new
+      - BIO_ADDR_free
+      - DTLS_client_method
+      - DTLS_server_method
+      - ERR_get_error
+      - ERR_error_string
+      - SSL_CTX_new
+      - SSL_CTX_set_cipher_list
+      - SSL_CTX_set_default_verify_paths
+      - SSL_CTX_set_verify
+      - SSL_connect
+      - SSL_accept
+      - SSL_ctrl
+      - SSL_free
+      - SSL_shutdown
+      - SSL_get0_param
+      - SSL_get_error
+      - SSL_new
+      - SSL_read
+      - SSL_set_bio
+      - SSL_write
+      - SSL_get1_supported_ciphers
+      - X509_VERIFY_PARAM_set1_host
+      - SSL_CTX_get_cert_store
+      - SSL_set_psk_client_callback
+      - X509_STORE_add_cert
+      - d2i_X509
+      - X509_free
+      - SSL_CTX_free
+      - SSL_CTX_set_info_callback
+      - DTLSv1_listen
+      - SSL_CTX_set_cookie_generate_cb
+      - SSL_CTX_set_cookie_verify_cb
+      - SSL_CTX_set_psk_server_callback
+      - SSL_CTX_use_psk_identity_hint
+      - SSL_set_accept_state
+      - OPENSSL_version_major
+      - OPENSSL_version_minor
+      - OPENSSL_version_patch
+      - SSL_CTX_set_security_level
+      - PEM_read_bio_X509
+  macros:
+    include:
+      - BIO_C_SET_BUF_MEM_EOF_RETURN
+      - SSL_CTRL_SET_TLSEXT_HOSTNAME
+      - SSL_ERROR_SSL
+      - SSL_ERROR_ZERO_RETURN
+      - SSL_ERROR_SYSCALL
+      - SSL_VERIFY_NONE
+      - SSL_VERIFY_PEER
+      - TLSEXT_NAMETYPE_host_name
+      - DTLS_CTRL_GET_TIMEOUT
+      - SSL_AD_CLOSE_NOTIFY
+      - SSL3_AL_FATAL
+      - SSL_AD_UNEXPECTED_MESSAGE
+  structs:
+    include:
+      - timeval
+  unions:
+    include: []
+  enums:
+    include: []
+  globals:
+    include: []
+  unnamed-enums:
+    include: []
+
+import_sorter:
+  comments: false
+  ignored_files:
+    - \/lib\/src\/generated\/*

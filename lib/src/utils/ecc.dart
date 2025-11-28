@@ -62,6 +62,12 @@ final Map<String, ECDomainParameters Function()> _registroCurvas = {
       ECCurve_secp256r1(), // Também conhecida como prime256v1, nistp256
   'secp384r1': () => ECCurve_secp384r1(), // Também conhecida como nistp384
   'secp521r1': () => ECCurve_secp521r1(), // Também conhecida como nistp521
+  'nistp256': () => ECCurve_secp256r1(),
+  'nist256p': () => ECCurve_secp256r1(),
+  'nistp384': () => ECCurve_secp384r1(),
+  'nist384p': () => ECCurve_secp384r1(),
+  'nistp521': () => ECCurve_secp521r1(),
+  'nist521p': () => ECCurve_secp521r1(),
 
   // --- Curvas Prime (algumas são aliases para secp) ---
   'prime192v1': () => ECCurve_prime192v1(), // Geralmente == secp192r1

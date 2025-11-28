@@ -1,10 +1,12 @@
 # TODO geral
-- continuar portando o puro python C:\MyDartProjects\tlslite\tlslite-ng  para dart e manter este arquivo sincronizado com o progresso
+- continuar portando o puro python C:\MyDartProjects\tlslite\tlslite-ng  para dart e manter C:\MyDartProjects\tlslite\TODO.md
 
 acelerar o porte da coisas necessarias para criar um Servidor HTTPS e um https client em puro dart se necessario usando ffi para chamar as funções de Windows Sockets 2 (Winsock)  do windows e do linux libc Sockets diretamente para construir uma API de Sockets SSL semelhante a implementação do python para facilitar no futuro portar outras bibliotecas python para dart como python-oracledb (https://github.com/oracle/python-oracledb) que pretendo portar mais depende de uma implementação de Sockets como a do python 
 
 portar os testes de C:\MyDartProjects\tlslite\tlslite-ng\tests
 C:\MyDartProjects\tlslite\tlslite-ng\unit_tests para dart
+
+coloque um comentario // TODO onde não etiver completo
 
 ## Feito recentemente
 - [x] Portado tlslite/utils/datefuncs.py para lib/src/utils/datefuncs.dart (parse/impressao de datas, funcoes de comparacao e helpers de tempo)
@@ -38,6 +40,16 @@ C:\MyDartProjects\tlslite\tlslite-ng\unit_tests para dart
 - [x] Executado `dart test` apos adicionar asn1parser
 - [x] Ajustado getFirstMatching em lib/src/utils/lists.dart para validar matches nulos/vazios igual ao Python
 - [x] Expandido test/utils/lists_test.dart com novos cenarios e reexecutado `dart test`
+- [x] Portado tlslite/utils/rsakey.py e tlslite/utils/python_rsakey.py para lib/src/utils/rsakey.dart (incluindo PythonRSAKey com CRT/blinding)
+- [x] Criados testes em test/utils/python_rsakey_test.dart cobrindo MGF1, EMSA-PSS encode/verify, PKCS#1 sign/verify e encrypt/decrypt usando vetores da base Python
+- [x] Executado `dart test test/utils/python_rsakey_test.dart` para validar o porte de RSA
+- [x] Portado tlslite/utils/keyfactory.py (parse/generate de chaves RSA PKCS#1/PKCS#8, flag public/private) para lib/src/utils/keyfactory.dart
+- [x] Adicionados testes em test/utils/keyfactory_test.dart cobrindo PEMs com/sem quebras de linha e chaves RSA-PSS
+- [x] Executado `dart test test/utils/keyfactory_test.dart` após adicionar keyfactory
+- [x] Portado tlslite/utils/python_rc4.py para lib/src/utils/python_rc4.dart (RC4 puro em Dart, testes ainda pendentes)
+- [x] Adicionado lib/src/utils/cipherfactory.dart com createAES/CTR/RC4 usando implementacao python e stubs para AEAD/3DES
+- [x] Portado tlslite/utils/poly1305.py para lib/src/utils/poly1305.dart e criado testes em test/utils/poly1305_test.dart cobrindo vetores RFC 7539
+- [x] Portado tlslite/utils/chacha20_poly1305.py e python_chacha20_poly1305.py para lib/src/utils/chacha20_poly1305.dart e lib/src/utils/python_chacha20_poly1305.dart, com testes em test/utils/chacha20_poly1305_test.dart
 
 ## Proximos passos sugeridos
 - [ ] Expor as funcoes de datefuncs num ponto de entrada publico se necessario (ex: via lib/tlslite.dart)
@@ -48,3 +60,25 @@ C:\MyDartProjects\tlslite\tlslite-ng\unit_tests para dart
 - [ ] Mapear usos de none_as_unknown na base python e re-exportar helper no pacote publico
 - [ ] Portar consumidores de PEM (certificados/chaves) para garantir compatibilidade com o helper Dart
 - [ ] Integrar tlshmac.dart aos demais chamadores (mathtls, handshakes, etc.) e validar fluxo HMAC completo
+
+## Auditoria tlslite-ng/tlslite (2025-11-28)
+
+### Modulos de alto nivel ainda nao portados
+- [ ] `api.py`, `basedb.py`, `bufferedsocket.py`, `checker.py`, `defragmenter.py` – nenhuma contraparte em `lib/`, precisam ser reescritos para expor conexoes TLS e bancos/verificadores
+- [ ] `dh.py`, `keyexchange.py`, `mathtls.py` – logica de Diffie-Hellman e combinadores matematicos ausentes em Dart
+- [ ] `extensions.py`, `handshakehashes.py`, `handshakehelpers.py`, `handshakesettings.py` – necessario para negociacao TLS; nada portado
+- [ ] `messages.py`, `messagesocket.py`, `recordlayer.py`, `tlsrecordlayer.py`, `tlsconnection.py` – camada de mensagens/registro ainda 100% Python
+- [ ] `session.py`, `sessioncache.py`, `signed.py`, `verifierdb.py` – controle de sessao e cache nao implementados
+- [ ] `ocsp.py`, `x509.py`, `x509certchain.py` – validacao de certificados/OCSP falta totalmente
+- [ ] `integration/*` (clienthelper, async mixins, smtp/pop/imap, xmlrpc) – nenhuma porta iniciada
+
+-### Utils nao portados (ainda pendentes)
+- [ ] `aesccm.py`, `aesgcm.py`, `compression.py`
+- [ ] `deprecations.py`, `openssl_*` wrappers, `pycrypto_*`, `python_aesccm.py`, `python_aesgcm.py`
+- [ ] `python_key.py`, `python_tripledes.py`, `tackwrapper.py`, `tripledes.py`, `x25519.py`
+- [ ] `tlslite/utils/__init__.py` exports ainda nao refletidos em Dart
+
+### Outros itens derivados da auditoria
+- [ ] Mapear quais dos modulos acima sao criticos para um servidor/cliente HTTPS minimo (recordlayer, messages, tlsconnection, session, x509) e priorizar o porte
+- [ ] Garantir que `constants.py`/`errors.py` ja portados continuem sincronizados com futuras mudancas no upstream Python
+- [ ] Planejar estrutura de testes unitarios para cada modulo migrado (usar `tlslite-ng/tests` e `unit_tests` como referencia)

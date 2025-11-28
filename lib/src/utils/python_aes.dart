@@ -145,9 +145,9 @@ class Python_AES_CTR extends AES {
   Python_AES_CTR(Uint8List key, int mode, Uint8List nonce)
       // mode é sempre CTR (6) para esta classe
       : super(key, aesModeCTR_OR_GCM, nonce, "dart") {
-    if (nonce.length >= 16) {
+    if (nonce.length > 16) {
       throw ArgumentError(
-          "Nonce (IV) length must be less than 16 bytes for CTR mode");
+          "Nonce (IV) length must be at most 16 bytes for CTR mode");
     }
     final internalKey = Uint8List.fromList(key);
     _rijndael = Rijndael(internalKey, blockSize: 16);
@@ -166,14 +166,6 @@ class Python_AES_CTR extends AES {
   set counter(Uint8List newCounter) {
     if (newCounter.length != 16) {
       throw ArgumentError("Counter block must be 16 bytes long");
-    }
-    // Verifica se o nonce não foi alterado (opcional mas recomendado)
-    for (int i = 0; i < (16 - _counterBytesLength); i++) {
-      if (newCounter[i] != iv[i]) {
-        // Compara com o nonce original (iv)
-        throw ArgumentError(
-            "Cannot change the nonce part of the counter block");
-      }
     }
     _counter = Uint8List.fromList(newCounter); // Cria cópia
   }
@@ -250,15 +242,13 @@ class Python_AES_CTR extends AES {
       }
 
       processedBytes += bytesToUse;
-
-      // Incrementa o contador para o próximo bloco (SE houver mais dados)
-      if (processedBytes < bytesToProcess) {
-        try {
-          _counterUpdate();
-        } on StateError catch (e) {
-          // Se o contador estourar no meio da operação, lançamos erro.
-          throw StateError("CTR counter overflow during operation: $e");
-        }
+      // Incrementa o contador para o próximo bloco, mesmo que este tenha sido o último.
+      // A implementação Python avança o contador após gerar cada bloco de keystream,
+      // garantindo que chamadas subsequentes continuem do ponto correto.
+      try {
+        _counterUpdate();
+      } on StateError catch (e) {
+        throw StateError("CTR counter overflow during operation: $e");
       }
     }
 
