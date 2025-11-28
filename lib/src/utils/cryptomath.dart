@@ -15,6 +15,7 @@ import 'package:pointycastle/digests/md5.dart';
 import 'package:pointycastle/digests/sha1.dart';
 import 'package:pointycastle/digests/sha256.dart';
 import 'package:pointycastle/digests/sha384.dart';
+import 'package:pointycastle/digests/sha512.dart';
 import 'package:pointycastle/src/platform_check/platform_check.dart'
     show Platform;
 
@@ -89,7 +90,8 @@ Digest _getDigest(String algorithm) {
       return SHA256Digest();
     case 'sha384':
       return SHA384Digest();
-    // Adicione outros algoritmos conforme necessário (ex: SHA512)
+    case 'sha512':
+      return SHA512Digest();
     default:
       throw ArgumentError('Unsupported hash algorithm: $algorithm');
   }
@@ -116,6 +118,8 @@ Uint8List secureHash(Uint8List data, String algorithm) {
       return crypto.sha256.convert(data).bytes as Uint8List;
     case 'sha384':
       return crypto.sha384.convert(data).bytes as Uint8List;
+    case 'sha512':
+      return crypto.sha512.convert(data).bytes as Uint8List;
     default:
       // Usando PointyCastle para flexibilidade se 'crypto' não suportar
       final digest = _getDigest(algorithm);
@@ -157,6 +161,8 @@ int _getDigestSize(String algorithm) {
       return 32;
     case 'sha384':
       return 48;
+    case 'sha512':
+      return 64;
     default:
       // Use PointyCastle para calcular se não for um dos acima
       return _getDigest(algorithm).digestSize;
