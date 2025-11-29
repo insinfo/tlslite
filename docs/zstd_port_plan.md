@@ -66,7 +66,7 @@ use o comando rg para buscas em codigo fonte
 - [x] Build FSE decoding tables from compressed headers.
 - [x] Decode sequences using FSE state machines.
 - [x] Execute sequences (copy literals, copy matches from window).
-- [ ] Wire decoded sequences + literals into the compressed block path (window mgmt, edge tests).
+- [x] Wire decoded sequences + literals into the compressed block path (window mgmt, edge tests).
 
 ## Future milestones
 
