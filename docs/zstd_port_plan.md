@@ -68,6 +68,13 @@ use o comando rg para buscas em codigo fonte
 - [x] Execute sequences (copy literals, copy matches from window).
 - [x] Wire decoded sequences + literals into the compressed block path (window mgmt, edge tests).
 
+Atualizações Zstd 29/11/2025 00:35
+
+Estruturei um buffer deslizante real (window.dart) e passei a usá‑lo em todo o pipeline (sequences.dart, zstd_decoder.dart, testes), garantindo que matches possam referenciar bytes de blocos anteriores e adicionando um guard em _readBits para detectar bitstreams inválidos.
+Corrigi a inicialização do leitor de bits (bit_stream.dart), que estava consumindo 64 bits em vez de apenas os bits válidos do último byte; isso eliminou o loop infinito ao decodificar a seção de sequências real.
+Reescrevi zstd_probe.dart para rodar o decodificador em um isolate secundário com timeout configurável (--timeout/--timeout-ms); agora é possível interromper a execução de forma limpa sem depender de Ctrl+C.
+Adicionei o arquivo esperado zstd_seq_sample.bin e o teste de integração zstd_decoder_integration_test.dart, que valida o frame comprimido end‑to‑end via zstdDecompressFrame; atualizei zstd_port_plan.md para marcar o marco da seção de sequências como concluído.
+
 ## Future milestones
 
 `zstddeclib.c`, reusing the same approach that worked for the `brotlidecpy`
