@@ -1,2 +1,8 @@
 pubspec.lock
 .dart_tool/
+
+zstdpy/
+aircompressor/
+brotli-go/
+brotli-google/
+archive-main/

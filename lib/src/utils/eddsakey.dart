@@ -27,14 +27,12 @@ abstract class EdDSAKey {
 
   Uint8List sign(Uint8List bytes,
       {String? padding, String hashAlg = 'sha1', int? saltLen}) {
-        // TODO usar import '../ed25519_edwards/ed25519_edwards.dart' as ed;
     throw UnsupportedError(
         'Pure EdDSA signatures do not support pre-hashed signing');
   }
 
   bool verify(Uint8List signature, Uint8List bytes,
       {String? padding, String? hashAlg, int? saltLen}) {
-          // TODO usar import '../ed25519_edwards/ed25519_edwards.dart' as ed;
     throw UnsupportedError(
         'Pure EdDSA signatures do not support pre-hashed verification');
   }

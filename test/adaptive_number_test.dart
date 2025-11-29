@@ -20,7 +20,7 @@ void main() {
       expect(Number.zero.hashCode, 0.hashCode);
       expect(Number.one.hashCode, 1.hashCode);
       expect(Number.two.hashCode, 2.hashCode);
-      expect(Number(42).hashCode, 42);
+      expect(Number(42).hashCode, 42.hashCode);
     });
 
     test('to string', () {

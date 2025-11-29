@@ -3,7 +3,7 @@
 ffigen:
   name: OpenSsl
   description: Bindings to OpenSSL for DTLS support in Dart.
-  output: 'lib/src/dtls2/src/generated/ffi.dart'
+  output: 'lib/src/dtls_openssl/src/generated/ffi.dart'
   headers:
     entry-points:
       - /usr/include/openssl/ssl.h

@@ -9,10 +9,9 @@ import 'python_aesgcm.dart' as python_aesgcm;
 import 'python_aesccm.dart' as python_aesccm;
 import 'python_chacha20_poly1305.dart' as python_chacha20_poly1305;
 import 'python_rc4.dart' as python_rc4;
+import 'python_tripledes.dart' as python_tripledes;
 import 'rc4.dart';
-
-// TODO(ports): add bindings for openssl/pycrypto implementations once FFI backends exist.
-// TODO(ports): implement AEAD factories (AES-GCM/CCM, ChaCha20-Poly1305, TripleDES) after their Dart counterparts land.
+import 'tripledes.dart';
 
 AES createAES(Uint8List key, Uint8List iv, {List<String>? implementations}) {
   final implList = implementations ?? const ['python'];
@@ -109,8 +108,17 @@ RC4 createRC4(Uint8List key, Uint8List iv, {List<String>? implementations}) {
   throw UnsupportedError('No supported RC4 implementation found for $implList');
 }
 
-Object createTripleDES(Uint8List key, Uint8List iv,
+TripleDES createTripleDES(Uint8List key, Uint8List iv,
     {List<String>? implementations}) {
-  // TODO(ports): hook up python_tripledes once ported.
-  throw UnimplementedError('TripleDES factory not ported yet');
+  final implList = implementations ?? const ['python'];
+  for (final impl in implList) {
+    if (impl == 'python') {
+      return python_tripledes.newTripleDES(
+        Uint8List.fromList(key),
+        Uint8List.fromList(iv),
+      );
+    }
+  }
+  throw UnsupportedError(
+      'No supported TripleDES implementation found for $implList');
 }

@@ -9,6 +9,10 @@ C:\MyDartProjects\tlslite\tlslite-ng\unit_tests para dart
 coloque um comentario // TODO onde não etiver completo
 
 ## Feito recentemente
+- [x] Portado tlslite/utils/compression.py para lib/src/utils/compression.dart (compressionAlgoImpls e chooseCompressionSendAlgo) com testes em test/utils/compression_test.dart replicando o comportamento do Python
+- [x] Portado tlslite/utils/tripledes.py e tlslite/utils/python_tripledes.py para lib/src/utils/tripledes.dart e lib/src/utils/python_tripledes.dart (DES base, encrypt/decrypt CBC puro Dart)
+- [x] Adicionados testes em test/utils/python_tripledes_test.dart cobrindo vetores KAT KO1/KO2/KO3 e chaves de 16/24 bytes
+- [x] Atualizado lib/src/utils/cipherfactory.dart para expor createTripleDES usando a implementacao python
 - [x] Portado tlslite/utils/datefuncs.py para lib/src/utils/datefuncs.dart (parse/impressao de datas, funcoes de comparacao e helpers de tempo)
 - [x] Adicionados testes em test/utils/datefuncs_test.dart cobrindo parse, impressao e verificacoes basicas de tempo
 - [x] Executado `dart test` para validar o novo modulo
@@ -73,7 +77,7 @@ coloque um comentario // TODO onde não etiver completo
 - [ ] `integration/*` (clienthelper, async mixins, smtp/pop/imap, xmlrpc) – nenhuma porta iniciada
 
 -### Utils nao portados (ainda pendentes)
-- [ ] `aesccm.py`, `aesgcm.py`, `compression.py`
+- [ ] `aesccm.py`, `aesgcm.py`
 - [ ] `deprecations.py`, `openssl_*` wrappers, `pycrypto_*`, `python_aesccm.py`, `python_aesgcm.py`
 - [ ] `python_key.py`, `python_tripledes.py`, `tackwrapper.py`, `tripledes.py`, `x25519.py`
 - [ ] `tlslite/utils/__init__.py` exports ainda nao refletidos em Dart

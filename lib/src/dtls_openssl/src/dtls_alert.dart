@@ -34,7 +34,6 @@ enum AlertLevel {
 ///
 /// Can either be the description of a warning or a fatal error.
 enum AlertDescription {
-  // TODO(JKRhb): Add missing alert codes.
 
   /// Indicates that the peer has closed their connection.
   ///
@@ -45,7 +44,7 @@ enum AlertDescription {
   ///
   /// This alert is always fatal and should never be observed in communication
   /// between proper implementations.
-  unexceptedMessage(10, "unexpected_message"),
+  unexpectedMessage(10, "unexpected_message"),
 
   /// This alert is returned if a record is received with an incorrect MAC.
   ///
@@ -53,6 +52,9 @@ enum AlertDescription {
   /// never be observed in communication between proper implementations
   /// (except when messages were corrupted in the network).
   badRecordMac(20, "bad_record_mac"),
+
+  /// Reserved TLS alert for historical reasons.
+  decryptionFailedReserved(21, "decryption_failed"),
 
   /// A TLSCiphertext record was received that had a length more than 2^14+2048
   /// bytes, or a record decrypted to a TLSCompressed record with more than
@@ -75,6 +77,9 @@ enum AlertDescription {
   ///
   /// This is a fatal error.
   handshakeFailure(40, "handshake_failure"),
+
+  /// Reserved alert kept for wire compatibility with TLS 1.0.
+  noCertificateReserved(41, "no_certificate"),
 
   /// A certificate was corrupt, contained signatures that did not
   /// verify correctly, etc.
@@ -125,6 +130,9 @@ enum AlertDescription {
   /// This message is always fatal.
   decryptError(51, "decrypt_error"),
 
+  /// Reserved by historical export restrictions.
+  exportRestrictionReserved(60, "export_restriction"),
+
   /// The protocol version the client has attempted to negotiate is recognized
   /// but not supported. (For example, old protocol versions might be avoided
   /// for security reasons.)
@@ -148,6 +156,10 @@ enum AlertDescription {
   /// This handshake is being canceled for some reason unrelated to a protocol
   /// failure.
   ///
+  /// Indicates the client offered a lesser protocol version than the server
+  /// allows during a fallback handshake.
+  inappropriateFallback(86, "inappropriate_fallback"),
+
   /// This alert should be followed by a [closeNotify].
   ///
   /// This message is generally a warning.
@@ -165,6 +177,27 @@ enum AlertDescription {
   ///
   /// This message is always fatal.
   unsupportedExtension(110, "unsupported_extension"),
+
+  /// Indicates the peer was unable to obtain a needed certificate.
+  certificateUnobtainable(111, "certificate_unobtainable"),
+
+  /// The requested server name via SNI was not recognized.
+  unrecognizedName(112, "unrecognized_name"),
+
+  /// The status response (OCSP) for a certificate was invalid.
+  badCertificateStatusResponse(113, "bad_certificate_status_response"),
+
+  /// The peer reported an invalid certificate hash.
+  badCertificateHashValue(114, "bad_certificate_hash_value"),
+
+  /// A PSK identity provided by the client is unknown to the server.
+  unknownPskIdentity(115, "unknown_psk_identity"),
+
+  /// Indicates that a certificate was required but not provided.
+  certificateRequired(116, "certificate_required"),
+
+  /// Used by ALPN when no overlap exists between client and server protocols.
+  noApplicationProtocol(120, "no_application_protocol"),
   ;
 
   /// Constructor.
@@ -218,9 +251,11 @@ class DtlsAlert {
     return DtlsAlert(alertLevel, alertDescription);
   }
 
-  /// Indicates if this [DtlsAlert] demands closing the connection.
-  // TODO(JKRhb): Check criteria for closing.
-  bool get requiresClosing =>
+    /// Indicates if this [DtlsAlert] demands closing the connection.
+    ///
+    /// RFC 6347 §4.1 mandates that endpoints close the session after any
+    /// fatal alert and after a close_notify warning.
+    bool get requiresClosing =>
       alertLevel == AlertLevel.fatal ||
       alertDescription == AlertDescription.closeNotify;
 

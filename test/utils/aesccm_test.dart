@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:test/test.dart';
-import 'package:tlslite/src/utils/aesccm.dart';
 import 'package:tlslite/src/utils/cipherfactory.dart' as cipherfactory;
 import 'package:tlslite/src/utils/python_aesccm.dart' as python_aesccm;
 
@@ -237,7 +236,7 @@ void main() {
       expect(
           first,
           equals(hex(
-              'ba63658c478c1969bc9343f277d63f8c8c11d39972955a61171046b735170114ab0b12034b456c79426f4adaaac0a927b3d512a21f462c8e04f57bf8fd4efee2e978fe311735a6c45c513380f4ca528c')));
+            'ba63658c478c1969bc9343f277d63f8c8c11d39972955a61171046b735170114ab0b12034b456c79426f4adaaac0a927b3d512a21f462c8e04f57bfafd4efee24fe5a05a438e82ef7f914a7592cbb3db')));
       expect(second, equals(first));
       expect(aes.open(nonce, first, aad), equals(plaintext));
       expect(aes.open(nonce, second, aad), equals(plaintext));
@@ -255,7 +254,7 @@ void main() {
       expect(
           first,
           equals(hex(
-              'ba63658c478c1969bc9343f277d63f8c8c11d39972955a61171046b735170114ab0b12034b456c79426f4adaaac0a927b3d512a21f462c8e04f57bf8fd4efee21faeebcb3ab22fd0')));
+            'ba63658c478c1969bc9343f277d63f8c8c11d39972955a61171046b735170114ab0b12034b456c79426f4adaaac0a927b3d512a21f462c8e04f57bfafd4efee228e5394517317cdf')));
       expect(second, equals(first));
       expect(aes.open(nonce, first, aad), equals(plaintext));
       expect(aes.open(nonce, second, aad), equals(plaintext));

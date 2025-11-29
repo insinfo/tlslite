@@ -4,8 +4,8 @@ import "dart:convert";
 import "dart:io";
 import "dart:typed_data";
 
-import "package:tlslite/src/dtls/dtls.dart";
-import "package:tlslite/src/dtls/src/dtls_alert.dart";
+import "package:tlslite/src/dtls_openssl/dtls.dart";
+import "package:tlslite/src/dtls_openssl/src/dtls_alert.dart";
 import "package:test/test.dart";
 
 import "certs.dart";

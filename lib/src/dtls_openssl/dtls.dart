@@ -1,5 +1,5 @@
 
-/// A DTLS library implemented via FFI bindings to OpenSSL.
+/// A DTLS = Datagram Transport Layer Security library implemented via FFI bindings to OpenSSL.
 library dtls;
 
 export "src/certificate.dart";

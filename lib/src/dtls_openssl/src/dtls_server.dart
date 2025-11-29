@@ -103,8 +103,8 @@ class DtlsServer extends Stream<DtlsConnection> {
   }
 
   _DtlsServerConnection? _establishConnection(Datagram datagram) {
-    // TODO(JKRhb): Check if there is a better way to assert this.
     if (!datagram.data.isValidClientHello()) {
+      // RFC 6347 requires the flight to start with ClientHello; ignore noise.
       return null;
     }
 
@@ -355,8 +355,9 @@ class _DtlsServerConnection extends Stream<Datagram> with DtlsConnection {
           _dtlsServer._socket.send(buffer.asTypedList(ret), _address, _port);
 
       if (bytesSent <= 0) {
-        // TODO: Check if the change of _performShutdown causes any problems
-        await _performShutdown(const SocketException("Network unreachable."));
+        await _performShutdown(
+          const SocketException("Datagram could not be sent"),
+        );
       }
     }
     _timer?.cancel();

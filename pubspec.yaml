@@ -13,6 +13,7 @@ dependencies:
   crypto: any
   fixnum: ^1.1.1
   collection: ^1.18.0
+  archive: ^4.0.7
 
 dev_dependencies:  
   test: any
