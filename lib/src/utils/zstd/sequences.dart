@@ -590,9 +590,6 @@ class SequenceSectionDecoder {
       bitsConsumed: _bitsConsumed,
     );
     loader.load();
-    // DEBUG
-    // ignore: avoid_print
-    print('reload allowOverflow=$allowOverflow current=${loader.current} bitsConsumed=${loader.bitsConsumed} overflow=${loader.overflow}');
     _bitContainer = loader.bits;
     _bitsConsumed = loader.bitsConsumed;
     _currentAddress = loader.current;

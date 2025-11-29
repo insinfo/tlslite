@@ -124,10 +124,6 @@ void _runProbe() {
     logDescriptor('OF', seqHeader.ofEncoding);
     logDescriptor('ML', seqHeader.mlEncoding);
     final payloadSize = blockEnd - reader.offset;
-    stdout.writeln('Sequences payload bytes: $payloadSize');
-    final payloadPreview = reader.buffer.sublist(reader.offset, reader.offset + payloadSize);
-    stdout.writeln('Sequences payload hex: ' +
-      payloadPreview.take(16).map((b) => b.toRadixString(16).padLeft(2, '0')).join(' '));
     final sequences = decodeSequencesSection(
       reader,
       seqHeader,

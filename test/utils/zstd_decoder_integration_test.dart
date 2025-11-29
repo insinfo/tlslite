@@ -7,8 +7,6 @@ import 'package:tlslite/src/utils/zstd/zstd_decoder.dart';
 void main() {
   group('zstdDecompressFrame integration', () {
     test('decodes sample compressed frame', () {
-      // TESTE com problema pois fica em loop infinito
-      throw Exception(' TESTE com problema pois fica em loop infinito');
       final compressed = File('test/fixtures/zstd_seq_sample.zst').readAsBytesSync();
       final mutable = Uint8List.fromList(compressed);
       // Clear checksum bit and drop trailing checksum bytes to fit current decoder capabilities.
