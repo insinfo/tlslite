@@ -124,6 +124,18 @@ Atualizações Zstd 01/12/2025 18:30
 - Atualizei `encoder_match_finder.dart` para aceitar um parâmetro `history`, pré-popular a tabela de hashes e permitir que sequências de abertura façam referência direta aos bytes fornecidos pelo dicionário.
 - Ampliei `zstd_encoder_test.dart` com um caso que comprime/decomprime usando um dicionário real, verificando que o frame produzido exige `dictId`, contém uma seção de sequências e continua round-trippando quando o dicionário correto é fornecido.
 
+Atualizações Zstd 01/12/2025 22:05
+
+- Passei a reaproveitar as tabelas Huffman/FSE embutidas no dicionário durante o primeiro bloco comprimido: o encoder semeia `HuffmanCompressionContext`/`SequenceCompressionContext` com os metadados parseados e pode emitir modos `repeat` imediatamente, sem retransmitir cabeçalhos.
+- Acrescentei um rastreador de janela no encoder para que o planejador veja até 256 KiB de histórico recém-emitido; blocos posteriores (mesmo sem dicionário) agora conseguem referenciar bytes codificados anteriormente e expõem `sequence.fromHistory` para telemetria.
+- Ajustei a suíte de testes (`zstd_encoder_test.dart`) para validar o reaproveitamento de tabelas do dicionário, além de garantir que o planejador registra matches oriundos do histórico inter-blocos; o plano do port foi atualizado para refletir essas capacidades.
+
+Atualizações Zstd 02/12/2025 10:10
+
+- Ensinei o decodificador a reconstruir tabelas Huffman diretamente a partir dos comprimentos armazenados no dicionário, garantindo que blocos literais em modo `repeat` funcionem mesmo quando o `.dict` só expõe os pesos canônicos.
+- Ampliei a suíte de testes com três cenários: validação do modo `repeat` no decodificador, stream multi-frame utilizando o fixture real `http-dict-missing-symbols` e um teste de interoperabilidade onde o frame emitido pelo encoder é descompactado pelo `zstd` oficial.
+- Fator comum dos testes reutiliza um helper `buildSeededDictionary`, destravando verificações compartilhadas entre encoder/decoder sem duplicar fixtures.
+
 ## Encoder scaffolding (in progress)
 
 - [x] Criei um `zstd_encoder.dart` capaz de embrulhar o payload em um frame single-segment composto apenas por blocos RAW (sem compressão de fato, mas compatível com decodificadores).
@@ -200,3 +212,20 @@ module: carve out a self-contained portion, translate it alongside its tests,
 plug it into the Dart decoder, and only then move to the next chunk.
 
 ## falta implementar o ZSTD Encoder e o brotli Encoder
+
+### Próximos passos imediatos (02/12/2025)
+
+- Reutilizar as tabelas Huffman/FSE fornecidas pelos dicionários também no decodificador para validar automaticamente os modos `repeat` dos literais e acelerar o diagnóstico de discrepâncias.
+- Ampliar a cobertura de testes com fixtures reais `.dict`, exercitando o reaproveitamento das tabelas em cenários com múltiplos frames concatenados e validando o round-trip com o `zstd` oficial.
+
+### Próximos passos estendidos
+
+1. **CLI regression tests mais abrangentes.** Assim que o checksum emitido pelo encoder bater com o `zstd` oficial, ampliar o teste de interoperabilidade para cobrir frames com dicionário (incluindo `dictId`/`prevOffsets`) e para validar o caminho com `Content_Checksum` habilitado. O plano é reaproveitar o helper existente que grava o frame em disco e direcionar o `zstd` para decodificá-lo, adicionando variantes com dicionário e checksum.
+2. **Scaffolding do encoder Brotli.** A partir do inventário da pasta `lib/src/utils/brotlidecpy/`, iniciar o espelhamento incremental: (a) adicionar um `BitStreamWriter` compartilhado com o encoder de Zstd para emitir meta-blocos RAW; (b) portar o construtor de histogramas + serialização Huffman usando as estruturas já presentes em `huffman.dart`; (c) planejar o equivalente de `encoder_match_finder.dart` visando comandos literal/cópia e suporte ao dicionário embutido em `brotli_dict.dart`. Documentar cada etapa com testes mínimos a exemplo do pipeline de Zstd.
+
+### CLI parity plan (checksum + dicionário)
+
+- [x] **Frame sem dicionário, checksum on.** `test/utils/zstd_encoder_test.dart` agora cobre o caminho `includeChecksum: true`, persistindo o frame em um diretório temporário e verificando a saída do `zstd -d` contra o payload original.
+- [x] **Frame com dicionário oficial.** O teste adiciona um round-trip usando o fixture real `test/fixtures/http-dict-missing-symbols`, copiando o `.dict` para o diretório temporário antes de chamar `zstd -d --dict=...`.
+- [x] **Smoke test automatizado.** Novo helper `tool/zstd_cli_roundtrip.dart` aceita `--dict`, `--checksum`, `--keep-artifacts` e realiza compressão + validação via CLI, deixando artefatos em caso de falha.
+- [x] **Telemetria e logging.** Falhas do round-trip agora registram `xxHash64` (32 bits) do payload, header completo e o caminho dos artefatos para depuração via `zstd --list`.

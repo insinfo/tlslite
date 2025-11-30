@@ -14,11 +14,17 @@ class ZstdDictionary {
   ZstdDictionary({
     required this.dictId,
     required Uint8List content,
-    this.huffmanTable,
+    HuffmanDecodingTable? huffmanTable,
+    Uint8List? huffmanCodeLengths,
+    this.huffmanMaxSymbol,
     this.sequenceTables,
     List<int>? initialPrevOffsets,
   })  : content = Uint8List.fromList(content),
-        initialPrevOffsets = _normalizePrevOffsets(initialPrevOffsets);
+        huffmanCodeLengths = huffmanCodeLengths == null
+            ? null
+            : Uint8List.fromList(huffmanCodeLengths),
+        initialPrevOffsets = _normalizePrevOffsets(initialPrevOffsets),
+        _huffmanTable = huffmanTable;
 
   /// Identifier advertised inside Zstd frames.
   final int dictId;
@@ -28,7 +34,15 @@ class ZstdDictionary {
 
   /// Optional Huffman table that can satisfy `repeat` literal sections before
   /// the stream transmits a table explicitly.
-  final HuffmanDecodingTable? huffmanTable;
+  HuffmanDecodingTable? get huffmanTable => _huffmanTable ??= _buildHuffmanTable();
+  HuffmanDecodingTable? _huffmanTable;
+
+  /// Optional Huffman code lengths used to seed the encoder so it can reuse
+  /// dictionary-provided literal tables without retransmitting them.
+  final Uint8List? huffmanCodeLengths;
+
+  /// Highest symbol covered by [huffmanCodeLengths].
+  final int? huffmanMaxSymbol;
 
   /// Optional sequence decoding tables used when the first compressed block
   /// encodes LL/OF/ML descriptors in `repeat` mode.
@@ -54,6 +68,22 @@ class ZstdDictionary {
       throw ArgumentError.value(offsets.length, 'offsets', 'Zstd dictionaries require exactly three previous offsets');
     }
     return List<int>.from(offsets);
+  }
+
+  HuffmanDecodingTable? _buildHuffmanTable() {
+    final lengths = huffmanCodeLengths;
+    if (lengths == null) {
+      return null;
+    }
+    final maxSymbol = huffmanMaxSymbol ?? (lengths.isEmpty ? -1 : lengths.length - 1);
+    if (maxSymbol < 0) {
+      return null;
+    }
+    try {
+      return buildHuffmanTableFromCodeLengths(lengths, maxSymbol);
+    } on ZstdFrameFormatException {
+      return null;
+    }
   }
 }
 
@@ -102,7 +132,8 @@ ZstdDictionary _parseFormattedDictionary(Uint8List bytes) {
   }
 
   final huffmanPayload = _readStandaloneHuffmanPayload(reader);
-  final huffmanTable = readHuffmanTable(huffmanPayload).table;
+  final huffmanResult = readHuffmanTable(huffmanPayload);
+  final huffmanTable = huffmanResult.table;
 
   final offsetDescriptor = readFseTable(reader, ofBaseline.length - 1);
   final matchDescriptor = readFseTable(reader, mlBaseline.length - 1);
@@ -148,6 +179,8 @@ ZstdDictionary _parseFormattedDictionary(Uint8List bytes) {
     dictId: dictId,
     content: content,
     huffmanTable: huffmanTable,
+    huffmanCodeLengths: huffmanResult.codeLengths,
+    huffmanMaxSymbol: huffmanResult.maxSymbol,
     sequenceTables: sequenceTables,
     initialPrevOffsets: prevOffsets,
   );

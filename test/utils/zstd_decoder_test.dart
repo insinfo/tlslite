@@ -9,7 +9,11 @@ import 'package:tlslite/src/utils/zstd/byte_reader.dart';
 import 'package:tlslite/src/utils/zstd/dictionary.dart';
 import 'package:tlslite/src/utils/zstd/frame_header.dart';
 import 'package:tlslite/src/utils/zstd/literals.dart';
+import 'package:tlslite/src/utils/zstd/sequences.dart';
 import 'package:tlslite/src/utils/zstd/zstd_decoder.dart';
+import 'package:tlslite/src/utils/zstd/zstd_encoder.dart';
+
+import 'zstd_test_utils.dart';
 
 Uint8List _buildFrame({
   required List<int> payload,
@@ -41,7 +45,7 @@ Uint8List _buildFrame({
     builder.add(payload);
   }
   if (includeChecksum) {
-    final checksum = xxHash64(Uint8List.fromList(payload)) & 0xFFFFFFFF;
+    final checksum = xxHash64(Uint8List.fromList(payload)).toUnsigned(32).toInt();
     builder.add([
       checksum & 0xFF,
       (checksum >> 8) & 0xFF,
@@ -120,6 +124,54 @@ void main() {
     final frame = builder.takeBytes();
     final result = zstdDecompressFrame(Uint8List.fromList(frame));
     expect(result, equals(literals));
+  });
+
+  test('decoder seeds dictionary tables for repeat literal blocks', () {
+    final dictionary = buildSeededDictionary();
+    final payload = Uint8List.fromList(
+      'XYZXYZXYZXYZXYZXYZXYZXYZXYZXYZXYZXYZ'.codeUnits,
+    );
+
+    final frame = zstdCompress(payload, dictionary: dictionary);
+    final reader = ZstdByteReader(frame);
+    final header = parseFrameHeader(reader);
+    expect(header.dictId, equals(dictionary.dictId));
+
+    final blockHeader = readBlockHeader(reader);
+    expect(blockHeader.type, equals(ZstdBlockType.compressed));
+    final blockReader = ZstdByteReader(reader.readBytes(blockHeader.compressedSize));
+    final literalHeader = parseLiteralsSectionHeader(blockReader);
+    _skipLiteralSection(blockReader, literalHeader);
+    final sequencesHeader = parseSequencesHeader(blockReader);
+    expect(sequencesHeader.llEncoding.type, equals(SymbolEncodingType.repeat));
+    expect(sequencesHeader.ofEncoding.type, equals(SymbolEncodingType.repeat));
+    expect(sequencesHeader.mlEncoding.type, equals(SymbolEncodingType.repeat));
+
+    final decoded = zstdDecompressFrame(
+      frame,
+      dictionaries: {dictionary.dictId: dictionary},
+    );
+    expect(decoded, equals(payload));
+  });
+
+  test('formatted dictionary fixture handles multi-frame streams', () {
+    final dictBytes = File('test/fixtures/http-dict-missing-symbols').readAsBytesSync();
+    final dictionary = parseZstdDictionary(Uint8List.fromList(dictBytes));
+    final firstPayload = Uint8List.fromList('GET / HTTP/1.1\r\nHost: example\r\n\r\n'.codeUnits);
+    final secondPayload = Uint8List.fromList('HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n'.codeUnits);
+
+    final firstFrame = zstdCompress(firstPayload, dictionary: dictionary);
+    final secondFrame = zstdCompress(secondPayload, dictionary: dictionary);
+    final stream = Uint8List.fromList([...firstFrame, ...secondFrame]);
+
+    final decoded = zstdDecompressFrame(
+      stream,
+      dictionaries: {dictionary.dictId: dictionary},
+    );
+    expect(
+      decoded,
+      equals(Uint8List.fromList([...firstPayload, ...secondPayload])),
+    );
   });
 
   test('decompresses frame referencing dictionary history', () {
@@ -202,6 +254,24 @@ void main() {
       throwsA(isA<ZstdDecodingError>()),
     );
   });
+}
+
+void _skipLiteralSection(ZstdByteReader reader, LiteralsSectionHeader header) {
+  switch (header.type) {
+    case LiteralsBlockType.raw:
+      reader.skip(header.regeneratedSize);
+      return;
+    case LiteralsBlockType.rle:
+      reader.skip(1);
+      return;
+    case LiteralsBlockType.compressed:
+    case LiteralsBlockType.repeat:
+      final payloadSize = header.compressedSize;
+      expect(payloadSize, isNotNull,
+          reason: 'Compressed/repeat literal headers must define payload size');
+      reader.skip(payloadSize!);
+      return;
+  }
 }
 
 Uint8List _buildDictionaryMatchFrame({

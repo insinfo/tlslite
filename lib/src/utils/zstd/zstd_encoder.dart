@@ -65,8 +65,19 @@ Uint8List zstdCompress(
   final encoderState = ZstdEncoderState();
   if (dictionary != null) {
     encoderState.seedPrevOffsets(dictionary.initialPrevOffsets);
+    final codeLengths = dictionary.huffmanCodeLengths;
+    final maxSymbol = dictionary.huffmanMaxSymbol;
+    if (codeLengths != null && maxSymbol != null) {
+      huffmanContext.seedFromDictionary(codeLengths, maxSymbol);
+    }
+    final tables = dictionary.sequenceTables;
+    if (tables != null) {
+      sequenceContext.seedFromDictionary(tables);
+    }
   }
   final dictionaryHistory = _selectDictionaryHistory(dictionary);
+  final matchHistory =
+      dictionaryHistory == null ? <int>[] : List<int>.from(dictionaryHistory);
   final blockSizeLimit = contentSize < zstdBlockSizeMax ? contentSize : zstdBlockSizeMax;
   var offset = 0;
   if (contentSize == 0) {
@@ -82,6 +93,7 @@ Uint8List zstdCompress(
       final runLength = _countRunLength(input, offset, zstdBlockSizeMax);
       if (runLength >= _minRleRunLength) {
         final isLast = offset + runLength == contentSize;
+        final runSlice = Uint8List.sublistView(input, offset, offset + runLength);
         _encodeRleBlock(
           builder,
           input[offset],
@@ -94,6 +106,7 @@ Uint8List zstdCompress(
           literalBytes: runLength,
           sequenceCount: 0,
         );
+        _appendMatchHistory(matchHistory, runSlice);
         offset += runLength;
         continue;
       }
@@ -107,7 +120,10 @@ Uint8List zstdCompress(
       final isLast = offset + chunkSize == contentSize;
 
       if (enableMatchPlanner && chunk.length >= _plannerMinBytes) {
-        final historySlice = (offset == 0) ? dictionaryHistory : null;
+        Uint8List? historySlice;
+        if (matchHistory.isNotEmpty) {
+          historySlice = Uint8List.fromList(matchHistory);
+        }
         final plan = planMatches(chunk, history: historySlice);
         if (plan.hasMatches) {
           onMatchPlan?.call(plan);
@@ -129,6 +145,7 @@ Uint8List zstdCompress(
               sequenceCount: planned.sequenceCount,
               usedRepeatOffsets: planned.usedRepeatOffsets,
             );
+            _appendMatchHistory(matchHistory, chunk);
             offset += chunkSize;
             continue;
           }
@@ -157,12 +174,13 @@ Uint8List zstdCompress(
           sequenceCount: 0,
         );
       }
+      _appendMatchHistory(matchHistory, chunk);
       offset += chunkSize;
     }
   }
 
   if (includeChecksum) {
-    final checksum = xxHash64(input) & 0xFFFFFFFF;
+    final checksum = xxHash64(input).toUnsigned(32).toInt();
     builder.add(Uint8List(4)
       ..buffer.asByteData().setUint32(0, checksum, Endian.little));
   }
@@ -942,6 +960,12 @@ class SequenceCompressionContext {
   final _SequenceEncodingState literalState;
   final _SequenceEncodingState offsetState;
   final _SequenceEncodingState matchState;
+
+  void seedFromDictionary(SequenceDecodingTables tables) {
+    literalState.seedRepeat(tables.literalLengthTable);
+    offsetState.seedRepeat(tables.offsetTable);
+    matchState.seedRepeat(tables.matchLengthTable);
+  }
 }
 
 class _SequenceEncodingState {
@@ -953,6 +977,7 @@ class _SequenceEncodingState {
   int? _tableLog;
   List<int>? _normalizedCounts;
   int? _rleSymbol;
+  bool _pendingSeedRepeat = false;
 
   bool canRepeatRle(int symbol) {
     return _type == SymbolEncodingType.rle && _table != null && _rleSymbol == symbol;
@@ -999,6 +1024,23 @@ class _SequenceEncodingState {
       throw ZstdEncodingError('Sequence table for $label is not initialized');
     }
     return table;
+  }
+
+  void seedRepeat(SequenceDecodingTable table) {
+    _table = table;
+    _type = SymbolEncodingType.repeat;
+    _tableLog = table.tableLog;
+    _normalizedCounts = null;
+    _rleSymbol = null;
+    _pendingSeedRepeat = true;
+  }
+
+  bool consumeSeededRepeat() {
+    if (_pendingSeedRepeat) {
+      _pendingSeedRepeat = false;
+      return true;
+    }
+    return false;
   }
 }
 
@@ -1123,6 +1165,10 @@ _SymbolEncodingPlan _buildSymbolEncodingPlan({
 }) {
   if (totalSequences <= 0) {
     throw ZstdEncodingError('Cannot encode empty sequence set for ${component.name}');
+  }
+
+  if (state.consumeSeededRepeat()) {
+    return _SymbolEncodingPlan.repeat(state.ensureTableAvailable());
   }
 
   final singleSymbol = _detectRleSymbol(counts, totalSequences);
@@ -1364,6 +1410,24 @@ void _emitBlockStats(
 
     ),
   );
+}
+
+void _appendMatchHistory(List<int> history, Uint8List slice) {
+  if (slice.isEmpty) {
+    return;
+  }
+  final capacity = zstdMatchWindowBytes;
+  final start = slice.length > capacity ? slice.length - capacity : 0;
+  final truncated = slice.sublist(start);
+  final overflow = history.length + truncated.length - capacity;
+  if (overflow > 0) {
+    if (overflow >= history.length) {
+      history.clear();
+    } else {
+      history.removeRange(0, overflow);
+    }
+  }
+  history.addAll(truncated);
 }
 
 const int _maxWindowDistance = 1 << 18;

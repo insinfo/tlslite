@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:test/test.dart';
@@ -9,8 +10,10 @@ import 'package:tlslite/src/utils/zstd/encoder_match_finder.dart';
 import 'package:tlslite/src/utils/zstd/frame_header.dart';
 import 'package:tlslite/src/utils/zstd/literals.dart';
 import 'package:tlslite/src/utils/zstd/sequences.dart';
+import 'package:tlslite/src/utils/zstd/xxhash64.dart';
 import 'package:tlslite/src/utils/zstd/zstd_decoder.dart';
 import 'package:tlslite/src/utils/zstd/zstd_encoder.dart';
+import 'zstd_test_utils.dart';
 
 void main() {
   test('wraps empty payload into valid frame', () {
@@ -228,11 +231,34 @@ void main() {
     final secondLiteralHeader = parseLiteralsSectionHeader(secondBlockReader);
     _skipLiteralSection(secondBlockReader, secondLiteralHeader);
     final secondSequences = parseSequencesHeader(secondBlockReader);
-    expect(secondSequences.llEncoding.type, equals(SymbolEncodingType.repeat));
-    expect(secondSequences.mlEncoding.type, equals(SymbolEncodingType.repeat));
+    expect(secondSequences.llEncoding.type, isNot(equals(SymbolEncodingType.predefined)));
+    expect(secondSequences.mlEncoding.type, isNot(equals(SymbolEncodingType.predefined)));
     expect(secondSequences.ofEncoding.type, isNot(equals(SymbolEncodingType.predefined)));
 
     expect(zstdDecompressFrame(frame), equals(payload));
+  });
+
+  test('dictionary seeded tables enter repeat modes', () {
+    final dictionary = buildSeededDictionary();
+    final payload = Uint8List.fromList(
+      'XYZXYZXYZXYZXYZXYZXYZXYZXYZXYZXYZXYZ'.codeUnits,
+    );
+
+    final frame = zstdCompress(payload, dictionary: dictionary);
+    final reader = ZstdByteReader(frame);
+    final header = parseFrameHeader(reader);
+    expect(header.dictId, equals(dictionary.dictId));
+
+    final blockHeader = readBlockHeader(reader);
+    expect(blockHeader.type, equals(ZstdBlockType.compressed));
+
+    final blockReader = ZstdByteReader(reader.readBytes(blockHeader.compressedSize));
+    final literalHeader = parseLiteralsSectionHeader(blockReader);
+    _skipLiteralSection(blockReader, literalHeader);
+    final sequencesHeader = parseSequencesHeader(blockReader);
+    expect(sequencesHeader.llEncoding.type, equals(SymbolEncodingType.repeat));
+    expect(sequencesHeader.ofEncoding.type, equals(SymbolEncodingType.repeat));
+    expect(sequencesHeader.mlEncoding.type, equals(SymbolEncodingType.repeat));
   });
 
   test('emits dictionary id and reuses dictionary history for matches', () {
@@ -243,8 +269,7 @@ void main() {
       ),
     );
     final payload = Uint8List.fromList(
-      'shared-dictionary-segment-lorem-ipsum-1234::payload-body-unique'
-          .codeUnits,
+      'shared-dictionary-segment-lorem-ipsum-1234::payload-body-unique'.codeUnits,
     );
 
     final frame = zstdCompress(payload, dictionary: dictionary);
@@ -267,6 +292,71 @@ void main() {
     );
     expect(decoded, equals(payload));
   });
+
+  test('match planner reuses bytes emitted by previous blocks', () {
+    final blockSize = zstdBlockSizeMax;
+    final firstBlock = Uint8List.fromList(
+      List<int>.generate(blockSize, (index) => ((index * 37) + 13) & 0xFF),
+    );
+    final payload = Uint8List.fromList([...firstBlock, ...firstBlock]);
+
+    final plans = <ZstdMatchPlan>[];
+    final frame = zstdCompress(
+      payload,
+      onMatchPlan: plans.add,
+    );
+    expect(plans.length, greaterThanOrEqualTo(2));
+    final tailPlan = plans.last;
+    expect(tailPlan.sequences, isNotEmpty);
+    expect(
+      tailPlan.sequences.where((sequence) => sequence.fromHistory).isNotEmpty,
+      isTrue,
+      reason: 'Planner should reuse matches from previous block history',
+    );
+    expect(zstdDecompressFrame(frame), equals(payload));
+  });
+
+  test('encoder output decodes via zstd cli', () async {
+    final payload = Uint8List.fromList(List<int>.generate(8192, (i) => (i * 31) & 0xFF));
+    final frame = zstdCompress(payload);
+
+    final decoded = await _roundTripThroughZstdCli(
+      frame: frame,
+      expectedPayload: payload,
+    );
+    expect(decoded, equals(payload));
+  });
+
+  test('encoder checksum frame decodes via zstd cli', () async {
+    final payload = Uint8List.fromList(List<int>.generate(4096, (i) => (i * 7 + 3) & 0xFF));
+    final frame = zstdCompress(payload, includeChecksum: true);
+
+    final decoded = await _roundTripThroughZstdCli(
+      frame: frame,
+      expectedPayload: payload,
+    );
+    expect(decoded, equals(payload));
+  });
+
+  test('encoder dictionary frame decodes via zstd cli', () async {
+    final dictBytes = await File('test/fixtures/http-dict-missing-symbols').readAsBytes();
+    final dictionary = parseZstdDictionary(Uint8List.fromList(dictBytes));
+    final payload = Uint8List.fromList(
+      'GET /resource HTTP/1.1\r\nHost: example.org\r\n\r\n'.codeUnits,
+    );
+    final frame = zstdCompress(
+      payload,
+      dictionary: dictionary,
+      includeChecksum: true,
+    );
+
+    final decoded = await _roundTripThroughZstdCli(
+      frame: frame,
+      dictionaryBytes: dictBytes,
+      expectedPayload: payload,
+    );
+    expect(decoded, equals(payload));
+  });
 }
 
 void _skipLiteralSection(ZstdByteReader reader, LiteralsSectionHeader header) {
@@ -284,5 +374,82 @@ void _skipLiteralSection(ZstdByteReader reader, LiteralsSectionHeader header) {
           reason: 'Compressed/repeat literal headers must define payload size');
       reader.skip(payloadSize!);
       return;
+  }
+}
+
+Future<Uint8List> _roundTripThroughZstdCli({
+  required Uint8List frame,
+  Uint8List? dictionaryBytes,
+  Uint8List? expectedPayload,
+}) async {
+  final tempDir = await Directory.systemTemp.createTemp('zstd_cli_roundtrip_test');
+  var shouldCleanup = false;
+  try {
+    final frameFile = File('${tempDir.path}/frame.zst');
+    await frameFile.writeAsBytes(frame, flush: true);
+
+    File? dictionaryFile;
+    if (dictionaryBytes != null) {
+      dictionaryFile = File('${tempDir.path}/dictionary.dict');
+      await dictionaryFile.writeAsBytes(dictionaryBytes, flush: true);
+    }
+
+    final decodedFile = File('${tempDir.path}/decoded.bin');
+    final args = <String>[
+      '-d',
+      '--single-thread',
+      '--no-progress',
+      '-f',
+      '-o',
+      decodedFile.path,
+    ];
+    if (dictionaryFile != null) {
+      args..add('-D')..add(dictionaryFile.path);
+    }
+    args.add(frameFile.path);
+
+    ProcessResult cliResult;
+    try {
+      cliResult = await Process.run('zstd', args);
+    } on ProcessException catch (error) {
+      fail('zstd CLI is required for this test but was not found: ${error.message}');
+    }
+
+    if (cliResult.exitCode != 0) {
+      final checksum = expectedPayload == null
+          ? 'unknown'
+          : '0x${xxHash64(expectedPayload).toUnsigned(32).toRadixString(16).padLeft(8, '0')}';
+      final headerInfo = _describeFrame(frame);
+      final dictNote = dictionaryFile == null ? '' : '\nDictionary artifact: ${dictionaryFile.path}';
+      fail('''
+zstd CLI failed with exit ${cliResult.exitCode}
+stderr: ${cliResult.stderr}
+frameHeader: $headerInfo
+payloadChecksum(low32): $checksum
+Artifacts preserved at ${tempDir.path}$dictNote
+''');
+    }
+
+    final decoded = await decodedFile.readAsBytes();
+    shouldCleanup = true;
+    return decoded;
+  } finally {
+    if (shouldCleanup) {
+      try {
+        await tempDir.delete(recursive: true);
+      } catch (_) {
+        // Best-effort cleanup.
+      }
+    }
+  }
+}
+
+String _describeFrame(Uint8List frame) {
+  try {
+    final reader = ZstdByteReader(frame);
+    final header = parseFrameHeader(reader);
+    return 'dictId=${header.dictId} checksum=${header.checksumFlag} contentSize=${header.frameContentSize ?? -1} window=${header.windowSize} singleSegment=${header.singleSegment}';
+  } on Object catch (error) {
+    return 'unavailable: $error';
   }
 }

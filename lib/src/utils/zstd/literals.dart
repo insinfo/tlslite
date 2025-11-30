@@ -305,10 +305,14 @@ class HuffmanTableReadResult {
   HuffmanTableReadResult({
     required this.table,
     required this.bytesConsumed,
+    required this.codeLengths,
+    required this.maxSymbol,
   });
 
   final HuffmanDecodingTable table;
   final int bytesConsumed;
+  final Uint8List codeLengths;
+  final int maxSymbol;
 }
 
 class _BitStreamInitializer {
@@ -446,7 +450,44 @@ HuffmanTableReadResult readHuffmanTable(Uint8List payload) {
   }
 
   final table = _buildHuffmanDecodingTable(weights, outputSize, ranks);
-  return HuffmanTableReadResult(table: table, bytesConsumed: offset);
+  final codeLengths = Uint8List(_huffmanMaxSymbolCount);
+  final maxSymbol = outputSize;
+  for (var i = 0; i <= maxSymbol && i < weights.length && i < codeLengths.length; i++) {
+    codeLengths[i] = weights[i] & 0xFF;
+  }
+  return HuffmanTableReadResult(
+    table: table,
+    bytesConsumed: offset,
+    codeLengths: codeLengths,
+    maxSymbol: maxSymbol,
+  );
+}
+
+HuffmanDecodingTable buildHuffmanTableFromCodeLengths(
+  Uint8List codeLengths,
+  int maxSymbol,
+) {
+  if (codeLengths.isEmpty) {
+    throw ZstdFrameFormatException('Cannot build Huffman table from empty code lengths');
+  }
+  if (maxSymbol < 0) {
+    throw ZstdFrameFormatException('Invalid maximum symbol index $maxSymbol');
+  }
+  final cappedMaxSymbol = maxSymbol >= codeLengths.length ? codeLengths.length - 1 : maxSymbol;
+  if (cappedMaxSymbol < 0) {
+    throw ZstdFrameFormatException('No symbols available to build Huffman table');
+  }
+
+  final weights = List<int>.filled(_huffmanMaxSymbolCount + 1, 0);
+  final ranks = List<int>.filled(_huffmanMaxTableLog + 1, 0);
+  for (var i = 0; i <= cappedMaxSymbol; i++) {
+    final weight = codeLengths[i];
+    if (weight > _huffmanMaxTableLog) {
+      throw ZstdFrameFormatException('Huffman code length $weight exceeds max table log $_huffmanMaxTableLog');
+    }
+    weights[i] = weight;
+  }
+  return _buildHuffmanDecodingTable(weights, cappedMaxSymbol + 1, ranks);
 }
 
 HuffmanDecodingTable _buildHuffmanDecodingTable(

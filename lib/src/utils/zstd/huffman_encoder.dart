@@ -3,6 +3,8 @@ import 'dart:typed_data';
 
 import 'literals.dart';
 
+final Uint8List _emptyHuffmanTableBytes = Uint8List(0);
+
 
 class HuffmanLiteralEncodingResult {
   HuffmanLiteralEncodingResult({
@@ -31,6 +33,33 @@ class HuffmanCompressionContext {
   final HuffmanCompressionTable table;
   final HuffmanTableWriterWorkspace tableWriterWorkspace;
   final _HuffmanRepeatTableState repeatState;
+
+  bool _pendingSeededTable = false;
+
+  void seedFromDictionary(Uint8List codeLengths, int maxSymbol) {
+    if (!table.initializeFromCodeLengths(codeLengths, maxSymbol)) {
+      _pendingSeededTable = false;
+      return;
+    }
+    repeatState.seedFromCodeLengths(codeLengths, maxSymbol);
+    _pendingSeededTable = true;
+  }
+
+  _SeededHuffmanEncodingHandle? takeSeededTable() {
+    if (!_pendingSeededTable) {
+      return null;
+    }
+    _pendingSeededTable = false;
+    return _SeededHuffmanEncodingHandle(table: table);
+  }
+}
+
+class _SeededHuffmanEncodingHandle {
+  const _SeededHuffmanEncodingHandle({
+    required this.table,
+  });
+
+  final HuffmanCompressionTable table;
 }
 
 HuffmanLiteralEncodingResult? tryEncodeLiterals(
@@ -45,6 +74,17 @@ HuffmanLiteralEncodingResult? tryEncodeLiterals(
   const minCompressibleSize = 64;
   if (literalCount < minCompressibleSize) {
     return null;
+  }
+
+  final seededHandle = context.takeSeededTable();
+  if (seededHandle != null) {
+    return _encodeWithTable(
+      literals: literals,
+      table: seededHandle.table,
+      literalType: LiteralsBlockType.repeat,
+      usedRepeatTable: true,
+      tableBytes: _emptyHuffmanTableBytes,
+    );
   }
 
   final counts = Histogram.count(literals);
@@ -74,8 +114,32 @@ HuffmanLiteralEncodingResult? tryEncodeLiterals(
   }
   final tableBytes = table.write(context.tableWriterWorkspace);
   final repeatState = context.repeatState;
-  var useRepeatTable = repeatState.canReuse(table, maxSymbol);
-  var literalType = useRepeatTable ? LiteralsBlockType.repeat : LiteralsBlockType.compressed;
+  final useRepeatTable = repeatState.canReuse(table, maxSymbol);
+  final literalType = useRepeatTable ? LiteralsBlockType.repeat : LiteralsBlockType.compressed;
+  final result = _encodeWithTable(
+    literals: literals,
+    table: table,
+    literalType: literalType,
+    usedRepeatTable: useRepeatTable,
+    tableBytes: useRepeatTable ? _emptyHuffmanTableBytes : tableBytes,
+  );
+  if (result != null && !useRepeatTable) {
+    repeatState.save(table, maxSymbol);
+  }
+  return result;
+}
+
+HuffmanLiteralEncodingResult? _encodeWithTable({
+  required Uint8List literals,
+  required HuffmanCompressionTable table,
+  required LiteralsBlockType literalType,
+  required bool usedRepeatTable,
+  required Uint8List tableBytes,
+}) {
+  final literalCount = literals.length;
+  if (literalCount == 0) {
+    return null;
+  }
 
   var useSingleStream = literalCount < 256;
   if (literalCount > 0x3FF) {
@@ -85,16 +149,16 @@ HuffmanLiteralEncodingResult? tryEncodeLiterals(
   Uint8List? literalStreams = useSingleStream
       ? HuffmanCompressor.compressSingleStream(literals, table)
       : HuffmanCompressor.compressFourStreams(literals, table);
-
   if (literalStreams == null || literalStreams.isEmpty) {
     return null;
   }
 
   var streamCount = useSingleStream ? 1 : 4;
-  var compressedSize = (useRepeatTable ? 0 : tableBytes.length) + literalStreams.length;
+  var compressedSize = (usedRepeatTable ? 0 : tableBytes.length) + literalStreams.length;
   if (compressedSize >= literalCount) {
     return null;
   }
+
   var header = _LiteralHeaderBuilder.buildCompressed(
     type: literalType,
     regeneratedSize: literalCount,
@@ -109,7 +173,7 @@ HuffmanLiteralEncodingResult? tryEncodeLiterals(
       return null;
     }
     streamCount = 4;
-    compressedSize = (useRepeatTable ? 0 : tableBytes.length) + literalStreams.length;
+    compressedSize = (usedRepeatTable ? 0 : tableBytes.length) + literalStreams.length;
     if (compressedSize >= literalCount) {
       return null;
     }
@@ -127,14 +191,10 @@ HuffmanLiteralEncodingResult? tryEncodeLiterals(
 
   final builder = BytesBuilder(copy: false)
     ..add(header);
-  if (!useRepeatTable) {
+  if (!usedRepeatTable && tableBytes.isNotEmpty) {
     builder.add(tableBytes);
   }
   builder.add(literalStreams);
-
-  if (!useRepeatTable) {
-    repeatState.save(table, maxSymbol);
-  }
 
   return HuffmanLiteralEncodingResult(
     bytes: builder.takeBytes(),
@@ -142,7 +202,7 @@ HuffmanLiteralEncodingResult? tryEncodeLiterals(
     regeneratedSize: literalCount,
     compressedSize: compressedSize,
     streamCount: streamCount,
-    usedRepeatTable: useRepeatTable,
+    usedRepeatTable: usedRepeatTable,
   );
 }
 
@@ -472,6 +532,51 @@ class HuffmanCompressionTable {
     return true;
   }
 
+  bool initializeFromCodeLengths(Uint8List codeLengths, int maxSymbol) {
+    if (maxSymbol < 0 || maxSymbol >= codeLengths.length) {
+      return false;
+    }
+    final symbolLengths = <_SymbolLength>[];
+    var longest = 0;
+    for (var symbol = 0; symbol <= maxSymbol; symbol++) {
+      final length = codeLengths[symbol];
+      if (length == 0) {
+        values[symbol] = 0;
+        numberOfBits[symbol] = 0;
+        continue;
+      }
+      if (length > maxTableLog) {
+        return false;
+      }
+      symbolLengths.add(_SymbolLength(symbol, length));
+      if (length > longest) {
+        longest = length;
+      }
+    }
+    if (symbolLengths.isEmpty) {
+      return false;
+    }
+    _maxSymbol = maxSymbol;
+    _maxNumberOfBits = longest;
+    symbolLengths.sort((a, b) {
+      final diff = a.length - b.length;
+      return diff != 0 ? diff : a.symbol - b.symbol;
+    });
+
+    var code = 0;
+    var currentLength = symbolLengths.first.length;
+    for (final entry in symbolLengths) {
+      if (entry.length > currentLength) {
+        code <<= (entry.length - currentLength);
+        currentLength = entry.length;
+      }
+      values[entry.symbol] = code;
+      numberOfBits[entry.symbol] = entry.length;
+      code++;
+    }
+    return true;
+  }
+
   static int optimalNumberOfBits(int maxNumberOfBits, int inputSize, int maxSymbol) {
     if (inputSize <= 1) {
       throw ArgumentError('Input too small for Huffman table');
@@ -668,6 +773,20 @@ class _HuffmanRepeatTableState {
     final snapshot = Uint8List(maxSymbol + 1);
     for (var symbol = 0; symbol <= maxSymbol; symbol++) {
       snapshot[symbol] = table.numberOfBits[symbol];
+    }
+    _lengths = snapshot;
+    _maxSymbol = maxSymbol;
+  }
+
+  void seedFromCodeLengths(Uint8List lengths, int maxSymbol) {
+    if (maxSymbol < 0 || maxSymbol >= lengths.length) {
+      _lengths = null;
+      _maxSymbol = -1;
+      return;
+    }
+    final snapshot = Uint8List(maxSymbol + 1);
+    for (var symbol = 0; symbol <= maxSymbol; symbol++) {
+      snapshot[symbol] = lengths[symbol];
     }
     _lengths = snapshot;
     _maxSymbol = maxSymbol;

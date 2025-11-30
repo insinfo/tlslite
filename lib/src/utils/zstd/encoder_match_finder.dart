@@ -5,11 +5,13 @@ class ZstdEncoderSequence {
     required this.literalLength,
     required this.matchLength,
     required this.offset,
+    required this.fromHistory,
   });
 
   final int literalLength;
   final int matchLength;
   final int offset;
+  final bool fromHistory;
 }
 
 class ZstdMatchPlan {
@@ -85,6 +87,7 @@ ZstdMatchPlan planMatches(
               literalLength: literalLength,
               matchLength: matchLength,
               offset: distance,
+              fromHistory: candidate < baseIndex,
             ),
           );
           position += matchLength;

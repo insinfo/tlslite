@@ -192,7 +192,7 @@ Uint8List _decodeFrame({
       throw ZstdDecodingError('Frame declared a checksum but no bytes remain');
     }
     final expected = reader.readUint32LE();
-    final actual = xxHash64(result) & 0xFFFFFFFF;
+    final actual = xxHash64(result).toUnsigned(32).toInt();
     if (actual != expected) {
       throw ZstdDecodingError('Content checksum mismatch: expected $expected, got $actual');
     }
