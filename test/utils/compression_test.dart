@@ -27,6 +27,12 @@ void main() {
       expect(compressionAlgoImpls['zstd_decompress'], isNotNull);
       expect(compressionAlgoImpls['zstd_accepts_limit'], isTrue);
     });
+
+    test('wires brotli adapters and limit flag', () {
+      expect(compressionAlgoImpls['brotli_compress'], isNotNull);
+      expect(compressionAlgoImpls['brotli_decompress'], isNotNull);
+      expect(compressionAlgoImpls['brotli_accepts_limit'], isTrue);
+    });
   });
 
   group('chooseCompressionSendAlgo', () {

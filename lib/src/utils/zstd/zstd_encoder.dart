@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import '../bit_stream_writer.dart';
 import 'block.dart';
 import 'constants.dart';
 import 'dictionary.dart';
@@ -836,7 +837,7 @@ Uint8List _encodeSequencesBitstream(
     throw ZstdEncodingError('Cannot encode empty sequence list');
   }
 
-  final writer = _BitStreamWriter();
+  final writer = BitStreamWriter();
   int? llNextState;
   int? mlNextState;
   int? ofNextState;
@@ -877,7 +878,7 @@ Uint8List _encodeSequencesBitstream(
   writer.writeBits(ofNextState, ofEncoder.tableLog);
   writer.writeBits(llNextState, llEncoder.tableLog);
 
-  return writer.close();
+  return writer.closeWithTerminator();
 }
 
 List<int> _encodeSequenceCountBytes(int count) {
@@ -1353,45 +1354,6 @@ class _FseEncodingResult {
   final int bits;
   final int bitCount;
   final int previousState;
-}
-
-class _BitStreamWriter {
-  final BytesBuilder _builder = BytesBuilder(copy: false);
-  int _bitContainer = 0;
-  int _bitCount = 0;
-
-  void writeBits(int value, int count) {
-    if (count <= 0) {
-      return;
-    }
-    if (count > 31) {
-      throw ZstdEncodingError('Bit count $count exceeds writer capacity');
-    }
-    final mask = (1 << count) - 1;
-    _bitContainer |= (value & mask) << _bitCount;
-    _bitCount += count;
-    while (_bitCount >= 8) {
-      _builder.add([_bitContainer & 0xFF]);
-      _bitContainer >>= 8;
-      _bitCount -= 8;
-    }
-  }
-
-  Uint8List close() {
-    writeBits(1, 1);
-    while (_bitCount > 0) {
-      _builder.add([_bitContainer & 0xFF]);
-      _bitContainer >>= 8;
-      _bitCount -= 8;
-    }
-    _bitContainer = 0;
-    _bitCount = 0;
-    final bytes = _builder.takeBytes();
-    if (bytes.isEmpty || bytes.last == 0) {
-      throw ZstdEncodingError('Bitstream terminator missing');
-    }
-    return bytes;
-  }
 }
 
 void _emitBlockStats(

@@ -2,6 +2,8 @@ import 'dart:typed_data';
 
 import '../constants.dart';
 import '../errors.dart';
+import 'brotlidecpy/brotli_encoder.dart';
+import 'brotlidecpy/decode.dart';
 import 'lists.dart';
 import 'zstd/zstd_decoder.dart';
 import 'zstd/zstd_encoder.dart';
@@ -13,13 +15,24 @@ import 'zstd/zstd_encoder.dart';
 /// nullable so the map can be filled dynamically by future platform specific
 /// integrations.
 final Map<String, dynamic> compressionAlgoImpls = {
-  'brotli_compress': null,
-  'brotli_decompress': null,
-  'brotli_accepts_limit': null,
+  'brotli_compress': _brotliCompressAdapter,
+  'brotli_decompress': _brotliDecompressAdapter,
+  'brotli_accepts_limit': true,
   'zstd_compress': _zstdCompressAdapter,
   'zstd_decompress': _zstdDecompressAdapter,
   'zstd_accepts_limit': true,
 };
+
+Uint8List _brotliCompressAdapter(Uint8List input) {
+  return brotliCompressRaw(input);
+}
+
+Uint8List _brotliDecompressAdapter(Uint8List input, [int? expectedOutputSize]) {
+  return brotliDecompressBuffer(
+    input,
+    bufferLimit: expectedOutputSize,
+  );
+}
 
 Uint8List _zstdCompressAdapter(Uint8List input) {
   return zstdCompress(input);

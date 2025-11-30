@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../bit_stream_writer.dart';
 import 'literals.dart';
 
 final Uint8List _emptyHuffmanTableBytes = Uint8List(0);
@@ -239,7 +240,7 @@ class Histogram {
 
 class HuffmanCompressor {
   static Uint8List? compressSingleStream(Uint8List input, HuffmanCompressionTable table) {
-    final writer = _BitOutputStream();
+    final writer = BitStreamWriter();
     final remainder = input.length & 3;
     final aligned = input.length - remainder;
     switch (remainder) {
@@ -264,7 +265,7 @@ class HuffmanCompressor {
       _encodeSymbol(writer, table, input[index - 4]);
     }
 
-    return writer.close();
+    return writer.closeWithTerminator();
   }
 
   static Uint8List? compressFourStreams(Uint8List input, HuffmanCompressionTable table) {
@@ -313,58 +314,18 @@ class HuffmanCompressor {
     return builder.takeBytes();
   }
 
-  static void _encodeSymbol(_BitOutputStream writer, HuffmanCompressionTable table, int value) {
+  static void _encodeSymbol(BitStreamWriter writer, HuffmanCompressionTable table, int value) {
     final symbol = value & 0xFF;
     final bits = table.numberOfBits[symbol];
     if (bits == 0) {
       throw StateError('Missing Huffman code for symbol $symbol');
     }
-    writer.addBits(table.values[symbol], bits);
+    writer.writeBits(table.values[symbol], bits);
   }
 
   static void _writeUint16(Uint8List buffer, int offset, int value) {
     buffer[offset] = value & 0xFF;
     buffer[offset + 1] = (value >> 8) & 0xFF;
-  }
-}
-
-class _BitOutputStream {
-  final List<int> _bytes = <int>[];
-  int _bitContainer = 0;
-  int _bitCount = 0;
-
-  void addBits(int value, int bits) {
-    if (bits <= 0) {
-      return;
-    }
-    _bitContainer |= (value & ((1 << bits) - 1)) << _bitCount;
-    _bitCount += bits;
-    _flushFullBytes();
-  }
-
-  void flush() {
-    _flushFullBytes();
-  }
-
-  void _flushFullBytes() {
-    while (_bitCount >= 8) {
-      _bytes.add(_bitContainer & 0xFF);
-      _bitContainer >>= 8;
-      _bitCount -= 8;
-    }
-  }
-
-  Uint8List close() {
-    addBits(1, 1);
-    if (_bitCount > 0) {
-      _bytes.add(_bitContainer & 0xFF);
-      _bitContainer = 0;
-      _bitCount = 0;
-    }
-    if (_bytes.isEmpty || _bytes.last == 0) {
-      throw StateError('Bitstream terminator missing');
-    }
-    return Uint8List.fromList(_bytes);
   }
 }
 
@@ -1084,7 +1045,7 @@ class FiniteStateEntropyEncoder {
       return null;
     }
 
-    final writer = _BitOutputStream();
+    final writer = BitStreamWriter();
     var index = inputSize;
     var state1 = 0;
     var state2 = 0;
@@ -1124,7 +1085,7 @@ class FiniteStateEntropyEncoder {
 
     table.finish(writer, state2);
     table.finish(writer, state1);
-    return writer.close();
+    return writer.closeWithTerminator();
   }
 
   static int _minTableLogValue(int inputSize, int maxSymbol) {
@@ -1199,14 +1160,14 @@ class FseCompressionTable {
     return nextState[base + deltaFindState[symbol]];
   }
 
-  int encode(_BitOutputStream writer, int state, int symbol) {
+  int encode(BitStreamWriter writer, int state, int symbol) {
     final outputBits = (state + deltaNumberOfBits[symbol]) >> 16;
-    writer.addBits(state, outputBits);
+    writer.writeBits(state, outputBits);
     return nextState[(state >> outputBits) + deltaFindState[symbol]];
   }
 
-  void finish(_BitOutputStream writer, int state) {
-    writer.addBits(state, log2Size);
+  void finish(BitStreamWriter writer, int state) {
+    writer.writeBits(state, log2Size);
     writer.flush();
   }
 

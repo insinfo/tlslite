@@ -136,6 +136,12 @@ Atualizações Zstd 02/12/2025 10:10
 - Ampliei a suíte de testes com três cenários: validação do modo `repeat` no decodificador, stream multi-frame utilizando o fixture real `http-dict-missing-symbols` e um teste de interoperabilidade onde o frame emitido pelo encoder é descompactado pelo `zstd` oficial.
 - Fator comum dos testes reutiliza um helper `buildSeededDictionary`, destravando verificações compartilhadas entre encoder/decoder sem duplicar fixtures.
 
+Atualizações Brotli 02/12/2025 16:30
+
+- Extraí o `BitStreamWriter` compartilhado (`lib/src/utils/bit_stream_writer.dart`) e o liguei ao encoder de Zstd, adicionando `test/utils/bit_stream_writer_test.dart` para cobrir alinhamento, flush parcial e terminador — passo necessário antes do encoder Brotli.
+- Implementei `brotliCompressRaw` em `lib/src/utils/brotlidecpy/brotli_encoder.dart`, que divide o payload em meta-blocos RAW (até 16.777.216 bytes), alinha os dados e encerra o fluxo com um meta-bloco vazio sinalizado como último.
+- Criei `test/brotli/brotli_encoder_raw_test.dart`, que valida os headers dos meta-blocos via `BrotliBitReader` e mantém um smoke test com a CLI (`brotli -d`), além do helper `tool/brotli_cli_roundtrip.dart` para investigações manuais.
+
 ## Encoder scaffolding (in progress)
 
 - [x] Criei um `zstd_encoder.dart` capaz de embrulhar o payload em um frame single-segment composto apenas por blocos RAW (sem compressão de fato, mas compatível com decodificadores).
@@ -172,6 +178,27 @@ Atualizações Zstd 02/12/2025 10:10
 2. **Histogramas e Huffman básicos**: compartilhar a infraestrutura de contagem/Huffman já usada no decoder (classes em `huffman.dart`) para construir árvores de literais e distâncias e serializá-las via o mesmo escritor bit a bit.
 3. **Planejamento de matches**: adaptar o heurístico `planMatches` (ou camada derivada) ao formato Brotli, emitindo comandos literal/cópia com suporte às distâncias padrão e iniciando a reutilização do dicionário embutido (`brotli_dict.dart`).
 4. **Context modeling e tunáveis**: adicionar compaction de context maps, transforms e parâmetros de qualidade (modo texto, níveis) reutilizando o esqueleto de metadados e testes criados nas fases anteriores.
+
+### Brotli encoder execution plan (2025-12)
+
+1. **Bit writer + plumbing compartilhado**
+  - [x] Extrair um `BitStreamWriter` reutilizável em `lib/src/utils/bit_stream_writer.dart`, com helpers para writeBits, alignToByte e flush em `Uint8List`.
+  - [x] Atualizar o encoder de Zstd para consumir o mesmo writer (facilita testes de regressão) e adicionar `test/utils/bit_stream_writer_test.dart` cobrindo casos de borda.
+  - Objetivo: destravar o emissor Brotli sem duplicar lógica e garantir que ambas as stacks usam a mesma API de baixo nível.
+2. **Metablocos RAW e CLI smoke test**
+  - [x] Criar `lib/src/utils/brotlidecpy/brotli_encoder.dart` com um modo inicial `brotliCompressRaw` que emite apenas meta-blocks RAW (isLast=0 nos blocos de dados + terminador vazio) e reaproveita o bit writer para gerar o stream.
+  - [x] Adicionar `test/brotli/brotli_encoder_raw_test.dart` validando os headers emitidos e mantendo um round-trip via `brotli` CLI (`brotli -d`). Criar `tool/brotli_cli_roundtrip.dart` análogo ao helper de Zstd para facilitar diagnósticos.
+  - Entrega: API pública capaz de embrulhar payload sem compressão, mantendo compatibilidade com decodificadores existentes e preparando o terreno para etapas subsequentes.
+3. **Histogramas, Huffman e meta-blocks comprimidos**
+  - Portar o construtor de histogramas já usado no decoder (`lib/src/utils/brotlidecpy/huffman.dart`) para o caminho de encode, gerando code lengths e serializando-os conforme o formato Brotli (tree codes, run-length encoding).
+  - Implementar compressão básica de literais/distâncias dentro do mesmo `brotil_encoder.dart`, com testes focados em alfabetos pequenos e verificação cruzada contra o decoder nativo.
+  - Atualizar o plano com métricas de compressão (bytes emitidos, entropia) usando um novo benchmark em `bin/brotli_encoder_benchmark.dart`.
+4. **Planejamento de matches e dicionário embutido**
+  - Adaptar `encoder_match_finder.dart` para expor um modo Brotli (distâncias + comandos copy/literal). Incluir suporte às transformações/dicionário de `brotli_dict.dart`.
+  - Adicionar telemetria em `brotli_encoder.dart` (contagem de comandos, razão literal/match) e expandir a suíte de testes com fixtures reais (HTTP headers, WOFF2) para validar o ganho frente ao modo RAW.
+5. **Context modeling, tunáveis e CI**
+  - Implementar compaction de context maps, modos texto vs genérico, e parâmetros básicos (`quality`, `window`).
+  - Integrar smoke tests no CI reutilizando os helpers CLI para garantir que cada release do encoder continue compatível com a referência oficial.
 
 ## File-by-file status snapshot (2025-11-30)
 
@@ -229,3 +256,9 @@ plug it into the Dart decoder, and only then move to the next chunk.
 - [x] **Frame com dicionário oficial.** O teste adiciona um round-trip usando o fixture real `test/fixtures/http-dict-missing-symbols`, copiando o `.dict` para o diretório temporário antes de chamar `zstd -d --dict=...`.
 - [x] **Smoke test automatizado.** Novo helper `tool/zstd_cli_roundtrip.dart` aceita `--dict`, `--checksum`, `--keep-artifacts` e realiza compressão + validação via CLI, deixando artefatos em caso de falha.
 - [x] **Telemetria e logging.** Falhas do round-trip agora registram `xxHash64` (32 bits) do payload, header completo e o caminho dos artefatos para depuração via `zstd --list`.
+
+referencia C:\tools\brotli-1.2.0
+
+tudo relacionado ao brotli deve esta neste diteorio C:\MyDartProjects\tlslite\lib\src\utils\brotlidecpy e tudo relacionando ao zstd deve esta neste diretorio C:\MyDartProjects\tlslite\lib\src\utils\zstd pois no futuro eu posso priclicar isso como pacotes se parados no pub.dev
+
+continue trabalhando na implementação do brotli encoder e decoder C:\MyDartProjects\tlslite\lib\src\utils\brotlidecpy
