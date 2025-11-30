@@ -1,6 +1,10 @@
+import 'dart:typed_data';
+
 import '../constants.dart';
 import '../errors.dart';
 import 'lists.dart';
+import 'zstd/zstd_decoder.dart';
+import 'zstd/zstd_encoder.dart';
 
 /// Holds references to optional compression/decompression helpers.
 ///
@@ -12,10 +16,21 @@ final Map<String, dynamic> compressionAlgoImpls = {
   'brotli_compress': null,
   'brotli_decompress': null,
   'brotli_accepts_limit': null,
-  'zstd_compress': null,
-  'zstd_decompress': null,
-  'zstd_accepts_limit': null,
+  'zstd_compress': _zstdCompressAdapter,
+  'zstd_decompress': _zstdDecompressAdapter,
+  'zstd_accepts_limit': true,
 };
+
+Uint8List _zstdCompressAdapter(Uint8List input) {
+  return zstdCompress(input);
+}
+
+Uint8List _zstdDecompressAdapter(Uint8List input, [int? expectedOutputSize]) {
+  return zstdDecompress(
+    input,
+    expectedOutputSize: expectedOutputSize,
+  );
+}
 
 const Map<String, int> _compressionAlgoIds = {
   'zlib': CertificateCompressionAlgorithm.zlib,

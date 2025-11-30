@@ -1,7 +1,9 @@
 import 'dart:typed_data';
 
+import 'xxhash64.dart';
 import 'block.dart';
 import 'byte_reader.dart';
+import 'dictionary.dart';
 import 'frame_header.dart';
 import 'literals.dart';
 import 'sequences.dart';
@@ -14,27 +16,103 @@ class ZstdDecodingError implements Exception {
   String toString() => 'ZstdDecodingError: $message';
 }
 
-/// Best-effort Zstd frame decoder that currently supports frames composed of
-/// RAW/RLE blocks and compressed blocks with Huffman literals (no dictionaries
-/// or content checksums yet).
-Uint8List zstdDecompressFrame(Uint8List input) {
+/// Decompresses one or more concatenated Zstd frames contained in [input].
+/// Dictionaries can be supplied either through the [dictionaries] map or the
+/// [dictionaryProvider] callback. When [expectedOutputSize] is provided the
+/// decoder enforces that the total number of produced bytes matches this value
+/// to protect higher level callers from zip-bomb style inputs.
+Uint8List zstdDecompress(
+  Uint8List input, {
+  int? expectedOutputSize,
+  Map<int, ZstdDictionary>? dictionaries,
+  ZstdDictionaryProvider? dictionaryProvider,
+}) {
   final reader = ZstdByteReader(input);
-  final header = parseFrameHeader(reader);
-
-  if (header.dictId != 0) {
-    throw ZstdDecodingError('Dictionaries are not supported yet');
+  final builder = BytesBuilder(copy: false);
+  var totalOutputBytes = 0;
+  var decodedFrame = false;
+  while (true) {
+    final header = tryParseFrameHeader(reader);
+    if (header == null) {
+      break;
+    }
+    decodedFrame = true;
+    final frame = _decodeFrame(
+      reader: reader,
+      header: header,
+      dictionaries: dictionaries,
+      dictionaryProvider: dictionaryProvider,
+    );
+    totalOutputBytes += frame.length;
+    if (expectedOutputSize != null && totalOutputBytes > expectedOutputSize) {
+      throw ZstdDecodingError(
+        'Decompressed output exceeded expected size $expectedOutputSize',
+      );
+    }
+    builder.add(frame);
   }
-  if (header.checksumFlag) {
-    throw ZstdDecodingError('Frames with content checksum are not supported yet');
+  if (!decodedFrame) {
+    throw ZstdDecodingError('Input did not contain a valid Zstd frame');
   }
 
-  reader.offset = header.headerSize;
+  final result = builder.takeBytes();
+  if (expectedOutputSize != null && totalOutputBytes != expectedOutputSize) {
+    throw ZstdDecodingError(
+      'Decompressed output size mismatch: expected $expectedOutputSize, got $totalOutputBytes',
+    );
+  }
+  return result;
+}
+
+/// Backwards-compatible wrapper that decodes every frame inside [input].
+Uint8List zstdDecompressFrame(
+  Uint8List input, {
+  int? expectedOutputSize,
+  Map<int, ZstdDictionary>? dictionaries,
+  ZstdDictionaryProvider? dictionaryProvider,
+}) {
+  return zstdDecompress(
+    input,
+    expectedOutputSize: expectedOutputSize,
+    dictionaries: dictionaries,
+    dictionaryProvider: dictionaryProvider,
+  );
+}
+
+Uint8List _decodeFrame({
+  required ZstdByteReader reader,
+  required ZstdFrameHeader header,
+  Map<int, ZstdDictionary>? dictionaries,
+  ZstdDictionaryProvider? dictionaryProvider,
+}) {
   final output = <int>[];
   final window = ZstdWindow(header.windowSize);
-  var prevOffsets = <int>[1, 4, 8];
-  HuffmanDecodingTable? lastHuffmanTable;
+
+  final dictionary = _resolveDictionary(
+    dictId: header.dictId,
+    dictionaries: dictionaries,
+    dictionaryProvider: dictionaryProvider,
+  );
+  if (header.dictId != 0 && dictionary == null) {
+    throw ZstdDecodingError('Dictionary ${header.dictId} was requested but not provided');
+  }
+  if (dictionary != null) {
+    window.primeHistory(dictionary.content);
+  }
+
+  var prevOffsets = List<int>.from(dictionary?.initialPrevOffsets ?? const [1, 4, 8]);
+  HuffmanDecodingTable? lastHuffmanTable = dictionary?.huffmanTable;
+  final sequenceState = SequenceDecodingState(
+    literalLengthTable: dictionary?.sequenceTables?.literalLengthTable,
+    offsetTable: dictionary?.sequenceTables?.offsetTable,
+    matchLengthTable: dictionary?.sequenceTables?.matchLengthTable,
+  );
+
   var finished = false;
-  while (!reader.isEOF && !finished) {
+  while (!finished) {
+    if (reader.isEOF) {
+      throw ZstdDecodingError('Unexpected end of input inside frame');
+    }
     final blockHeader = readBlockHeader(reader);
     ensureBlockSizeWithinWindow(header, blockHeader);
     final blockDataStart = reader.offset;
@@ -80,6 +158,7 @@ Uint8List zstdDecompressFrame(Uint8List input) {
           sequencesHeader,
           payloadSize: payloadSize,
           initialPrevOffsets: prevOffsets,
+          state: sequenceState,
         );
         prevOffsets = List<int>.from(sequencesResult.finalPrevOffsets);
 
@@ -103,14 +182,36 @@ Uint8List zstdDecompressFrame(Uint8List input) {
     }
   }
 
-  if (!finished) {
-    throw ZstdDecodingError('Input terminated before the last block flag');
-  }
-
   final result = Uint8List.fromList(output);
   if (header.frameContentSize != null && header.frameContentSize != result.length) {
     throw ZstdDecodingError('Frame content size mismatch: expected ${header.frameContentSize}, got ${result.length}');
   }
 
+  if (header.checksumFlag) {
+    if (reader.remaining < 4) {
+      throw ZstdDecodingError('Frame declared a checksum but no bytes remain');
+    }
+    final expected = reader.readUint32LE();
+    final actual = xxHash64(result) & 0xFFFFFFFF;
+    if (actual != expected) {
+      throw ZstdDecodingError('Content checksum mismatch: expected $expected, got $actual');
+    }
+  }
+
   return result;
+}
+
+ZstdDictionary? _resolveDictionary({
+  required int dictId,
+  Map<int, ZstdDictionary>? dictionaries,
+  ZstdDictionaryProvider? dictionaryProvider,
+}) {
+  if (dictId == 0) {
+    return null;
+  }
+  final dict = dictionaries != null ? dictionaries[dictId] : null;
+  if (dict != null) {
+    return dict;
+  }
+  return dictionaryProvider?.call(dictId);
 }

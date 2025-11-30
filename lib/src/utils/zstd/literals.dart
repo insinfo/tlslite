@@ -165,7 +165,7 @@ LiteralsResult _decodeCompressedLiterals(
   int payloadOffset = 0;
 
   if (header.type == LiteralsBlockType.compressed) {
-    final tableResult = _readHuffmanTable(payload);
+    final tableResult = readHuffmanTable(payload);
     table = tableResult.table;
     payloadOffset = tableResult.bytesConsumed;
   } else {
@@ -300,8 +300,9 @@ _CompressedHeader _decodeCompressedHeader({
   );
 }
 
-class _HuffmanTableReadResult {
-  _HuffmanTableReadResult({
+/// Result of decoding a Huffman table payload.
+class HuffmanTableReadResult {
+  HuffmanTableReadResult({
     required this.table,
     required this.bytesConsumed,
   });
@@ -402,7 +403,7 @@ class _HuffmanFseTable {
   final int log2Size;
 }
 
-_HuffmanTableReadResult _readHuffmanTable(Uint8List payload) {
+HuffmanTableReadResult readHuffmanTable(Uint8List payload) {
   if (payload.isEmpty) {
     throw ZstdFrameFormatException('Huffman table payload is empty');
   }
@@ -445,7 +446,7 @@ _HuffmanTableReadResult _readHuffmanTable(Uint8List payload) {
   }
 
   final table = _buildHuffmanDecodingTable(weights, outputSize, ranks);
-  return _HuffmanTableReadResult(table: table, bytesConsumed: offset);
+  return HuffmanTableReadResult(table: table, bytesConsumed: offset);
 }
 
 HuffmanDecodingTable _buildHuffmanDecodingTable(

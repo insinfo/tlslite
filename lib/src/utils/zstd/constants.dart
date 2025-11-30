@@ -1,4 +1,5 @@
 const int zstdMagicNumber = 0xFD2FB528;
+const int zstdDictionaryMagic = 0xEC30A437;
 const int zstdSkippableMask = 0xFFFFFFF0;
 const int zstdSkippableStart = 0x184D2A50;
 const int zstdWindowLogAbsoluteMin = 10;

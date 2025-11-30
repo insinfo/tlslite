@@ -21,6 +21,12 @@ void main() {
       expect(compressionAlgoImpls, contains('zstd_decompress'));
       expect(compressionAlgoImpls, contains('zstd_accepts_limit'));
     });
+
+    test('wires zstd decompressor and limit flag', () {
+      expect(compressionAlgoImpls['zstd_compress'], isNotNull);
+      expect(compressionAlgoImpls['zstd_decompress'], isNotNull);
+      expect(compressionAlgoImpls['zstd_accepts_limit'], isTrue);
+    });
   });
 
   group('chooseCompressionSendAlgo', () {

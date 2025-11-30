@@ -370,6 +370,66 @@ void main() {
       expect(reader.offset, equals(reader.buffer.length));
       expect(result.sequences.length, equals(1));
     });
+
+    test('repeat descriptors reuse previously built tables', () {
+      final state = SequenceDecodingState();
+      final initialHeader = SequencesHeader(
+        nbSeq: 1,
+        llEncoding: const SymbolEncodingDescriptor(
+          type: SymbolEncodingType.rle,
+          rleSymbol: 5,
+        ),
+        ofEncoding: const SymbolEncodingDescriptor(
+          type: SymbolEncodingType.rle,
+          rleSymbol: 0,
+        ),
+        mlEncoding: const SymbolEncodingDescriptor(
+          type: SymbolEncodingType.rle,
+          rleSymbol: 0,
+        ),
+        headerSize: 0,
+      );
+
+      decodeSequencesFromPayload(
+        header: initialHeader,
+        payload: _minimalBitstream(),
+        state: state,
+      );
+
+      final repeatHeader = SequencesHeader(
+        nbSeq: 1,
+        llEncoding: const SymbolEncodingDescriptor(type: SymbolEncodingType.repeat),
+        ofEncoding: const SymbolEncodingDescriptor(type: SymbolEncodingType.repeat),
+        mlEncoding: const SymbolEncodingDescriptor(type: SymbolEncodingType.repeat),
+        headerSize: 0,
+      );
+
+      final result = decodeSequencesFromPayload(
+        header: repeatHeader,
+        payload: _minimalBitstream(),
+        state: state,
+      );
+
+      expect(result.sequences.length, equals(1));
+    });
+
+    test('repeat descriptors fail without prior tables', () {
+      final repeatHeader = SequencesHeader(
+        nbSeq: 1,
+        llEncoding: const SymbolEncodingDescriptor(type: SymbolEncodingType.repeat),
+        ofEncoding: const SymbolEncodingDescriptor(type: SymbolEncodingType.repeat),
+        mlEncoding: const SymbolEncodingDescriptor(type: SymbolEncodingType.repeat),
+        headerSize: 0,
+      );
+
+      expect(
+        () => decodeSequencesFromPayload(
+          header: repeatHeader,
+          payload: _minimalBitstream(),
+        ),
+        throwsA(isA<ZstdFrameFormatException>()),
+      );
+    });
   });
 
   group('sequence executor', () {

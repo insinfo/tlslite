@@ -18,6 +18,28 @@ class ZstdWindow {
   int get availableHistory => _size;
   int get totalProduced => _totalProduced;
 
+  /// Seeds the history buffer with the provided bytes without emitting them
+  /// to the output stream. Used for dictionary initialization.
+  void primeHistory(Uint8List history) {
+    if (_capacity == 0) {
+      _size = 0;
+      _writeIndex = 0;
+      return;
+    }
+    if (history.isEmpty) {
+      _size = 0;
+      _writeIndex = 0;
+      return;
+    }
+    final copyLen = history.length > _capacity ? _capacity : history.length;
+    final start = history.length - copyLen;
+    for (int i = 0; i < copyLen; i++) {
+      _buffer[i] = history[start + i] & 0xFF;
+    }
+    _size = copyLen;
+    _writeIndex = copyLen % _capacity;
+  }
+
   void appendBytes(Uint8List data, List<int> output) {
     appendSlice(data, 0, data.length, output);
   }

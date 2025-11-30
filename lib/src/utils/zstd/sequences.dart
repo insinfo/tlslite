@@ -59,6 +59,26 @@ class SequenceDecodingTables {
   final SequenceDecodingTable matchLengthTable;
 }
 
+class SequenceDecodingState {
+  SequenceDecodingState({
+    this.literalLengthTable,
+    this.offsetTable,
+    this.matchLengthTable,
+  });
+
+  SequenceDecodingTable? literalLengthTable;
+  SequenceDecodingTable? offsetTable;
+  SequenceDecodingTable? matchLengthTable;
+
+  factory SequenceDecodingState.fromTables(SequenceDecodingTables tables) {
+    return SequenceDecodingState(
+      literalLengthTable: tables.literalLengthTable,
+      offsetTable: tables.offsetTable,
+      matchLengthTable: tables.matchLengthTable,
+    );
+  }
+}
+
 class SequenceDecodingResult {
   SequenceDecodingResult({
     required this.sequences,
@@ -110,11 +130,36 @@ void executeSequences({
   }
 }
 
-SequenceDecodingTables buildSequenceDecodingTables(SequencesHeader header) {
+SequenceDecodingTables buildSequenceDecodingTables(
+  SequencesHeader header, {
+  SequenceDecodingState? state,
+}) {
+  final literalTable = _buildTableForDescriptor(
+    header.llEncoding,
+    _llComponent,
+    repeatTable: state?.literalLengthTable,
+  );
+  final offsetTable = _buildTableForDescriptor(
+    header.ofEncoding,
+    _ofComponent,
+    repeatTable: state?.offsetTable,
+  );
+  final matchLengthTable = _buildTableForDescriptor(
+    header.mlEncoding,
+    _mlComponent,
+    repeatTable: state?.matchLengthTable,
+  );
+
+  if (state != null) {
+    state.literalLengthTable = literalTable;
+    state.offsetTable = offsetTable;
+    state.matchLengthTable = matchLengthTable;
+  }
+
   return SequenceDecodingTables(
-    literalLengthTable: _buildTableForDescriptor(header.llEncoding, _llComponent),
-    offsetTable: _buildTableForDescriptor(header.ofEncoding, _ofComponent),
-    matchLengthTable: _buildTableForDescriptor(header.mlEncoding, _mlComponent),
+    literalLengthTable: literalTable,
+    offsetTable: offsetTable,
+    matchLengthTable: matchLengthTable,
   );
 }
 
@@ -122,8 +167,9 @@ SequenceDecodingResult decodeSequencesFromPayload({
   required SequencesHeader header,
   required Uint8List payload,
   List<int>? initialPrevOffsets,
+  SequenceDecodingState? state,
 }) {
-  final tables = buildSequenceDecodingTables(header);
+  final tables = buildSequenceDecodingTables(header, state: state);
   final decoder = SequenceSectionDecoder(
     tables: tables,
     bitstream: payload,
@@ -143,6 +189,7 @@ SequenceDecodingResult decodeSequencesSection(
   SequencesHeader header, {
   int? payloadSize,
   List<int>? initialPrevOffsets,
+  SequenceDecodingState? state,
 }) {
   final size = payloadSize ?? reader.remaining;
   if (size < 0 || size > reader.remaining) {
@@ -153,6 +200,7 @@ SequenceDecodingResult decodeSequencesSection(
     header: header,
     payload: payload,
     initialPrevOffsets: initialPrevOffsets,
+    state: state,
   );
 }
 
@@ -228,7 +276,7 @@ SymbolEncodingDescriptor _parseSymbolEncodingDescriptor(
       final table = readFseTable(reader, maxSymbol);
       return SymbolEncodingDescriptor(type: SymbolEncodingType.compressed, fseTable: table);
     case SymbolEncodingType.repeat:
-      throw UnimplementedError('Repeat symbol encoding is not supported yet');
+      return const SymbolEncodingDescriptor(type: SymbolEncodingType.repeat);
   }
 }
 
@@ -365,8 +413,9 @@ late final SequenceDecodingTable _ofDefaultTable = _buildDefaultSequenceTable(_o
 
 SequenceDecodingTable _buildTableForDescriptor(
   SymbolEncodingDescriptor descriptor,
-  _SequenceComponent component,
-) {
+  _SequenceComponent component, {
+  SequenceDecodingTable? repeatTable,
+}) {
   switch (descriptor.type) {
     case SymbolEncodingType.predefined:
       return _defaultTableForComponent(component);
@@ -387,7 +436,11 @@ SequenceDecodingTable _buildTableForDescriptor(
       }
       return _buildRleSequenceTable(symbol, component);
     case SymbolEncodingType.repeat:
-      throw UnimplementedError('Repeat symbol encoding is not supported yet');
+      final table = repeatTable;
+      if (table == null) {
+        throw ZstdFrameFormatException('Repeat symbol encoding requested before any table was available');
+      }
+      return table;
   }
 }
 
@@ -485,12 +538,12 @@ class SequenceSectionDecoder {
 
   List<Sequence> decodeAll() {
     if (nbSequences == 0) return const [];
-    // TODO mudar este codigo para usar um for em vez de List<Sequence>.generate(nbSequences, (index) para o compilador otimizar isso
-
-    final result = List<Sequence>.generate(nbSequences, (index) {
-      final isLast = index == nbSequences - 1;
-      return _decodeSingle(isLast);
-    }, growable: false);
+    final placeholder = const Sequence(litLength: 0, matchLength: 0, offset: 0);
+    final result = List<Sequence>.filled(nbSequences, placeholder, growable: false);
+    for (var i = 0; i < nbSequences; i++) {
+      final isLast = i == nbSequences - 1;
+      result[i] = _decodeSingle(isLast);
+    }
     return result;
   }
 

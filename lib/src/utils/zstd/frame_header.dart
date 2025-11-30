@@ -29,15 +29,45 @@ class ZstdFrameFormatException implements Exception {
 }
 
 ZstdFrameHeader parseFrameHeader(ZstdByteReader reader) {
-  final startOffset = reader.offset;
-  final magic = reader.readUint32LE();
-  if (magic != zstdMagicNumber) {
+  final header = tryParseFrameHeader(reader);
+  if (header == null) {
+    throw ZstdFrameFormatException('Truncated frame header');
+  }
+  return header;
+}
+
+/// Attempts to parse a frame header, skipping any skippable frames encountered
+/// beforehand. Returns `null` when the reader is already at EOF after skipping
+/// trailing skippable frames.
+ZstdFrameHeader? tryParseFrameHeader(ZstdByteReader reader) {
+  while (true) {
+    if (reader.remaining == 0) {
+      return null;
+    }
+    final frameStart = reader.offset;
+    if (reader.remaining < 4) {
+      throw ZstdFrameFormatException('Truncated frame header');
+    }
+    final magic = reader.readUint32LE();
+    if (magic == zstdMagicNumber) {
+      return _parseFrameDescriptor(reader, frameStart);
+    }
     if ((magic & zstdSkippableMask) == zstdSkippableStart) {
-      throw ZstdFrameFormatException('Skippable frames are not supported yet');
+      if (reader.remaining < 4) {
+        throw ZstdFrameFormatException('Skippable frame missing size field');
+      }
+      final skipSize = reader.readUint32LE();
+      if (skipSize < 0 || skipSize > reader.remaining) {
+        throw ZstdFrameFormatException('Skippable frame exceeds available bytes');
+      }
+      reader.skip(skipSize);
+      continue;
     }
     throw ZstdFrameFormatException('Invalid Zstd magic: 0x${magic.toRadixString(16)}');
   }
+}
 
+ZstdFrameHeader _parseFrameDescriptor(ZstdByteReader reader, int frameStart) {
   final descriptor = reader.readUint8();
   if ((descriptor & 0x18) != 0) {
     throw ZstdFrameFormatException('Reserved frame descriptor bits are set');
@@ -112,7 +142,7 @@ ZstdFrameHeader parseFrameHeader(ZstdByteReader reader) {
   }
 
   final blockSizeMaxValue = windowSize < zstdBlockSizeMax ? windowSize : zstdBlockSizeMax;
-  final totalHeaderSize = reader.offset - startOffset;
+  final totalHeaderSize = reader.offset - frameStart;
 
   return ZstdFrameHeader(
     frameContentSize: hasFrameContentSize && frameContentSizeValue != zstdContentSizeUnknown

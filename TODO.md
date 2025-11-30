@@ -9,6 +9,10 @@ C:\MyDartProjects\tlslite\tlslite-ng\unit_tests para dart
 coloque um comentario // TODO onde não etiver completo
 
 ## Feito recentemente
+- [x] Implementado `lib/src/utils/zstd/zstd_encoder.dart` (frames RAW single-segment com checksum opcional), exposto via `compressionAlgoImpls` e coberto por testes de ida e volta (`test/utils/zstd_encoder_test.dart`).
+- [x] Atualizado o encoder Zstd para detectar runs de bytes repetidos e emitir blocos RLE (com divisão automática acima de `zstdBlockSizeMax`), com cobertura adicional em `test/utils/zstd_encoder_test.dart`.
+- [x] Criado `bin/zstd_sequence_benchmark.dart` para medir o impacto do `SequenceSectionDecoder.decodeAll` (fixture real `zstd_seq_sample.zst`), com ~0,032 ms por iteração/0,016 ms por sequência em 500 execuções.
+- [x] Encoder agora gera blocos "compressed" somente com literals + header de sequências vazio quando há espaço no limite de bloco, garantindo compatibilidade com o pipeline de literal/sequence do decodificador.
 - [x] Portado tlslite/utils/compression.py para lib/src/utils/compression.dart (compressionAlgoImpls e chooseCompressionSendAlgo) com testes em test/utils/compression_test.dart replicando o comportamento do Python
 - [x] Portado tlslite/utils/tripledes.py e tlslite/utils/python_tripledes.py para lib/src/utils/tripledes.dart e lib/src/utils/python_tripledes.dart (DES base, encrypt/decrypt CBC puro Dart)
 - [x] Adicionados testes em test/utils/python_tripledes_test.dart cobrindo vetores KAT KO1/KO2/KO3 e chaves de 16/24 bytes
