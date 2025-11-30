@@ -708,3 +708,7 @@ class _SequenceFseState {
     _state = nextState;
   }
 }
+
+SequenceDecodingTable get defaultLiteralLengthDecodingTable => _llDefaultTable;
+SequenceDecodingTable get defaultMatchLengthDecodingTable => _mlDefaultTable;
+SequenceDecodingTable get defaultOffsetDecodingTable => _ofDefaultTable;

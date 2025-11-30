@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:tlslite/src/utils/zstd/block.dart';
 import 'package:tlslite/src/utils/zstd/byte_reader.dart';
 import 'package:tlslite/src/utils/zstd/frame_header.dart';
+import 'package:tlslite/src/utils/zstd/encoder_match_finder.dart';
 import 'package:tlslite/src/utils/zstd/literals.dart';
 import 'package:tlslite/src/utils/zstd/sequences.dart';
 
@@ -30,6 +31,8 @@ Future<void> main(List<String> args) async {
   stdout.writeln('Total time: ${stopwatch.elapsed}');
   stdout.writeln('Avg per iteration: ${perIter.toStringAsFixed(3)} ms');
   stdout.writeln('Avg time per sequence: ${perSeq.toStringAsFixed(6)} ms');
+
+  _runMatchBenchmark();
 }
 
 int _parseIterations(List<String> args) {
@@ -42,6 +45,18 @@ int _parseIterations(List<String> args) {
     return 250;
   }
   return value;
+}
+
+void _runMatchBenchmark() {
+  final sample = File('test/fixtures/zstd_seq_sample.bin').readAsBytesSync();
+  final watch = Stopwatch()..start();
+  final plan = planMatches(Uint8List.fromList(sample));
+  watch.stop();
+  final coverage = plan.sequences.fold<int>(0, (acc, seq) => acc + seq.matchLength);
+  stdout.writeln('Match heuristic benchmark');
+  stdout.writeln('Sequences planned: ${plan.sequences.length}');
+  stdout.writeln('Total match coverage: $coverage bytes');
+  stdout.writeln('Planning time: ${watch.elapsedMicroseconds / 1000.0} ms');
 }
 
 class SequenceSectionBenchmark {

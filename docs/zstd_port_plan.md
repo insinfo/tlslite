@@ -96,6 +96,34 @@ Atualizações Zstd 30/11/2025 10:20
 
 Implementei o parser completo de dicionários oficiais (`parseZstdDictionary`) incluindo hidratação das tabelas Huffman/FSE e offsets prévios diretamente a partir do arquivo `.dict`, com fixture real em testes. Adicionei suporte a múltiplos frames concatenados e trailers skippable no `zstdDecompress`, que agora itera continuamente até o fim do buffer. Também habilitei a validação do `Content_Checksum` usando xxHash64 puro em Dart e ampliei a suíte de testes para cobrir checksum válido/corrompido e fluxos com mais de um frame.
 
+Atualizações Zstd 30/11/2025 18:45
+
+Comecei o porte do emissor de Huffman literals no encoder (novo `huffman_encoder.dart`), reaproveitando histogramas, construtor canônico e gerando streams 1/4 vias. O código ainda está atrás do flag `tlslite.enableHuffmanLiterals` porque o bitstream precisa ser validado contra o decoder existente; por enquanto os blocos permanecem RAW/RLE em produção, mas os testes já exercitam o fallback e o contexto compartilhado para quando habilitarmos o caminho comprimido.
+
+Atualizações Zstd 30/11/2025 22:40
+
+- Completei o emissor de pesos Huffman com cabeçalhos comprimidos por FSE, cobrindo alfabetos até 255 símbolos e reutilizando tabelas `repeat` quando o histograma não muda entre blocos.
+- Removi o flag `tlslite.enableHuffmanLiterals`: o encoder agora tenta sempre comprimir os literais e volta automaticamente para RAW/RLE se o custo não compensar, garantindo compatibilidade com o decoder atual.
+- Adicionei testes dedicados (`huffman_encoder_test.dart` e novos asserts em `zstd_encoder_test.dart`) que validam os caminhos comprimido/repeat e exercitam os cabeçalhos FSE recém-portados.
+
+Atualizações Zstd 30/11/2025 23:55
+
+- Portei o pipeline de emissão das tabelas FSE de LL/ML/OF no encoder: agora contamos os histogramas das sequências, normalizamos com o mesmo `FiniteStateEntropyEncoder` usado para os pesos Huffman e serializamos os cabeçalhos `FSE_NCount` completos antes do bitstream da seção de sequências.
+- Adicionei `SequenceCompressionContext`, permitindo detectar automaticamente quando os histogramas são idênticos entre blocos para reutilizar descritores `repeat` e evitar retransmitir tabelas; o modo RLE também é selecionado quando todas as sequências caem em um único símbolo.
+- Atualizei `zstd_encoder_test.dart` para inspecionar os cabeçalhos das seções de sequências, cobrindo tanto o caminho comprimido quanto o repeat e garantindo que o decoder continue validando as novas emissões end-to-end.
+
+Atualizações Zstd 01/12/2025 00:15
+
+- Introduzi `ZstdEncoderState` para acompanhar `prevOffsets` entre blocos comprimidos; o construtor de blocos agora propaga o snapshot produzido pela última sequência e garante que o bitstream ANS e o decoder compartilhem o mesmo histórico.
+- Com isso, o plano das sequências continua particionando os literais nos 1/4 streams Huffman e gerando o bitstream dos símbolos, mas também mantém o alinhamento do histórico para destravar o suporte futuro a janelas reais/dicionários.
+- Ajustei os testes de encoder para validar que blocos consecutivos ainda reutilizam tabelas (LL/ML em `repeat`, offsets permanecem comprimidos) e para garantir que o novo estado não quebre os cenários já portados.
+
+Atualizações Zstd 01/12/2025 18:30
+
+- Ensinei o `zstdCompress` a aceitar `ZstdDictionary` durante a emissão de frames: o cabeçalho agora carrega o `dictId`, as `prevOffsets` são semeadas e o histórico bruto do dicionário (limitado a 256 KiB) alimenta o match planner do primeiro bloco.
+- Atualizei `encoder_match_finder.dart` para aceitar um parâmetro `history`, pré-popular a tabela de hashes e permitir que sequências de abertura façam referência direta aos bytes fornecidos pelo dicionário.
+- Ampliei `zstd_encoder_test.dart` com um caso que comprime/decomprime usando um dicionário real, verificando que o frame produzido exige `dictId`, contém uma seção de sequências e continua round-trippando quando o dicionário correto é fornecido.
+
 ## Encoder scaffolding (in progress)
 
 - [x] Criei um `zstd_encoder.dart` capaz de embrulhar o payload em um frame single-segment composto apenas por blocos RAW (sem compressão de fato, mas compatível com decodificadores).
@@ -105,6 +133,65 @@ Implementei o parser completo de dicionários oficiais (`parseZstdDictionary`) i
 - [x] Detectei sequências com bytes repetidos e passei a emitir blocos RLE, incluindo a divisão automática em múltiplos blocos quando o run excede `zstdBlockSizeMax`.
 - [x] Passei a escrever blocos do tipo "compressed" compostos somente por literals (RAW) + cabeçalho de sequências vazio, preparando o terreno para emissões reais de LL/ML/OF (somente quando há folga no limite de bloco).
 - [x] Criei `bin/zstd_sequence_benchmark.dart` para medir o custo do `SequenceSectionDecoder.decodeAll` num trecho real (fixture `zstd_seq_sample.zst`), registrando ~0,032 ms/iter (~0,016 ms por sequência) em 500 iterações na VM do Dart SDK 3.6.
+- [x] Adicionei `encoder_match_finder.dart`, um planejador guloso LZ77-lite que identifica sequências com deslocamentos limitados (256 KiB) e devolve o buffer de literais compartilhado — primeiro passo antes de alimentar verdadeiramente os escritores FSE/Huffman.
+- [x] Estendi `bin/zstd_sequence_benchmark.dart` para também medir o tempo do heurístico de correspondência (via `planMatches`), reportando número de sequências e cobertura total de bytes reutilizados.
+- [x] Ensinei o encoder a serializar sequências reais reutilizando as tabelas `predefined` de LL/ML/OF e, agora, também a emitir offsets "repeat" (códigos com `extraBits <= 1`) compartilhando o estado de `prevOffsets`, com telemetria opcional para testes.
+
+## Encoder work still pending
+
+### Zstd encoder gaps
+
+- [x] Integrar `planMatches` ao `zstd_encoder.dart`, gerando sequências reais (litLength/matchLength/offset) com tabelas `predefined` e emitindo blocos comprimidos completos (literals + sequence section) quando couber no limite de bloco single-segment.
+- [x] Implementar a escrita das tabelas Huffman/FSE para LL/ML/OF (o caminho de literais já está pronto), reutilizando o `FiniteStateEntropyEncoder` para normalizar, suportando cabeçalhos comprimidos/RLE e cacheando descritores `repeat` entre blocos.
+- [ ] Adicionar um construtor de blocos comprimidos completo: particionar os literais entre as quatro streams, gerar o bitstream das sequências e garantir alinhamento do window / prevOffsets para futuros frames.
+- [ ] Honrar dicionários (`ZstdDictionary`) e fornecer APIs para reuso de tabelas aprendidas, inclusive quando múltiplos frames são concatenados.
+- [ ] Expor knobs mínimos (nível de compressão, limite de janela, checksum opcional) e validar via testes que o encoder permanece compatível com decoders de referência (zstd-cli) para blocos simples.
+- [ ] Estender a suíte de testes com cases que verifiquem match emission, serialização das tabelas e round-trips via `zstd` oficial; adicionar benchmarks comparando throughput/rácios antes/depois das heurísticas.
+
+### Brotli encoder backlog
+
+- A pasta `lib/src/utils/brotlidecpy/` contém apenas a pilha de _decoding_ (`decode.dart`, `context.dart`, `huffman.dart`, etc.). Para oferecer um encoder é necessário portar o pipeline inverso (brotli bit writer, gerador de metadados, construção de meta-blocks, transform pipelines, etc.).
+- Itens mínimos: bit writer/`prefix` reverso, construtor de histogramas + Huffman encoding, compressor de context maps, gerador de meta-blocks (literal/copy distance), e suporte a dicionários compartilhados (`brotli_dict.dart`).
+- Recomendação: seguir a mesma abordagem incremental usada no Zstd – começar emitindo apenas meta-blocks RAW para habilitar a API pública, depois evoluir para match finding, context modeling e, por fim, tunáveis de qualidade.
+
+#### Brotli encoder roadmap proposto
+
+1. **Metablocos RAW + bit writer**: reutilizar o `BitStreamWriter` recém-adicionado ao encoder de Zstd para gerar o fluxo Brotli e expor uma API que apenas embrulha payloads sem compressão, garantindo compatibilidade com decoders existentes.
+2. **Histogramas e Huffman básicos**: compartilhar a infraestrutura de contagem/Huffman já usada no decoder (classes em `huffman.dart`) para construir árvores de literais e distâncias e serializá-las via o mesmo escritor bit a bit.
+3. **Planejamento de matches**: adaptar o heurístico `planMatches` (ou camada derivada) ao formato Brotli, emitindo comandos literal/cópia com suporte às distâncias padrão e iniciando a reutilização do dicionário embutido (`brotli_dict.dart`).
+4. **Context modeling e tunáveis**: adicionar compaction de context maps, transforms e parâmetros de qualidade (modo texto, níveis) reutilizando o esqueleto de metadados e testes criados nas fases anteriores.
+
+## File-by-file status snapshot (2025-11-30)
+
+### lib/src/utils/zstd/
+
+- `bit_stream.dart`: somente leitores/loader (BitStreamInitializer/Loader, peekBits). Falta um escritor bit a bit para o encoder gerar os quatro fluxos de literais e o payload de sequências.
+- `block.dart`: cobre parsing (readBlockHeader/ensureBlockSizeWithinWindow). Para o encoder ainda precisamos de helpers públicos que emitam cabeçalhos e validem limites ao construir blocos comprimidos reais.
+- `byte_reader.dart`: utilitário só de leitura. Encoder carece de um ByteWriter/BitWriter complementar para montar frame/block payloads sem cópias supérfluas.
+- `constants.dart`: alinhado com spec; nada pendente imediato.
+- `dictionary.dart`: parser e modelo (`ZstdDictionary`). Encoder ainda não consome dicionários nem suporta o formato `.dict` para pré-carregar tabelas/offsets.
+- `encoder_match_finder.dart`: heurística gulosa já integrada ao `zstd_encoder.dart`, ainda limitada a uma janela singla e sem heurísticas mais avançadas (lazy, chain, etc.).
+- `frame_header.dart`: apenas parsing + skip de frames "skippable". Encoder precisa de um emissor de descritor (frame descriptor, Window_Descriptor, dictID, contentSize) para suportar cenários multi-frame/dicionário.
+- `fse.dart`: implementa o caminho de decodificação (readFseTable/buildSequenceDecodingTable). A lógica de normalização/compressão vive no `FiniteStateEntropyEncoder` dentro de `huffman_encoder.dart` e agora é reaproveitada pela etapa de emissão das tabelas LL/ML/OF.
+- `literals.dart`: todo o pipeline de decoding (parse header, Huffman table builder, streams). O encoder consome o novo `huffman_encoder.dart` (atrás do flag `tlslite.enableHuffmanLiterals`), que por enquanto só cobre o header "raw" das weights (≤128 símbolos) e não reutiliza tabelas repeat.
+- `literals.dart`: todo o pipeline de decoding (parse header, Huffman table builder, streams). O encoder consome `huffman_encoder.dart`, que agora decide automaticamente entre RAW/RLE/comprimido e reutiliza tabelas repeat.
+- `huffman_encoder.dart`: cobre histogramas, construtor canônico, cabeçalhos comprimidos por FSE, compressão em 1/4 streams e cache de tabelas para repetir pesos sem retransmitir o header.
+- `sequences.dart`: decodificador completo (headers, tabelas, execução); serve como referência para o emissor, que já gera `SequencesHeader` com modos compressed/RLE/repeat e bitstreams ANS reais.
+- `window.dart`: apenas lógica de janela para o decodificador. Encoder vai precisar de um histórico análogo para cumprir os limites de offset e compatibilidade com dicionários.
+- `xxhash64.dart`: pronto (checksum). Já usado por encoder/decoder.
+- `zstd_decoder.dart`: completo dentro do escopo atual ou seja aida falta coisas para ficar completo
+- `zstd_encoder.dart`: emite RAW/RLE, blocos somente-literal e blocos comprimidos completos; tenta Huffman em todos os blocos, gera tabelas FSE de LL/ML/OF (com repeat/RLE quando adequado), guarda `SequenceCompressionContext` e o novo `ZstdEncoderState` (prevOffsets) para reuso inter-blocos. Seguem pendentes dicionários, writer multi-stream e knobs avançados.
+
+### lib/src/utils/brotlidecpy/
+
+- `bit_reader.dart`: infraestrutura de leitura usada pelo decoder; encoder precisa do equivalente bit_writer.
+- `brotli_dict.dart`: apenas dados de dicionário e utilitários de lookup para decoder. Encoder deverá expor APIs para aplicar transformações/dicionário ao comprimir.
+- `context.dart`: lógica de contexto de decoding. Encoder ainda não calcula context IDs nem atualiza histogramas baseados em contexto.
+- `decode.dart`: pipeline completo de decomposição (meta-block parsing, literal/copy ops). Não existe contraparte de encode.
+- `dictionary.dart`: parse/uso de dicionários para decoder. Encoder precisa gerar referências corretas/deltas.
+- `huffman.dart`: somente construtor de tabelas de decoding; falta escritor de Huffman code lengths / tree serialization.
+- `prefix.dart`: metadados de comandos para decoder; encode precisa gerar prefix tables e comprimir context maps.
+- `transform.dart`: aplica transformações pós-decodificação; encoder requer caminho inverso (descobrir transform pipelines e codificá-los na stream).
 
 ## Future milestones
 
