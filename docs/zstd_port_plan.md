@@ -267,3 +267,5 @@ tudo relacionado ao brotli deve esta neste diteorio C:\MyDartProjects\tlslite\li
 continue trabalhando na implementação do brotli encoder e decoder C:\MyDartProjects\tlslite\lib\src\utils\brotlidecpy
 
 comando rg para busca no codigo se necessario 
+
+continue a deixe a implementação do brotli dart C:\MyDartProjects\tlslite\lib\src\utils\brotlidecpy mais fiel e o mais proximo possivel da implementação original de referencia em java ou seja mesmos nomes de arquivos mesmos testes mesmos nomes de contantes variaveis e classes C:\MyDartProjects\tlslite\brotli-google\java\org\brotli
