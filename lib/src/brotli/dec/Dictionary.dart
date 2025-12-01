@@ -1,8 +1,3 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
-
-   Distributed under MIT license.
-   See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
-*/
 
 import 'dart:typed_data';
 import 'Utils.dart';
