@@ -1196,7 +1196,6 @@ final class Decode {
               
             // }
             final int insertExtraValueRead = BitReader.readBits(s, insertLengthExtraBits);
-           
             s.insertLength = insertLengthOffset + insertExtraValueRead;
           }
           BitReader.fillBitWindow(s);

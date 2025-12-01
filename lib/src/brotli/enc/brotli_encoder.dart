@@ -6,6 +6,7 @@ import '../dec/Huffman.dart' show MAX_LENGTH;
 import 'huffman_builder.dart';
 import 'huffman_writer.dart';
 import 'literal_histogram.dart';
+import 'match_finder.dart';
 
 /// Maximum payload that fits in a single uncompressed Brotli meta-block.
 const int _maxMetaBlockLength = 0xFFFFFF + 1; // 24-bit length + 1
@@ -14,7 +15,7 @@ const int _minWindowBits = 16;
 const int _maxWindowBits = 24;
 const int _numInsertAndCopyCodes = 704;
 const int _numDistanceShortCodes = 16;
-const int _maxSimpleDistanceAlphabetSize = 140;
+const int _distanceAlphabetSize = 64;
 const List<int> _kInsertBase = <int>[
   0,
   1,
@@ -120,7 +121,6 @@ const List<int> _kCopyExtra = <int>[
   24,
 ];
 
-
 int _log2FloorNonZero(int value) {
   var result = 0;
   var n = value;
@@ -172,20 +172,377 @@ int _combineLengthCodes(int insertCode, int copyCode, bool useLastDistance) {
   return offset | bits;
 }
 
-void _storeCommandExtra(BitStreamWriter writer, _Command command) {
-  final insertExtraBits = _kInsertExtra[command.insertLenCode];
-  final copyExtraBits = _kCopyExtra[command.copyLenCode];
-  if (insertExtraBits == 0 && copyExtraBits == 0) {
-    return;
+/// LZ77 match emitted by the Brotli encoder.
+///
+/// Mirrors the shape returned by `matchfinder.Match` in the brotli-go
+/// reference while avoiding a name clash with `dart:core`'s [Match].
+class BrotliMatch {
+  const BrotliMatch({
+    required this.unmatchedLength,
+    required this.matchLength,
+    required this.distance,
+  })  : assert(unmatchedLength >= 0),
+        assert(matchLength >= 0),
+        assert(distance >= 0);
+
+  final int unmatchedLength;
+  final int matchLength;
+  final int distance;
+
+  int get totalLength => unmatchedLength + matchLength;
+}
+
+class _DistanceCode {
+  const _DistanceCode({
+    required this.code,
+    required this.extraBits,
+    required this.extraValue,
+  });
+
+  final int code;
+  final int extraBits;
+  final int extraValue;
+
+  static const zero = _DistanceCode(code: 0, extraBits: 0, extraValue: 0);
+}
+
+/// Streaming Brotli encoder that mirrors `brotli-go/encoder.go`.
+class BrotliEncoder {
+  BrotliEncoder({this.windowBits = _maxWindowBits}) {
+    if (windowBits < _minWindowBits || windowBits > _maxWindowBits) {
+      throw ArgumentError.value(
+        windowBits,
+        'windowBits',
+        'Brotli encoder supports window bits in the range $_minWindowBits-$_maxWindowBits.',
+      );
+    }
   }
-  final insertExtraValue = command.insertLength - _kInsertBase[command.insertLenCode];
-  final copyExtraValue = copyExtraBits == 0
-      ? 0
-      : command.copyLengthCodeValue - _kCopyBase[command.copyLenCode];
-  
- 
-  final combinedBits = insertExtraValue | (copyExtraValue << insertExtraBits);
-  writer.writeBits(combinedBits, insertExtraBits + copyExtraBits);
+
+  final int windowBits;
+  final BitStreamWriter _writer = BitStreamWriter();
+  bool _windowBitsWritten = false;
+  final List<_DistanceCode> _distanceCache = <_DistanceCode>[];
+
+  void reset() {
+    _writer.reset();
+    _distanceCache.clear();
+    _windowBitsWritten = false;
+  }
+
+  Uint8List encodeChunk(
+    Uint8List chunk,
+    List<BrotliMatch> matches, {
+    bool isLastChunk = false,
+  }) {
+    _ensureWindowBitsWritten();
+    if (chunk.isEmpty) {
+      if (matches.isNotEmpty) {
+        throw ArgumentError('Matches must be empty when chunk length is zero.');
+      }
+      if (isLastChunk) {
+        _writeStreamTerminator(_writer);
+        _writer.alignToByte();
+        return _writer.takeBytes();
+      }
+      return Uint8List(0);
+    }
+    if (chunk.length > _maxMetaBlockLength) {
+      throw ArgumentError(
+          'Chunk length ${chunk.length} exceeds $_maxMetaBlockLength bytes.');
+    }
+    if (matches.isEmpty) {
+      throw ArgumentError('Non-empty chunks require at least one BrotliMatch.');
+    }
+    if (_distanceCache.length < matches.length) {
+      final deficit = matches.length - _distanceCache.length;
+      _distanceCache
+          .addAll(List<_DistanceCode>.filled(deficit, _DistanceCode.zero));
+    }
+
+    final literalHistogram = BrotliLiteralHistogram();
+    final commandHistogram = List<int>.filled(_numInsertAndCopyCodes, 0);
+    final distanceHistogram = List<int>.filled(_distanceAlphabetSize, 0);
+
+    _buildHistograms(
+      chunk,
+      matches,
+      literalHistogram,
+      commandHistogram,
+      distanceHistogram,
+    );
+
+    _writeCompressedMetaBlockHeader(_writer, chunk.length);
+    _writer.writeBits(0, 13); // Single block type per tree category.
+
+    final literalCodeLengths = _buildLiteralTree(literalHistogram);
+    final literalCodes = convertBitDepthsToSymbols(literalCodeLengths);
+
+    final commandCodeLengths =
+        _buildCodeLengths(commandHistogram, _numInsertAndCopyCodes);
+    final commandCodes = convertBitDepthsToSymbols(commandCodeLengths);
+
+    final distanceCodeLengths =
+        _buildCodeLengths(distanceHistogram, _distanceAlphabetSize);
+    final distanceCodes = convertBitDepthsToSymbols(distanceCodeLengths);
+
+    _writeFullHuffmanTree(_writer, literalCodeLengths);
+    _writeFullHuffmanTree(_writer, commandCodeLengths);
+    _writeFullHuffmanTree(_writer, distanceCodeLengths);
+
+    _writeCommandStream(
+      chunk,
+      matches,
+      literalCodeLengths,
+      literalCodes,
+      commandCodeLengths,
+      commandCodes,
+      distanceCodeLengths,
+      distanceCodes,
+    );
+
+    if (isLastChunk) {
+      _writeStreamTerminator(_writer);
+      _writer.alignToByte();
+      return _writer.takeBytes();
+    }
+
+    return _writer.takeBytes(includePartialByte: false);
+  }
+
+  void _ensureWindowBitsWritten() {
+    if (_windowBitsWritten) {
+      return;
+    }
+    _writeWindowBits(_writer, windowBits);
+    _windowBitsWritten = true;
+  }
+
+  void _buildHistograms(
+    Uint8List chunk,
+    List<BrotliMatch> matches,
+    BrotliLiteralHistogram literalHistogram,
+    List<int> commandHistogram,
+    List<int> distanceHistogram,
+  ) {
+    final recentDistances = <int>[-10, -10, -10, -10];
+    var cursor = 0;
+    for (var i = 0; i < matches.length; i++) {
+      final match = matches[i];
+      final unmatched = match.unmatchedLength;
+      final copyLength = match.matchLength;
+      if (unmatched < 0 || copyLength < 0) {
+        throw ArgumentError('Match lengths must be non-negative.');
+      }
+      final literalEnd = cursor + unmatched;
+      if (literalEnd > chunk.length) {
+        throw StateError(
+            'Match literals exceed chunk length (${chunk.length}).');
+      }
+      if (unmatched > 0) {
+        literalHistogram.addSlice(chunk, cursor, literalEnd);
+      }
+
+      final insertCode = _getInsertLengthCode(unmatched);
+      var copyCode = _getCopyLengthCode(copyLength);
+      if (copyLength == 0) {
+        copyCode = 2; // Dummy copy used when ending with literals.
+      }
+      final useLastDistance =
+          i > 0 && match.distance == matches[i - 1].distance;
+      final command =
+          _combineLengthCodes(insertCode, copyCode, useLastDistance);
+      commandHistogram[command]++;
+
+      if (command >= 128 && copyLength != 0) {
+        if (match.distance <= 0) {
+          throw ArgumentError('Copy matches must provide a positive distance.');
+        }
+        final distCode = _selectDistanceCode(match.distance, recentDistances);
+        _distanceCache[i] = distCode;
+        distanceHistogram[distCode.code]++;
+        if (distCode.code != 0) {
+          recentDistances
+            ..[0] = recentDistances[1]
+            ..[1] = recentDistances[2]
+            ..[2] = recentDistances[3]
+            ..[3] = match.distance;
+        }
+      } else {
+        _distanceCache[i] = _DistanceCode.zero;
+      }
+
+      cursor = literalEnd + copyLength;
+      if (cursor > chunk.length) {
+        throw StateError('Matches exceed chunk length (${chunk.length}).');
+      }
+    }
+
+    if (cursor != chunk.length) {
+      throw StateError('Matches do not cover chunk: $cursor/${chunk.length}');
+    }
+  }
+
+  Uint8List _buildLiteralTree(BrotliLiteralHistogram histogram) {
+    final counts = histogram.counts;
+    _ensureHistogramHasSymbol(counts);
+    return buildLimitedHuffmanCodeLengths(counts, counts.length, MAX_LENGTH);
+  }
+
+  Uint8List _buildCodeLengths(List<int> histogram, int alphabetSize) {
+    _ensureHistogramHasSymbol(histogram);
+    _ensureHistogramHasMultipleSymbols(histogram);
+    return buildLimitedHuffmanCodeLengths(histogram, alphabetSize, MAX_LENGTH);
+  }
+
+  void _writeCommandStream(
+    Uint8List chunk,
+    List<BrotliMatch> matches,
+    Uint8List literalCodeLengths,
+    Uint16List literalCodes,
+    Uint8List commandCodeLengths,
+    Uint16List commandCodes,
+    Uint8List distanceCodeLengths,
+    Uint16List distanceCodes,
+  ) {
+    var cursor = 0;
+    for (var i = 0; i < matches.length; i++) {
+      final match = matches[i];
+      final insertCode = _getInsertLengthCode(match.unmatchedLength);
+      var copyCode = _getCopyLengthCode(match.matchLength);
+      if (match.matchLength == 0) {
+        copyCode = 2;
+      }
+      final useLastDistance =
+          i > 0 && match.distance == matches[i - 1].distance;
+      final command =
+          _combineLengthCodes(insertCode, copyCode, useLastDistance);
+
+      final commandBits = commandCodeLengths[command];
+      if (commandBits == 0) {
+        throw StateError('Missing Huffman depth for command $command');
+      }
+      _writer.writeBits(commandCodes[command], commandBits);
+
+      final insertExtraBits = _kInsertExtra[insertCode];
+      if (insertExtraBits > 0) {
+        final insertExtraValue =
+            match.unmatchedLength - _kInsertBase[insertCode];
+        _writer.writeBits(insertExtraValue, insertExtraBits);
+      }
+      final copyExtraBits = _kCopyExtra[copyCode];
+      if (copyExtraBits > 0) {
+        final copyExtraValue = match.matchLength - _kCopyBase[copyCode];
+        _writer.writeBits(copyExtraValue, copyExtraBits);
+      }
+
+      final literalEnd = cursor + match.unmatchedLength;
+      for (var j = cursor; j < literalEnd; j++) {
+        final literal = chunk[j];
+        final literalBits = literalCodeLengths[literal];
+        if (literalBits == 0) {
+          throw StateError('Missing Huffman depth for literal $literal');
+        }
+        _writer.writeBits(literalCodes[literal], literalBits);
+      }
+      cursor = literalEnd;
+
+      if (command >= 128 && match.matchLength != 0) {
+        final distCode = _distanceCache[i];
+        final distBits = distanceCodeLengths[distCode.code];
+        if (distBits == 0) {
+          throw StateError(
+              'Missing Huffman depth for distance ${distCode.code}');
+        }
+        _writer.writeBits(distanceCodes[distCode.code], distBits);
+        if (distCode.extraBits > 0) {
+          _writer.writeBits(distCode.extraValue, distCode.extraBits);
+        }
+      }
+
+      cursor += match.matchLength;
+    }
+
+    if (cursor != chunk.length) {
+      throw StateError(
+          'Meta-block literals not fully covered: $cursor/${chunk.length}');
+    }
+  }
+
+  _DistanceCode _selectDistanceCode(int distance, List<int> recentDistances) {
+    if (distance == recentDistances[3]) {
+      return const _DistanceCode(code: 0, extraBits: 0, extraValue: 0);
+    }
+    if (distance == recentDistances[2]) {
+      return const _DistanceCode(code: 1, extraBits: 0, extraValue: 0);
+    }
+    if (distance == recentDistances[1]) {
+      return const _DistanceCode(code: 2, extraBits: 0, extraValue: 0);
+    }
+    if (distance == recentDistances[0]) {
+      return const _DistanceCode(code: 3, extraBits: 0, extraValue: 0);
+    }
+
+    final last = recentDistances[3];
+    if (distance == last - 1) {
+      return const _DistanceCode(code: 4, extraBits: 0, extraValue: 0);
+    }
+    if (distance == last + 1) {
+      return const _DistanceCode(code: 5, extraBits: 0, extraValue: 0);
+    }
+    if (distance == last - 2) {
+      return const _DistanceCode(code: 6, extraBits: 0, extraValue: 0);
+    }
+    if (distance == last + 2) {
+      return const _DistanceCode(code: 7, extraBits: 0, extraValue: 0);
+    }
+    if (distance == last - 3) {
+      return const _DistanceCode(code: 8, extraBits: 0, extraValue: 0);
+    }
+    if (distance == last + 3) {
+      return const _DistanceCode(code: 9, extraBits: 0, extraValue: 0);
+    }
+
+    return _encodeDistanceCode(distance);
+  }
+
+  _DistanceCode _encodeDistanceCode(int distance) {
+    final adjusted = distance + 3;
+    final nbits = _log2FloorNonZero(adjusted) - 1;
+    final prefix = (adjusted >> nbits) & 1;
+    final offset = (2 + prefix) << nbits;
+    final code = 2 * (nbits - 1) + prefix + _numDistanceShortCodes;
+    final extra = adjusted - offset;
+    return _DistanceCode(code: code, extraBits: nbits, extraValue: extra);
+  }
+
+  void _ensureHistogramHasSymbol(List<int> histogram) {
+    for (final value in histogram) {
+      if (value != 0) {
+        return;
+      }
+    }
+    histogram[0] = 1;
+  }
+
+  void _ensureHistogramHasMultipleSymbols(List<int> histogram) {
+    var firstIndex = -1;
+    var nonZeroCount = 0;
+    for (var i = 0; i < histogram.length; i++) {
+      if (histogram[i] == 0) {
+        continue;
+      }
+      nonZeroCount++;
+      if (nonZeroCount == 1) {
+        firstIndex = i;
+      } else {
+        return;
+      }
+    }
+    if (nonZeroCount == 1) {
+      final fallbackIndex = (firstIndex + 1) % histogram.length;
+      histogram[fallbackIndex] = 1;
+    }
+  }
 }
 
 /// Emits a Brotli stream composed exclusively of uncompressed meta-blocks.
@@ -214,7 +571,8 @@ Uint8List brotliCompressRaw(
   var offset = 0;
   while (offset < input.length) {
     final remaining = input.length - offset;
-    final chunkLength = remaining > _maxMetaBlockLength ? _maxMetaBlockLength : remaining;
+    final chunkLength =
+        remaining > _maxMetaBlockLength ? _maxMetaBlockLength : remaining;
     _writeUncompressedMetaBlockHeader(writer, chunkLength);
     writer.alignToByte();
     final headerBytes = writer.takeBytes(includePartialByte: false);
@@ -251,21 +609,29 @@ Uint8List brotliCompressLiteral(Uint8List input, {int windowBits = 16}) {
     );
   }
 
-  final writer = BitStreamWriter();
-  _writeWindowBits(writer, windowBits);
+  final encoder = BrotliEncoder(windowBits: windowBits);
+  final matchFinder = BrotliMatchFinder(maxDistance: 1 << windowBits);
+  final matchesBuffer = <BrotliMatch>[];
+  final builder = BytesBuilder(copy: false);
 
   var offset = 0;
   while (offset < input.length) {
     final remaining = input.length - offset;
     final chunkLength = math.min(_maxMetaBlockLength, remaining);
     final chunk = Uint8List.sublistView(input, offset, offset + chunkLength);
-    _storeMetaBlockTrivial(writer, chunk);
+    matchFinder.reset();
+    final matches = matchFinder.findMatches(chunk, reuse: matchesBuffer);
+    final chunkBytes = encoder.encodeChunk(
+      chunk,
+      matches,
+      isLastChunk: (offset + chunkLength) == input.length,
+    );
+    if (chunkBytes.isNotEmpty) {
+      builder.add(chunkBytes);
+    }
     offset += chunkLength;
   }
-
-  _writeStreamTerminator(writer);
-  writer.alignToByte();
-  return writer.takeBytes();
+  return builder.takeBytes();
 }
 
 void _writeWindowBits(BitStreamWriter writer, int windowBits) {
@@ -275,29 +641,32 @@ void _writeWindowBits(BitStreamWriter writer, int windowBits) {
   }
 
   writer.writeBits(1, 1);
-  
+
   if (windowBits == 17) {
     // Special case: 17 bits is encoded as 1 + 000 + 000 = 1000000 (7 bits)
     writer.writeBits(0, 3); // first group of 3 zeros
     writer.writeBits(0, 3); // second group of 3 zeros
     return;
   }
-  
+
   // For windowBits 18-24, encode as (windowBits - 17) in 3 bits after the leading 1
   // windowBits 18 => 1, windowBits 19 => 2, ... windowBits 24 => 7
   final adjusted = windowBits - 17;
   if (adjusted < 1 || adjusted > 7) {
-    throw ArgumentError.value(windowBits, 'windowBits', 'Unsupported window bits for Brotli header (must be 16-24)');
+    throw ArgumentError.value(windowBits, 'windowBits',
+        'Unsupported window bits for Brotli header (must be 16-24)');
   }
   writer.writeBits(adjusted, 3);
 }
 
 void _writeUncompressedMetaBlockHeader(BitStreamWriter writer, int length) {
   if (length <= 0) {
-    throw ArgumentError.value(length, 'length', 'Meta-block length must be positive');
+    throw ArgumentError.value(
+        length, 'length', 'Meta-block length must be positive');
   }
   if (length > _maxMetaBlockLength) {
-    throw ArgumentError('Meta-block length $length exceeds $_maxMetaBlockLength bytes');
+    throw ArgumentError(
+        'Meta-block length $length exceeds $_maxMetaBlockLength bytes');
   }
 
   writer.writeBool(false); // isLast
@@ -313,10 +682,12 @@ void _writeUncompressedMetaBlockHeader(BitStreamWriter writer, int length) {
 
 void _writeCompressedMetaBlockHeader(BitStreamWriter writer, int length) {
   if (length <= 0) {
-    throw ArgumentError.value(length, 'length', 'Meta-block length must be positive');
+    throw ArgumentError.value(
+        length, 'length', 'Meta-block length must be positive');
   }
   if (length > _maxMetaBlockLength) {
-    throw ArgumentError('Meta-block length $length exceeds $_maxMetaBlockLength bytes');
+    throw ArgumentError(
+        'Meta-block length $length exceeds $_maxMetaBlockLength bytes');
   }
 
   writer.writeBool(false); // isLast
@@ -348,188 +719,6 @@ void _writeStreamTerminator(BitStreamWriter writer) {
   writer.writeBool(true); // isEmpty = 1 (marks end of stream)
 }
 
-void _storeMetaBlockTrivial(BitStreamWriter writer, Uint8List chunk) {
-  if (chunk.isEmpty) {
-    throw ArgumentError('Compressed meta-block chunk must be non-empty');
-  }
-
-  _writeCompressedMetaBlockHeader(writer, chunk.length);
-
-  final commands = <_Command>[_makeInsertCommand(chunk.length)];
-  final literalHistogram = BrotliLiteralHistogram();
-  final commandHistogram = List<int>.filled(_numInsertAndCopyCodes, 0);
-  final distanceHistogram = List<int>.filled(_maxSimpleDistanceAlphabetSize, 0);
-
-  _buildHistograms(chunk, commands, literalHistogram, commandHistogram, distanceHistogram);
-
-  // Single block type per tree category, no context maps, no distance postfix/direct codes.
-  writer.writeBits(0, 13);
-
-  final literalCodeLengths = buildLiteralCodeLengths(literalHistogram);
-  final literalCodes = convertBitDepthsToSymbols(literalCodeLengths);
-
-  final commandCodeLengths = buildLimitedHuffmanCodeLengths(
-    commandHistogram,
-    _numInsertAndCopyCodes,
-    MAX_LENGTH,
-  );
-  final commandCodes = convertBitDepthsToSymbols(commandCodeLengths);
-
-  if (distanceHistogram.every((value) => value == 0)) {
-    distanceHistogram[0] = 1;
-  }
-  final distanceCodeLengths = buildLimitedHuffmanCodeLengths(
-    distanceHistogram,
-    _maxSimpleDistanceAlphabetSize,
-    MAX_LENGTH,
-  );
-  final distanceCodes = convertBitDepthsToSymbols(distanceCodeLengths);
-
-  _writeFullHuffmanTree(writer, literalCodeLengths);
-  _writeFullHuffmanTree(writer, commandCodeLengths);
-  _writeFullHuffmanTree(writer, distanceCodeLengths);
-
-  _storeDataWithHuffmanCodes(
-    writer,
-    chunk,
-    commands,
-    literalCodeLengths,
-    literalCodes,
-    commandCodeLengths,
-    commandCodes,
-    distanceCodeLengths,
-    distanceCodes,
-  );
-}
-
 void _writeFullHuffmanTree(BitStreamWriter writer, Uint8List codeLengths) {
   BrotliHuffmanTreeWriter.writeTree(codeLengths, writer);
 }
-
-void _buildHistograms(
-  Uint8List chunk,
-  List<_Command> commands,
-  BrotliLiteralHistogram literalHistogram,
-  List<int> commandHistogram,
-  List<int> distanceHistogram,
-) {
-  var cursor = 0;
-  for (final command in commands) {
-    if (command.cmdPrefix < 0 || command.cmdPrefix >= commandHistogram.length) {
-      throw StateError('Command prefix ${command.cmdPrefix} out of range');
-    }
-    commandHistogram[command.cmdPrefix]++;
-
-    final end = cursor + command.insertLength;
-    if (end > chunk.length) {
-      throw StateError('Command literals exceed chunk length (${chunk.length})');
-    }
-    literalHistogram.addSlice(chunk, cursor, end);
-    cursor = end;
-
-    if (command.actualCopyLength > 0 && command.cmdPrefix >= 128) {
-      if (command.distanceCode < 0 || command.distanceCode >= distanceHistogram.length) {
-        throw StateError('Distance code ${command.distanceCode} out of range');
-      }
-      distanceHistogram[command.distanceCode]++;
-    }
-  }
-
-  if (cursor != chunk.length) {
-    throw StateError('Meta-block literals not fully covered: $cursor/${chunk.length}');
-  }
-}
-
-void _storeDataWithHuffmanCodes(
-  BitStreamWriter writer,
-  Uint8List chunk,
-  List<_Command> commands,
-  Uint8List literalCodeLengths,
-  Uint16List literalCodes,
-  Uint8List commandCodeLengths,
-  Uint16List commandCodes,
-  Uint8List distanceCodeLengths,
-  Uint16List distanceCodes,
-) {
-  var cursor = 0;
-  for (final command in commands) {
-    final commandBits = commandCodeLengths[command.cmdPrefix];
-    if (commandBits == 0) {
-      throw StateError('Missing Huffman depth for command ${command.cmdPrefix}');
-    }
-    writer.writeBits(commandCodes[command.cmdPrefix], commandBits);
-    _storeCommandExtra(writer, command);
-
-    final end = cursor + command.insertLength;
-    for (var i = cursor; i < end; i++) {
-      final literal = chunk[i];
-      final literalBits = literalCodeLengths[literal];
-      if (literalBits == 0) {
-        throw StateError('Missing Huffman depth for literal $literal');
-      }
-      writer.writeBits(literalCodes[literal], literalBits);
-    }
-    cursor = end;
-
-    if (command.actualCopyLength > 0 && command.cmdPrefix >= 128) {
-      final distBits = distanceCodeLengths[command.distanceCode];
-      if (distBits == 0) {
-        throw StateError('Missing Huffman depth for distance ${command.distanceCode}');
-      }
-      writer.writeBits(distanceCodes[command.distanceCode], distBits);
-      if (command.distanceExtraBits > 0) {
-        writer.writeBits(command.distanceExtraValue, command.distanceExtraBits);
-      }
-    }
-  }
-
-  if (cursor != chunk.length) {
-    throw StateError('Meta-block literals not fully covered: $cursor/${chunk.length}');
-  }
-}
-
-class _Command {
-  const _Command({
-    required this.insertLength,
-    required this.insertLenCode,
-    required this.copyLengthCodeValue,
-    required this.copyLenCode,
-    required this.cmdPrefix,
-    required this.distanceCode,
-    required this.distanceExtraBits,
-    required this.distanceExtraValue,
-    required this.actualCopyLength,
-  });
-
-  final int insertLength;
-  final int insertLenCode;
-  final int copyLengthCodeValue;
-  final int copyLenCode;
-  final int cmdPrefix;
-  final int distanceCode;
-  final int distanceExtraBits;
-  final int distanceExtraValue;
-  final int actualCopyLength;
-}
-
-_Command _makeInsertCommand(int length) {
-  if (length <= 0) {
-    throw ArgumentError.value(length, 'length', 'Must be positive');
-  }
-  const copyLengthValue = 4;
-  final insertLenCode = _getInsertLengthCode(length);
-  final copyLenCode = _getCopyLengthCode(copyLengthValue);
-  final cmdPrefix = _combineLengthCodes(insertLenCode, copyLenCode, false);
-  return _Command(
-    insertLength: length,
-    insertLenCode: insertLenCode,
-    copyLengthCodeValue: copyLengthValue,
-    copyLenCode: copyLenCode,
-    cmdPrefix: cmdPrefix,
-    distanceCode: _numDistanceShortCodes,
-    distanceExtraBits: 0,
-    distanceExtraValue: 0,
-    actualCopyLength: 0,
-  );
-}
-
