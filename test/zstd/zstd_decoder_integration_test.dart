@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:test/test.dart';
-import 'package:tlslite/src/utils/zstd/zstd_decoder.dart';
+import 'package:tlslite/src/zstd/zstd_decoder.dart';
 
 void main() {
   group('zstdDecompressFrame integration', () {

@@ -2,14 +2,14 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:test/test.dart';
-import 'package:tlslite/src/utils/brotlidecpy/dec/BrotliInputStream.dart';
-import 'package:tlslite/src/utils/brotlidecpy/dec/State.dart';
+import 'package:tlslite/src/brotli/dec/BrotliInputStream.dart';
+import 'package:tlslite/src/brotli/dec/State.dart';
 
 void main() {
   group('Brotli Decompression', () {
     test('quickfox', () {
-      final compressed = File('brotli-google/tests/testdata/quickfox.compressed').readAsBytesSync();
-      final expected = File('brotli-google/tests/testdata/quickfox').readAsBytesSync();
+      final compressed = File('test/brotli/testdata/quickfox.compressed').readAsBytesSync();
+      final expected = File('test/brotli/testdata/quickfox').readAsBytesSync();
 
       final input = ByteArrayInputStream(compressed);
       final brotliInput = BrotliInputStream(input);
@@ -25,8 +25,8 @@ void main() {
     });
 
     test('alice29', () {
-      final compressed = File('brotli-google/tests/testdata/alice29.txt.compressed').readAsBytesSync();
-      final expected = File('brotli-google/tests/testdata/alice29.txt').readAsBytesSync();
+      final compressed = File('test/brotli/testdata/alice29.txt.compressed').readAsBytesSync();
+      final expected = File('test/brotli/testdata/alice29.txt').readAsBytesSync();
 
       final input = ByteArrayInputStream(compressed);
       final brotliInput = BrotliInputStream(input);
@@ -42,8 +42,8 @@ void main() {
     });
     
     test('empty', () {
-      final compressed = File('brotli-google/tests/testdata/empty.compressed').readAsBytesSync();
-      final expected = File('brotli-google/tests/testdata/empty').readAsBytesSync();
+      final compressed = File('test/brotli/testdata/empty.compressed').readAsBytesSync();
+      final expected = File('test/brotli/testdata/empty').readAsBytesSync();
 
       final input = ByteArrayInputStream(compressed);
       final brotliInput = BrotliInputStream(input);

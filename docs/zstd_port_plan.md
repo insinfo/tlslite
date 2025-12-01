@@ -141,6 +141,7 @@ Atualizações Brotli 02/12/2025 16:30
 - Extraí o `BitStreamWriter` compartilhado (`lib/src/utils/bit_stream_writer.dart`) e o liguei ao encoder de Zstd, adicionando `test/utils/bit_stream_writer_test.dart` para cobrir alinhamento, flush parcial e terminador — passo necessário antes do encoder Brotli.
 - Implementei `brotliCompressRaw` em `lib/src/utils/brotlidecpy/brotli_encoder.dart`, que divide o payload em meta-blocos RAW (até 16.777.216 bytes), alinha os dados e encerra o fluxo com um meta-bloco vazio sinalizado como último.
 - Criei `test/brotli/brotli_encoder_raw_test.dart`, que valida os headers dos meta-blocos via `BrotliBitReader` e mantém um smoke test com a CLI (`brotli -d`), além do helper `tool/brotli_cli_roundtrip.dart` para investigações manuais.
+- Estruturei um `Decoder` em Dart (`lib/src/utils/brotlidecpy/dec/Decoder.dart`) equivalente ao toy CLI Java, expondo um `main` em `bin/brotli_decoder.dart` para decodificar arquivos e medir throughput localmente.
 
 ## Encoder scaffolding (in progress)
 
@@ -269,6 +270,44 @@ continue trabalhando na implementação do brotli encoder e decoder C:\MyDartPro
 
 comando rg para busca no codigo se necessario 
 
-continue a deixe a implementação do brotli dart C:\MyDartProjects\tlslite\lib\src\utils\brotlidecpy mais fiel e o mais proximo possivel da implementação original de referencia em java ou seja prioridade maxima deixar os mesmos nomes de arquivos mesmos testes mesmos nomes de constantes e variaveis e classes e funções C:\MyDartProjects\tlslite\brotli-google\java\org\brotli
+Java: byte é assinado (-128 a 127).
+
+Dart: Uint8List é não-assinado (0 a 255), e operações bitwise em int (64-bit) podem se comportar de forma diferente se não houver mascaramento (& 0xFF).
+
+continue a deixe a implementação do brotli encoder e decoder dart C:\MyDartProjects\tlslite\lib\src\utils\brotlidecpy mais fiel e o mais proximo possivel da implementação original de referencia em java ou seja prioridade maxima deixar os mesmos nomes de arquivos mesmos testes mesmos nomes de constantes e variaveis e classes e funções C:\MyDartProjects\tlslite\brotli-google\java\org\brotli
+
+referencia para pesquisa C:\MyDartProjects\tlslite\brotli-go
 
 as variaveis DATA0, DATA1 , SKIP_FLIP, SIZE_BITS_DATA da classe DictionaryData do arquivo C:\MyDartProjects\tlslite\lib\src\utils\brotlidecpy\dec\DictionaryData.dart foram copiadas do codigo java brotli-google/java/org/brotli/dec/DictionaryData.java a unica coisa que foi mudade é o escape do caracter sifrão $
+
+
+Liguei o decoder de referência nos artefatos oficiais (sample.bin.br, gerado via brotli.exe) e capturei os símbolos de comando/distância (commandSymbol=134, copyLength=8, etc.). Isso confirma que o pipeline Java/Go usa comandos reais (insert+copy) mesmo para blocos pequenos; ou seja, o decoder está íntegro.
+Ao passar o bitstream produzido por brotliCompressLiteral, o decoder enxerga commandSymbol=496 e lê insertExtraValueRead=3964, o que estoura metaBlockLength. Isso mostra que o encoder atual está emitindo árvores/códigos de comando incompatíveis: o único símbolo que gravamos não coincide com o que o decoder reconstrói.
+O plano para destravar é portar o mesmo fluxo usado em brotli-go (command struct, storeMetaBlockTrivial, storeCommandExtra, histograma de comandos/distâncias e makeInsertCommand). Isso garante que: (1) o Huffman das árvores de comando/literal/distance sai idêntico ao Java/Go; (2) os comandos “insert-only” são representados com o mesmo prefixo/códigos extras; (3) a serialização das context maps/tipos de bloco usa exatamente o mesmo formato que Decode.dart espera.
+Próximos passos concretos:
+Reintroduzir os metadados de comandos (tabuas _kInsertBase/_kInsertExtra/_kCopyBase/_kCopyExtra) e portar as helpers makeInsertCommand, buildHistograms, storeMetaBlockTrivial de brotli_bit_stream.go, mantendo os nomes de arquivos/símbolos da referência Java.
+Usar essa infraestrutura para reimplementar _writeCompressedMetaBlock, gerando sempre pelo menos uma árvore “trivial” igual à do Go e emitindo comandos compatíveis (mesmo para o caso literal-only).
+Depois validar rodando dart test [brotli_encoder_test.dart](http://_vscodecontentref_/12) --plain-name "literal-only meta-blocks round trip" e comparando o bitstream contra o CLI oficial (round-trip via brotli.exe).
+siga implementando os Próximos passos concretos:
+Reintroduzir os metadados de comandos (tabuas _kInsertBase/_kInsertExtra/_kCopyBase/_kCopyExtra) e portar as helpers makeInsertCommand, buildHistograms, storeMetaBlockTrivial de brotli_bit_stream.go, mantendo os nomes de arquivos/símbolos da referência Java.
+Usar essa infraestrutura para reimplementar _writeCompressedMetaBlock, gerando sempre pelo menos uma árvore “trivial” igual à do Go e emitindo comandos compatíveis (mesmo para o caso literal-only).
+Depois validar rodando dart test brotli_encoder_test.dart --plain-name "literal-only meta-blocks round trip" e comparando o bitstream contra o CLI oficial (round-trip via brotli.exe).
+
+Java: byte é assinado (-128 a 127).
+
+Dart: Uint8List é não-assinado (0 a 255), e operações bitwise em int (64-bit) podem se comportar de forma diferente se não houver mascaramento (& 0xFF). Brotli
+
+Combina:
+
+LZ77 + Huffman + 2nd order context modeling + dicionário pré-definido + janelas deslizantes específicas. 
+Wikipedia
++2
+GitHub
++2
+
+O formato está especificado em RFC 7932, com um monte de detalhes sobre como os códigos são montados, como os blocos são divididos etc. 
+IETF Datatracker
+
+De novo: um off-by-one num código Huffman, ou interpretar um campo de tamanho como “inclusive” em vez de “exclusive”, corrompe o stream em silêncio.
+
+Ou seja: são algoritmos bit-precisos, cheios de invariantes implícitas.

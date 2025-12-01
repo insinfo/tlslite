@@ -2,11 +2,11 @@ import 'dart:typed_data';
 
 import '../constants.dart';
 import '../errors.dart';
-import 'brotlidecpy/brotli_encoder.dart';
-import 'brotlidecpy/dec/Decode.dart';
+import '../brotli/enc/brotli_encoder.dart';
+import '../brotli/dec/Decode.dart';
 import 'lists.dart';
-import 'zstd/zstd_decoder.dart';
-import 'zstd/zstd_encoder.dart';
+import '../zstd/zstd_decoder.dart';
+import '../zstd/zstd_encoder.dart';
 
 /// Holds references to optional compression/decompression helpers.
 ///

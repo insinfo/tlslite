@@ -2,16 +2,16 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:test/test.dart';
-import 'package:tlslite/src/utils/zstd/xxhash64.dart';
-import 'package:tlslite/src/utils/zstd/bit_stream.dart' show bitContainerSize;
-import 'package:tlslite/src/utils/zstd/block.dart';
-import 'package:tlslite/src/utils/zstd/byte_reader.dart';
-import 'package:tlslite/src/utils/zstd/dictionary.dart';
-import 'package:tlslite/src/utils/zstd/frame_header.dart';
-import 'package:tlslite/src/utils/zstd/literals.dart';
-import 'package:tlslite/src/utils/zstd/sequences.dart';
-import 'package:tlslite/src/utils/zstd/zstd_decoder.dart';
-import 'package:tlslite/src/utils/zstd/zstd_encoder.dart';
+import 'package:tlslite/src/zstd/xxhash64.dart';
+import 'package:tlslite/src/zstd/bit_stream.dart' show bitContainerSize;
+import 'package:tlslite/src/zstd/block.dart';
+import 'package:tlslite/src/zstd/byte_reader.dart';
+import 'package:tlslite/src/zstd/dictionary.dart';
+import 'package:tlslite/src/zstd/frame_header.dart';
+import 'package:tlslite/src/zstd/literals.dart';
+import 'package:tlslite/src/zstd/sequences.dart';
+import 'package:tlslite/src/zstd/zstd_decoder.dart';
+import 'package:tlslite/src/zstd/zstd_encoder.dart';
 
 import 'zstd_test_utils.dart';
 

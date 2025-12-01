@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:test/test.dart';
-import 'package:tlslite/src/utils/zstd/encoder_match_finder.dart';
+import 'package:tlslite/src/zstd/encoder_match_finder.dart';
 
 void main() {
   test('finds single obvious match', () {

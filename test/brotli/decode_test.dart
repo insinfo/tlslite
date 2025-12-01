@@ -1,10 +1,10 @@
 import 'dart:typed_data';
 import 'package:test/test.dart';
-import 'package:tlslite/src/utils/brotlidecpy/dec/BrotliInputStream.dart';
-import 'package:tlslite/src/utils/brotlidecpy/dec/State.dart';
-import 'package:tlslite/src/utils/brotlidecpy/dec/Context.dart';
-import 'package:tlslite/src/utils/brotlidecpy/dec/Decode.dart';
-import 'package:tlslite/src/utils/brotlidecpy/dec/Huffman.dart';
+import 'package:tlslite/src/brotli/dec/BrotliInputStream.dart';
+import 'package:tlslite/src/brotli/dec/State.dart';
+import 'package:tlslite/src/brotli/dec/Context.dart';
+import 'package:tlslite/src/brotli/dec/Decode.dart';
+import 'package:tlslite/src/brotli/dec/Huffman.dart';
 
 Uint8List readUniBytes(String s) {
   List<int> bytes = [];

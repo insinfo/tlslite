@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
-import 'package:tlslite/src/utils/zstd/dictionary.dart';
-import 'package:tlslite/src/utils/zstd/sequences.dart';
+import 'package:tlslite/src/zstd/dictionary.dart';
+import 'package:tlslite/src/zstd/sequences.dart';
 
 ZstdDictionary buildSeededDictionary() {
   final lengths = Uint8List(256);

@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:test/test.dart';
-import 'package:tlslite/src/utils/zstd/window.dart';
+import 'package:tlslite/src/zstd/window.dart';
 
 void main() {
   test('primeHistory seeds dictionary content into window', () {

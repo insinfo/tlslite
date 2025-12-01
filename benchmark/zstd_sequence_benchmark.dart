@@ -1,12 +1,12 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:tlslite/src/utils/zstd/block.dart';
-import 'package:tlslite/src/utils/zstd/byte_reader.dart';
-import 'package:tlslite/src/utils/zstd/frame_header.dart';
-import 'package:tlslite/src/utils/zstd/encoder_match_finder.dart';
-import 'package:tlslite/src/utils/zstd/literals.dart';
-import 'package:tlslite/src/utils/zstd/sequences.dart';
+import 'package:tlslite/src/zstd/block.dart';
+import 'package:tlslite/src/zstd/byte_reader.dart';
+import 'package:tlslite/src/zstd/frame_header.dart';
+import 'package:tlslite/src/zstd/encoder_match_finder.dart';
+import 'package:tlslite/src/zstd/literals.dart';
+import 'package:tlslite/src/zstd/sequences.dart';
 
 Future<void> main(List<String> args) async {
   final iterations = _parseIterations(args);

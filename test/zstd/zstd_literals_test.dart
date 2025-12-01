@@ -2,10 +2,10 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:test/test.dart';
-import 'package:tlslite/src/utils/zstd/byte_reader.dart';
-import 'package:tlslite/src/utils/zstd/frame_header.dart';
-import 'package:tlslite/src/utils/zstd/block.dart';
-import 'package:tlslite/src/utils/zstd/literals.dart';
+import 'package:tlslite/src/zstd/byte_reader.dart';
+import 'package:tlslite/src/zstd/frame_header.dart';
+import 'package:tlslite/src/zstd/block.dart';
+import 'package:tlslite/src/zstd/literals.dart';
 
 void main() {
   group('Literals header parsing', () {
