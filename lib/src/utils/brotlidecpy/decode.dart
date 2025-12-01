@@ -13,6 +13,7 @@ import 'huffman.dart';
 import 'context.dart';
 import 'dictionary.dart';
 import 'transform.dart';
+import 'BrotliRuntimeException.dart';
 
 /// API for Brotli decompression.
 final class Decode {
@@ -106,12 +107,13 @@ final class Decode {
       0x03, 0x03, 0x04, 0x04, 0x05, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x18
   ]);
 
-  static final Int16List CMD_LOOKUP = Int16List(NUM_COMMAND_CODES * 4);
+  static final Int16List CMD_LOOKUP = _buildCommandLookup();
 
-  static final bool _init = () {
-    unpackCommandLookupTable(CMD_LOOKUP);
-    return true;
-  }();
+  static Int16List _buildCommandLookup() {
+    final Int16List cmdLookup = Int16List(NUM_COMMAND_CODES * 4);
+    unpackCommandLookupTable(cmdLookup);
+    return cmdLookup;
+  }
 
   static int log2floor(int i) {
     int result = -1;
@@ -1447,5 +1449,65 @@ final class Decode {
       return result;
     }
     return BrotliError.BROTLI_OK_DONE;
+  }
+}
+
+const int _kDefaultDecompressChunkSize = 1 << 16;
+
+/// Decompresses a Brotli-compressed buffer into a freshly allocated [Uint8List].
+Uint8List brotliDecompressBuffer(Uint8List input, {int? bufferLimit}) {
+  if (bufferLimit != null && bufferLimit < 0) {
+    throw ArgumentError.value(bufferLimit, 'bufferLimit', 'must be non-negative');
+  }
+
+  final State state = State();
+  state.input = ByteArrayInputStream(input);
+
+  int result = Decode.initState(state);
+  if (result != BrotliError.BROTLI_OK) {
+    throw BrotliRuntimeException('Brotli decoder initialization failed (code: $result)');
+  }
+
+  result = Decode.enableLargeWindow(state);
+  if (result != BrotliError.BROTLI_OK) {
+    Decode.close(state);
+    Utils.closeInput(state);
+    throw BrotliRuntimeException('Failed to enable large window mode (code: $result)');
+  }
+
+  final BytesBuilder outputBuilder = BytesBuilder(copy: false);
+  final Uint8List chunk = Uint8List(_kDefaultDecompressChunkSize);
+
+  try {
+    while (true) {
+      final int available = bufferLimit == null
+          ? chunk.length
+          : bufferLimit - outputBuilder.length;
+      if (available <= 0) {
+        throw BrotliRuntimeException('Trying to obtain buffer larger than $bufferLimit');
+      }
+
+      state.output = chunk;
+      state.outputOffset = 0;
+      state.outputLength = Utils.min(chunk.length, available);
+      state.outputUsed = 0;
+
+      final int status = Decode.decompress(state);
+      if (status < BrotliError.BROTLI_OK) {
+        throw BrotliRuntimeException('Brotli stream decoding failed (code: $status)');
+      }
+
+      if (state.outputUsed > 0) {
+        outputBuilder.add(chunk.sublist(0, state.outputUsed));
+      }
+
+      if (status == BrotliError.BROTLI_OK_DONE) {
+        break;
+      }
+    }
+    return outputBuilder.takeBytes();
+  } finally {
+    Decode.close(state);
+    Utils.closeInput(state);
   }
 }

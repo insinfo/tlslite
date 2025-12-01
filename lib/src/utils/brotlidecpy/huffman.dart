@@ -100,3 +100,7 @@ class Huffman {
     return totalSize;
   }
 }
+
+/// Mirrors the Java reference's constant so callers can import MAX_LENGTH
+/// without referencing the Huffman class directly.
+const int MAX_LENGTH = Huffman.MAX_LENGTH;

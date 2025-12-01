@@ -5,9 +5,8 @@
 */
 
 import 'dart:typed_data';
-import 'brotli_error.dart';
 import 'utils.dart';
-import 'dictionary_data_constants.dart';
+import 'dictionary_data.dart';
 import 'BrotliRuntimeException.dart';
 
 /// Collection of static dictionary words.
@@ -76,37 +75,8 @@ class Dictionary {
       return _data;
     }
 
-    // DataLoader logic
-    final List<int> bytes = [];
-    bytes.addAll(kDictionaryData0.codeUnits);
-    bytes.addAll(kDictionaryData1.codeUnits);
-    
-    Uint8List dict = Uint8List.fromList(bytes);
-
-    List<int> skipFlipRunes = kSkipFlip.codeUnits;
-
-    int offset = 0;
-    final int n = skipFlipRunes.length >> 1;
-    for (int i = 0; i < n; ++i) {
-      final int skip = skipFlipRunes[2 * i] - 36;
-      final int flip = skipFlipRunes[2 * i + 1] - 36;
-      for (int j = 0; j < skip; ++j) {
-        dict[offset] = (dict[offset] ^ 3);
-        offset++;
-      }
-      for (int j = 0; j < flip; ++j) {
-        dict[offset] = (dict[offset] ^ 236);
-        offset++;
-      }
-    }
-
-    List<int> sizeBitsData = kSizeBitsData.codeUnits;
-    List<int> dictionarySizeBits = List.filled(sizeBitsData.length, 0);
-    for (int i = 0; i < sizeBitsData.length; ++i) {
-      dictionarySizeBits[i] = sizeBitsData[i] - 65;
-    }
-    
-    setData(dict, dictionarySizeBits);
+    // Initialize dictionary using DictionaryData
+    DictionaryData.init();
     
     if (_data.isEmpty) {
       throw BrotliRuntimeException("brotli dictionary is not set");

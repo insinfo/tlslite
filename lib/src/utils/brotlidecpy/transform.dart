@@ -65,8 +65,15 @@ final class Transform {
     return true;
   }();
 
+  static void _ensureInitialized() {
+    if (!_init) {
+      throw StateError('Failed to initialize Brotli transforms');
+    }
+  }
+
   static int transformDictionaryWord(Uint8List dst, int dstOffset, Uint8List src, int srcOffset,
       int wordLen, Transforms transforms, int transformIndex) {
+    _ensureInitialized();
     int offset = dstOffset;
     final Int32List triplets = transforms.triplets;
     final Uint8List prefixSuffixStorage = transforms.prefixSuffixStorage;

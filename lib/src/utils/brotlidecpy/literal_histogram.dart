@@ -35,8 +35,3 @@ Uint8List buildLiteralCodeLengths(BrotliLiteralHistogram histogram) {
     MAX_LENGTH,
   );
 }
-
-void validateCodeLengths(Uint8List codeLengths) {
-  final table = List<HuffmanCode>.generate(2048, (_) => HuffmanCode(0, 0));
-  brotli_build_huffman_table(table, 0, 8, codeLengths.toList(), codeLengths.length);
-}

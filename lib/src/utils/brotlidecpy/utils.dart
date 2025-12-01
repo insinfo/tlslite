@@ -46,12 +46,24 @@ class Utils {
     s.input.close();
   }
 
+  /// Converts string to US-ASCII bytes (7-bit), matching Java's String.getBytes("US-ASCII")
   static Uint8List toUsAsciiBytes(String src) {
-    return Uint8List.fromList(src.codeUnits);
+    // Java's getBytes("US-ASCII") masks each char to 7-bit (& 0x7F)
+    final Uint8List result = Uint8List(src.length);
+    for (int i = 0; i < src.length; i++) {
+      result[i] = src.codeUnitAt(i) & 0x7F;
+    }
+    return result;
   }
 
+  /// Converts string to int array, matching Java's String.charAt() behavior
   static Int32List toUtf8Runes(String src) {
-    return Int32List.fromList(src.runes.toList());
+    // Java's charAt returns the char value directly (16-bit)
+    final Int32List result = Int32List(src.length);
+    for (int i = 0; i < src.length; i++) {
+      result[i] = src.codeUnitAt(i);
+    }
+    return result;
   }
 
   static int isDebugMode() {
