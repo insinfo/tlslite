@@ -1,4 +1,4 @@
-import '../../lib/src/utils/brotlidecpy/dictionary_data.dart';
+import 'package:tlslite/src/utils/brotlidecpy/dec/DictionaryData.dart';
 
 void main() {
   print('DATA0 length: ${DictionaryData.DATA0.length}');

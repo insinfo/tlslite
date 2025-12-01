@@ -1,5 +1,5 @@
-import '../../lib/src/utils/brotlidecpy/dictionary_data.dart';
-import '../../lib/src/utils/brotlidecpy/utils.dart';
+import 'package:tlslite/src/utils/brotlidecpy/dec/DictionaryData.dart';
+import 'package:tlslite/src/utils/brotlidecpy/dec/Utils.dart';
 
 void main() {
   // Get SKIP_FLIP runes

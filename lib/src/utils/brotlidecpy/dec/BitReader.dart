@@ -1,7 +1,7 @@
 import 'dart:typed_data';
-import 'state.dart';
-import 'utils.dart';
-import 'brotli_error.dart';
+import 'State.dart';
+import 'Utils.dart';
+import 'BrotliError.dart';
 
 class BitReader {
   static const int BITNESS = 64;

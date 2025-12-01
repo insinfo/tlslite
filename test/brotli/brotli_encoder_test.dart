@@ -2,7 +2,7 @@ import 'dart:typed_data';
 
 import 'package:test/test.dart';
 import 'package:tlslite/src/utils/brotlidecpy/brotli_encoder.dart';
-import 'package:tlslite/src/utils/brotlidecpy/decode.dart';
+import 'package:tlslite/src/utils/brotlidecpy/dec/Decode.dart';
 
 void main() {
   group('brotli encoder round trips', () {

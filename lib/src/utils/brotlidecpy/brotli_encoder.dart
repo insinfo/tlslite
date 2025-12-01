@@ -2,7 +2,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../bit_stream_writer.dart';
-import 'huffman.dart' show MAX_LENGTH;
+import 'dec/Huffman.dart' show MAX_LENGTH;
 import 'huffman_builder.dart';
 import 'huffman_writer.dart';
 import 'literal_histogram.dart';
@@ -16,6 +16,61 @@ const int _maxWindowBits = 24;
 const int _numInsertAndCopyCodes = 704;
 const int _numDistanceShortCodes = 16;
 const int _distanceAlphabetTail = 48;
+const int _insertRangeBitfield = 0x29850;
+const int _copyRangeBitfield = 0x26244;
+
+final List<_CommandDescriptor> _commandDescriptors = _buildCommandDescriptors();
+final List<_CommandDescriptor> _insertCommandLookup = _buildInsertCommandLookup();
+
+class _CommandDescriptor {
+  const _CommandDescriptor(this.commandCode, this.insertCode, this.copyCode);
+
+  final int commandCode;
+  final int insertCode;
+  final int copyCode;
+}
+
+List<_CommandDescriptor> _buildCommandDescriptors() {
+  return List<_CommandDescriptor>.generate(_numInsertAndCopyCodes, (cmdCode) {
+    var rangeIdx = cmdCode >> 6;
+    if (rangeIdx >= 2) {
+      rangeIdx -= 2;
+    }
+    final insertHighBits = (_insertRangeBitfield >> (rangeIdx * 2)) & 0x3;
+    final copyHighBits = (_copyRangeBitfield >> (rangeIdx * 2)) & 0x3;
+    final insertCode = (insertHighBits << 3) | ((cmdCode >> 3) & 0x7);
+    final copyCode = (copyHighBits << 3) | (cmdCode & 0x7);
+    return _CommandDescriptor(cmdCode, insertCode, copyCode);
+  }, growable: false);
+}
+
+List<_CommandDescriptor> _buildInsertCommandLookup() {
+  final buckets = List<_CommandDescriptor?>.filled(kInsertLengthPrefixCode.length, null);
+  for (final descriptor in _commandDescriptors) {
+    final current = buckets[descriptor.insertCode];
+    if (current == null) {
+      buckets[descriptor.insertCode] = descriptor;
+      continue;
+    }
+    final currentBits = kCopyLengthPrefixCode[current.copyCode].nbits;
+    final candidateBits = kCopyLengthPrefixCode[descriptor.copyCode].nbits;
+    if (candidateBits < currentBits ||
+        (candidateBits == currentBits && descriptor.copyCode < current.copyCode)) {
+      buckets[descriptor.insertCode] = descriptor;
+    }
+  }
+  for (var i = 0; i < buckets.length; i++) {
+    final descriptor = buckets[i];
+    if (descriptor == null) {
+      throw StateError('No command descriptor registered for insert code $i');
+    }
+  }
+  return List<_CommandDescriptor>.generate(
+    buckets.length,
+    (index) => buckets[index]!,
+    growable: false,
+  );
+}
 
 /// Emits a Brotli stream composed exclusively of uncompressed meta-blocks.
 ///
@@ -195,6 +250,7 @@ void _writeCompressedMetaBlock(BitStreamWriter writer, Uint8List chunk) {
   final literalCodes = convertBitDepthsToSymbols(literalCodeLengths);
 
   final insertCommand = _InsertOnlyCommand.forLength(chunk.length);
+  print('ENCODER: length=${chunk.length} insertCode=${insertCommand.insertLenCode} command=${insertCommand.commandCode} copyCode=${insertCommand.copyLenCode} insertExtra=${insertCommand.insertExtraValue} insertBits=${insertCommand.insertExtraBits}');
   final commandCounts = List<int>.filled(_numInsertAndCopyCodes, 0);
   commandCounts[insertCommand.commandCode] = 1;
   final commandCodeLengths = buildLimitedHuffmanCodeLengths(
@@ -271,20 +327,16 @@ class _InsertOnlyCommand {
       throw ArgumentError.value(length, 'length', 'Must be positive');
     }
     final insertLenCode = _findInsertLengthCode(length);
+    final descriptor = _insertCommandLookup[insertLenCode];
     final insertPrefix = kInsertLengthPrefixCode[insertLenCode];
     final insertExtraBits = insertPrefix.nbits;
     final insertExtraValue = length - insertPrefix.offset;
-    final rangeIndex = _rangeIndexForInsertCode(insertLenCode);
-    final insertBase = Prefix.kInsertRangeLut[rangeIndex];
-    final insertOffset = insertLenCode - insertBase;
-    const copyOffset = 0;
-    final copyLenCode = Prefix.kCopyRangeLut[rangeIndex] + copyOffset;
+    final copyLenCode = descriptor.copyCode;
     final copyPrefix = kCopyLengthPrefixCode[copyLenCode];
     final copyExtraBits = copyPrefix.nbits;
     final copyExtraValue = 0;
-    final commandCode = (rangeIndex << 6) | (insertOffset << 3) | copyOffset;
     return _InsertOnlyCommand(
-      commandCode,
+      descriptor.commandCode,
       insertLenCode,
       insertExtraValue,
       insertExtraBits,
@@ -306,12 +358,3 @@ int _findInsertLengthCode(int length) {
   throw ArgumentError('Insert length $length outside supported ranges');
 }
 
-int _rangeIndexForInsertCode(int insertLenCode) {
-  if (insertLenCode < 8) {
-    return 0;
-  }
-  if (insertLenCode < 16) {
-    return 2;
-  }
-  return 5;
-}

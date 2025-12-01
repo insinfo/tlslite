@@ -4,8 +4,8 @@
 import 'dart:typed_data';
 
 
-import 'package:tlslite/src/utils/brotlidecpy/dictionary.dart';
-import 'package:tlslite/src/utils/brotlidecpy/utils.dart';
+import 'package:tlslite/src/utils/brotlidecpy/dec/Dictionary.dart';
+import 'package:tlslite/src/utils/brotlidecpy/dec/Utils.dart';
 
 import 'BrotliRuntimeException.dart';
 

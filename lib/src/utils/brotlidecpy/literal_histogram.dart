@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'huffman.dart';
+import 'dec/Huffman.dart';
 import 'huffman_builder.dart';
 
 const int _literalAlphabetSize = 256;

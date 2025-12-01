@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 import 'package:test/test.dart';
-import 'package:tlslite/src/utils/brotlidecpy/brotli_input_stream.dart';
-import 'package:tlslite/src/utils/brotlidecpy/state.dart';
+import 'package:tlslite/src/utils/brotlidecpy/dec/BrotliInputStream.dart';
+import 'package:tlslite/src/utils/brotlidecpy/dec/State.dart';
 
 Uint8List readUniBytes(String s) {
   List<int> bytes = [];

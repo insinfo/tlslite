@@ -5,8 +5,8 @@
 */
 
 import 'dart:typed_data';
-import 'utils.dart';
-import 'dictionary_data.dart';
+import 'Utils.dart';
+import 'DictionaryData.dart';
 import 'BrotliRuntimeException.dart';
 
 /// Collection of static dictionary words.

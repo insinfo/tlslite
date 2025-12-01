@@ -1,9 +1,9 @@
 import 'dart:typed_data';
 import 'package:test/test.dart';
-import 'package:tlslite/src/utils/brotlidecpy/state.dart';
-import 'package:tlslite/src/utils/brotlidecpy/bit_reader.dart';
-import 'package:tlslite/src/utils/brotlidecpy/decode.dart';
-import 'package:tlslite/src/utils/brotlidecpy/BrotliRuntimeException.dart';
+import 'package:tlslite/src/utils/brotlidecpy/dec/State.dart';
+import 'package:tlslite/src/utils/brotlidecpy/dec/BitReader.dart';
+import 'package:tlslite/src/utils/brotlidecpy/dec/Decode.dart';
+import 'package:tlslite/src/utils/brotlidecpy/dec/BrotliRuntimeException.dart';
 
 void main() {
   group('BitReaderTest', () {

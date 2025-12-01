@@ -1,5 +1,5 @@
-import '../../lib/src/utils/brotlidecpy/dictionary.dart';
-import '../../lib/src/utils/brotlidecpy/dictionary_data.dart';
+import 'package:tlslite/src/utils/brotlidecpy/dec/Dictionary.dart';
+import 'package:tlslite/src/utils/brotlidecpy/dec/DictionaryData.dart';
 
 void main() {
   // Initialize dictionary

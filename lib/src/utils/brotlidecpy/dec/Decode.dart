@@ -5,14 +5,14 @@
 */
 
 import 'dart:typed_data';
-import 'state.dart';
-import 'utils.dart';
-import 'bit_reader.dart';
-import 'brotli_error.dart';
-import 'huffman.dart';
-import 'context.dart';
-import 'dictionary.dart';
-import 'transform.dart';
+import 'State.dart';
+import 'Utils.dart';
+import 'BitReader.dart';
+import 'BrotliError.dart';
+import 'Huffman.dart';
+import 'Context.dart';
+import 'Dictionary.dart';
+import 'Transform.dart';
 import 'BrotliRuntimeException.dart';
 
 /// API for Brotli decompression.
@@ -1183,16 +1183,23 @@ final class Decode {
             decodeCommandBlockSwitch(s);
           }
           s.commandBlockLength--;
-          BitReader.fillBitWindow(s);
-          final int cmdCode = readSymbol(s.commandTreeGroup, s.commandTreeIdx, s) << 2;
-          final int insertAndCopyExtraBits = CMD_LOOKUP[cmdCode];
+            BitReader.fillBitWindow(s);
+            final int commandSymbol = readSymbol(s.commandTreeGroup, s.commandTreeIdx, s);
+            print('DEBUG: commandSymbol=' + commandSymbol.toString() + ' meta=' +
+              s.metaBlockLength.toString());
+            final int cmdCode = commandSymbol << 2;
+            final int insertAndCopyExtraBits = CMD_LOOKUP[cmdCode];
+            print('DEBUG: insertBits=' + (insertAndCopyExtraBits & 0xFF).toString() +
+              ' insertOffset=' + CMD_LOOKUP[cmdCode + 1].toString());
           final int insertLengthOffset = CMD_LOOKUP[cmdCode + 1];
           final int copyLengthOffset = CMD_LOOKUP[cmdCode + 2];
           s.distanceCode = CMD_LOOKUP[cmdCode + 3];
           BitReader.fillBitWindow(s);
           {
             final int insertLengthExtraBits = insertAndCopyExtraBits & 0xFF;
-            s.insertLength = insertLengthOffset + BitReader.readBits(s, insertLengthExtraBits);
+            final int insertExtraValueRead = BitReader.readBits(s, insertLengthExtraBits);
+            print('DEBUG: insertExtraValueRead=' + insertExtraValueRead.toString());
+            s.insertLength = insertLengthOffset + insertExtraValueRead;
           }
           BitReader.fillBitWindow(s);
           {
@@ -1261,7 +1268,12 @@ final class Decode {
           if (s.runningState != INSERT_LOOP) {
             continue;
           }
-          s.metaBlockLength -= s.insertLength;
+          final int remainingAfterInsert = s.metaBlockLength - s.insertLength;
+          if (remainingAfterInsert < 0) {
+            print('DEBUG: metaBlockLength underflow after insert: meta=' +
+                '${s.metaBlockLength} insert=${s.insertLength}');
+          }
+          s.metaBlockLength = remainingAfterInsert;
           if (s.metaBlockLength <= 0) {
             s.runningState = MAIN_LOOP;
             continue;

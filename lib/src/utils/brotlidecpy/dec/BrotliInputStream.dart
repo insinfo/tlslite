@@ -6,10 +6,10 @@
 
 import 'dart:typed_data';
 import 'dart:math' as math;
-import 'state.dart';
-import 'decode.dart';
-import 'utils.dart';
-import 'brotli_error.dart';
+import 'State.dart';
+import 'Decode.dart';
+import 'Utils.dart';
+import 'BrotliError.dart';
 import 'BrotliRuntimeException.dart';
 
 class BrotliInputStream implements InputStream {

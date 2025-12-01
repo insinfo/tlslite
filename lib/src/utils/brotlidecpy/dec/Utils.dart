@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 import 'dart:math' as math;
-import 'state.dart';
-import 'brotli_error.dart';
+import 'State.dart';
+import 'BrotliError.dart';
 import 'BrotliRuntimeException.dart';
 
 class Utils {

@@ -168,7 +168,7 @@ Atualizações Brotli 02/12/2025 16:30
 
 ### Brotli encoder backlog
 
-- A pasta `lib/src/utils/brotlidecpy/` contém apenas a pilha de _decoding_ (`decode.dart`, `context.dart`, `huffman.dart`, etc.). Para oferecer um encoder é necessário portar o pipeline inverso (brotli bit writer, gerador de metadados, construção de meta-blocks, transform pipelines, etc.).
+- A pasta `lib/src/utils/brotlidecpy/dec/` contém apenas a pilha de _decoding_ (`Decode.dart`, `Context.dart`, `Huffman.dart`, etc.). Para oferecer um encoder é necessário portar o pipeline inverso (brotli bit writer, gerador de metadados, construção de meta-blocks, transform pipelines, etc.).
 - Itens mínimos: bit writer/`prefix` reverso, construtor de histogramas + Huffman encoding, compressor de context maps, gerador de meta-blocks (literal/copy distance), e suporte a dicionários compartilhados (`brotli_dict.dart`).
 - Recomendação: seguir a mesma abordagem incremental usada no Zstd – começar emitindo apenas meta-blocks RAW para habilitar a API pública, depois evoluir para match finding, context modeling e, por fim, tunáveis de qualidade.
 
@@ -190,7 +190,7 @@ Atualizações Brotli 02/12/2025 16:30
   - [x] Adicionar `test/brotli/brotli_encoder_raw_test.dart` validando os headers emitidos e mantendo um round-trip via `brotli` CLI (`brotli -d`). Criar `tool/brotli_cli_roundtrip.dart` análogo ao helper de Zstd para facilitar diagnósticos.
   - Entrega: API pública capaz de embrulhar payload sem compressão, mantendo compatibilidade com decodificadores existentes e preparando o terreno para etapas subsequentes.
 3. **Histogramas, Huffman e meta-blocks comprimidos**
-  - Portar o construtor de histogramas já usado no decoder (`lib/src/utils/brotlidecpy/huffman.dart`) para o caminho de encode, gerando code lengths e serializando-os conforme o formato Brotli (tree codes, run-length encoding).
+  - Portar o construtor de histogramas já usado no decoder (`lib/src/utils/brotlidecpy/dec/Huffman.dart`) para o caminho de encode, gerando code lengths e serializando-os conforme o formato Brotli (tree codes, run-length encoding).
   - Implementar compressão básica de literais/distâncias dentro do mesmo `brotil_encoder.dart`, com testes focados em alfabetos pequenos e verificação cruzada contra o decoder nativo.
   - Atualizar o plano com métricas de compressão (bytes emitidos, entropia) usando um novo benchmark em `bin/brotli_encoder_benchmark.dart`.
 4. **Planejamento de matches e dicionário embutido**
@@ -223,14 +223,15 @@ Atualizações Brotli 02/12/2025 16:30
 
 ### lib/src/utils/brotlidecpy/
 
-- `bit_reader.dart`: infraestrutura de leitura usada pelo decoder; encoder precisa do equivalente bit_writer.
+- `dec/BitReader.dart`: infraestrutura de leitura usada pelo decoder; encoder precisa do equivalente bit_writer.
 - `brotli_dict.dart`: apenas dados de dicionário e utilitários de lookup para decoder. Encoder deverá expor APIs para aplicar transformações/dicionário ao comprimir.
-- `context.dart`: lógica de contexto de decoding. Encoder ainda não calcula context IDs nem atualiza histogramas baseados em contexto.
-- `decode.dart`: pipeline completo de decomposição (meta-block parsing, literal/copy ops). Não existe contraparte de encode.
-- `dictionary.dart`: parse/uso de dicionários para decoder. Encoder precisa gerar referências corretas/deltas.
-- `huffman.dart`: somente construtor de tabelas de decoding; falta escritor de Huffman code lengths / tree serialization.
+- `dec/Context.dart`: lógica de contexto de decoding. Encoder ainda não calcula context IDs nem atualiza histogramas baseados em contexto.
+- `dec/Decode.dart`: pipeline completo de decomposição (meta-block parsing, literal/copy ops). Não existe contraparte de encode.
+- `dec/Dictionary.dart`: parse/uso de dicionários para decoder. Encoder precisa gerar referências corretas/deltas.
+- `dec/Huffman.dart`: somente construtor de tabelas de decoding; falta escritor de Huffman code lengths / tree serialization.
 - `prefix.dart`: metadados de comandos para decoder; encode precisa gerar prefix tables e comprimir context maps.
-- `transform.dart`: aplica transformações pós-decodificação; encoder requer caminho inverso (descobrir transform pipelines e codificá-los na stream).
+- `dec/Transform.dart`: aplica transformações pós-decodificação; encoder requer caminho inverso (descobrir transform pipelines e codificá-los na stream).
+- `dec/Decoder.dart`: utilitário CLI usado para benchmarking, espelhando a estrutura do pacote Java.
 
 ## Future milestones
 
@@ -248,7 +249,7 @@ plug it into the Dart decoder, and only then move to the next chunk.
 ### Próximos passos estendidos
 
 1. **CLI regression tests mais abrangentes.** Assim que o checksum emitido pelo encoder bater com o `zstd` oficial, ampliar o teste de interoperabilidade para cobrir frames com dicionário (incluindo `dictId`/`prevOffsets`) e para validar o caminho com `Content_Checksum` habilitado. O plano é reaproveitar o helper existente que grava o frame em disco e direcionar o `zstd` para decodificá-lo, adicionando variantes com dicionário e checksum.
-2. **Scaffolding do encoder Brotli.** A partir do inventário da pasta `lib/src/utils/brotlidecpy/`, iniciar o espelhamento incremental: (a) adicionar um `BitStreamWriter` compartilhado com o encoder de Zstd para emitir meta-blocos RAW; (b) portar o construtor de histogramas + serialização Huffman usando as estruturas já presentes em `huffman.dart`; (c) planejar o equivalente de `encoder_match_finder.dart` visando comandos literal/cópia e suporte ao dicionário embutido em `brotli_dict.dart`. Documentar cada etapa com testes mínimos a exemplo do pipeline de Zstd.
+2. **Scaffolding do encoder Brotli.** A partir do inventário da pasta `lib/src/utils/brotlidecpy/`, iniciar o espelhamento incremental: (a) adicionar um `BitStreamWriter` compartilhado com o encoder de Zstd para emitir meta-blocos RAW; (b) portar o construtor de histogramas + serialização Huffman usando as estruturas já presentes em `dec/Huffman.dart`; (c) planejar o equivalente de `encoder_match_finder.dart` visando comandos literal/cópia e suporte ao dicionário embutido em `brotli_dict.dart`. Documentar cada etapa com testes mínimos a exemplo do pipeline de Zstd.
 
 ### CLI parity plan (checksum + dicionário)
 
@@ -268,6 +269,6 @@ continue trabalhando na implementação do brotli encoder e decoder C:\MyDartPro
 
 comando rg para busca no codigo se necessario 
 
-continue a deixe a implementação do brotli dart C:\MyDartProjects\tlslite\lib\src\utils\brotlidecpy mais fiel e o mais proximo possivel da implementação original de referencia em java ou seja mesmos nomes de arquivos mesmos testes mesmos nomes de contantes variaveis e classes C:\MyDartProjects\tlslite\brotli-google\java\org\brotli
+continue a deixe a implementação do brotli dart C:\MyDartProjects\tlslite\lib\src\utils\brotlidecpy mais fiel e o mais proximo possivel da implementação original de referencia em java ou seja prioridade maxima deixar os mesmos nomes de arquivos mesmos testes mesmos nomes de constantes e variaveis e classes e funções C:\MyDartProjects\tlslite\brotli-google\java\org\brotli
 
-as variaveis DATA0, DATA1 , SKIP_FLIP, SIZE_BITS_DATA da classe DictionaryData do arquivo C:\MyDartProjects\tlslite\lib\src\utils\brotlidecpy\dictionary_data.dart foram copiadas do codigo java brotli-google/java/org/brotli/dec/DictionaryData.java a unica coisa que foi mudade é o escape do caracter sifrão $
+as variaveis DATA0, DATA1 , SKIP_FLIP, SIZE_BITS_DATA da classe DictionaryData do arquivo C:\MyDartProjects\tlslite\lib\src\utils\brotlidecpy\dec\DictionaryData.dart foram copiadas do codigo java brotli-google/java/org/brotli/dec/DictionaryData.java a unica coisa que foi mudade é o escape do caracter sifrão $

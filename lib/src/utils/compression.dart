@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import '../constants.dart';
 import '../errors.dart';
 import 'brotlidecpy/brotli_encoder.dart';
-import 'brotlidecpy/decode.dart';
+import 'brotlidecpy/dec/Decode.dart';
 import 'lists.dart';
 import 'zstd/zstd_decoder.dart';
 import 'zstd/zstd_encoder.dart';
