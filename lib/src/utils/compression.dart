@@ -24,7 +24,7 @@ final Map<String, dynamic> compressionAlgoImpls = {
 };
 
 Uint8List _brotliCompressAdapter(Uint8List input) {
-  return brotliCompressRaw(input);
+  return brotliCompressLiteral(input);
 }
 
 Uint8List _brotliDecompressAdapter(Uint8List input, [int? expectedOutputSize]) {

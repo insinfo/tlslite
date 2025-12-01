@@ -19,11 +19,18 @@ const int huffmanTableBits = 8;
 const int huffmanTableMask = 0xff;
 const int huffmanMaxTableSize = 1080;
 const int codeLengthCodes = 18;
+const bool _debugCodeLengthLut = false;
 final List<int> kCodeLengthCodeOrder = List.unmodifiable(
     [1, 2, 3, 4, 0, 5, 17, 6, 16, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+final List<int> kCodeLengthFixedTable = List.unmodifiable([
+  0x020000, 0x020004, 0x020003, 0x030002,
+  0x020000, 0x020004, 0x020003, 0x040001,
+  0x020000, 0x020004, 0x020003, 0x030002,
+  0x020000, 0x020004, 0x020003, 0x040005,
+]);
 const int numDistanceShortCodes = 16;
 final List<int> kDistanceShortCodeIndexOffset =
-    List.unmodifiable([3, 2, 1, 0, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2]);
+    List.unmodifiable([0, 3, 2, 1, 0, 0, 0, 0, 0, 0, 3, 3, 3, 3, 3, 3]);
 final List<int> kDistanceShortCodeValueOffset =
     List.unmodifiable([0, 0, 0, 0, -1, 1, -2, 2, -3, 3, -1, 1, -2, 2, -3, 3]);
 final List<int> kMaxHuffmanTableSize = List.unmodifiable([
@@ -95,25 +102,18 @@ MetaBlockLength decodeMetaBlockLength(BrotliBitReader br) {
 // ... (readSymbol - use corrected version from previous step) ...
 int readSymbol(List<HuffmanCode> table, int tableIndex, BrotliBitReader br) {
   int index = tableIndex;
-  final int val = br.read_bits(16, bits_to_skip: 0); // Peek 16
-  index += (val & huffmanTableMask);
-  final int bitsConsumed = table[index].bits;
-  final int symbolValue = table[index].value;
-  if (bitsConsumed <= huffmanTableBits) {
-    br.read_bits(0, bits_to_skip: bitsConsumed); // Drop
-    return symbolValue;
-  } else {
-    final int bitsToDropFirst = huffmanTableBits;
-    final int nbits = bitsConsumed - huffmanTableBits;
-    br.read_bits(0, bits_to_skip: bitsToDropFirst); // Drop first part
-    final int next_val =
-        br.read_bits(nbits, bits_to_skip: 0); // Peek second part
-    index = symbolValue + next_val;
-    final int finalBitsToDrop = table[index].bits;
-    final int finalSymbol = table[index].value;
-    br.read_bits(0, bits_to_skip: finalBitsToDrop); // Drop second part
-    return finalSymbol;
+  final int xBits = br.read_bits(16, bits_to_skip: 0);
+  index += (xBits & huffmanTableMask);
+  int nbits = table[index].bits - huffmanTableBits;
+  int skip = 0;
+  if (nbits > 0) {
+    skip = huffmanTableBits;
+    final int mask = BrotliBitReader.kBitMask[nbits];
+    index += table[index].value + ((xBits >> huffmanTableBits) & mask);
   }
+  final int totalBits = skip + table[index].bits;
+  br.read_bits(0, bits_to_skip: totalBits);
+  return table[index].value;
 }
 
 // ... (readHuffmanCodeLengths - use corrected version from previous step) ...
@@ -121,48 +121,61 @@ void readHuffmanCodeLengths(List<int> codeLengthCodeLengths, int numSymbols,
     Uint8List codeLengths, BrotliBitReader br) {
   int symbol = 0;
   int prevCodeLen = kDefaultCodeLength;
-  //int repeatCodeLen = 0;
+  int repeat = 0;
+  int repeatCodeLen = 0;
   int space = 32768;
-  final List<HuffmanCode> table = List.generate(32, (_) => HuffmanCode(0, 0));
-  brotli_build_huffman_table(
-      table, 0, 5, codeLengthCodeLengths, codeLengthCodes);
-  while (symbol < numSymbols) {
-    // Simplified lookup assuming dense table for 5 bits root:
-    final HuffmanCode entry =
-        table[br.read_bits(5, bits_to_skip: 0)]; // Peek 5 for index
-    final int bitsConsumed = entry.bits;
-    if (bitsConsumed == 0 || bitsConsumed > 5)
-      throw Exception("Invalid code length symbol lookup"); // Basic check
-    br.read_bits(0, bits_to_skip: bitsConsumed); // Drop consumed bits
-    final int codeLenSymbol = entry.value;
+  final List<HuffmanCode> table =
+      List.generate(huffmanMaxTableSize, (_) => HuffmanCode(0, 0));
+  brotli_build_huffman_table(table, 0, 5, codeLengthCodeLengths, codeLengthCodes);
 
-    if (codeLenSymbol < kCodeLengthRepeatCode) {
-      /* direct */ codeLengths[symbol] = codeLenSymbol;
-      symbol++;
-      if (codeLenSymbol != 0) {
-        prevCodeLen = codeLenSymbol;
-        space -= (32768 >> codeLenSymbol);
+  while (symbol < numSymbols && space > 0) {
+    final int p = br.read_bits(5, bits_to_skip: 0);
+    final HuffmanCode entry = table[p];
+    br.read_bits(0, bits_to_skip: entry.bits);
+    final int codeLen = entry.value & 0xff;
+    if (_debugCodeLengthLut && numSymbols <= 16) {
+      print('codeLen symbol[$symbol] p=$p value=$codeLen bits=${entry.bits}');
+    }
+    if (codeLen < kCodeLengthRepeatCode) {
+      repeat = 0;
+      codeLengths[symbol++] = codeLen;
+      if (codeLen != 0) {
+        prevCodeLen = codeLen;
+        space -= (32768 >> codeLen);
       }
     } else {
-      /* repeat */ final int extraBits =
-          (codeLenSymbol == kCodeLengthRepeatCode) ? 2 : 3;
-      int newLen = (codeLenSymbol == kCodeLengthRepeatCode) ? prevCodeLen : 0;
-      final int repeatCountBase =
-          (codeLenSymbol == kCodeLengthRepeatCode) ? 3 : 11;
-      final int repeatDelta = br.read_bits(extraBits) + repeatCountBase;
-      if (symbol + repeatDelta > numSymbols)
-        throw Exception('Repeat count exceeds symbols');
+      final int extraBits = codeLen - 14;
+      int newLen = 0;
+      if (codeLen == kCodeLengthRepeatCode) {
+        newLen = prevCodeLen;
+      }
+      if (repeatCodeLen != newLen) {
+        repeat = 0;
+        repeatCodeLen = newLen;
+      }
+      final int oldRepeat = repeat;
+      if (repeat > 0) {
+        repeat -= 2;
+        repeat <<= extraBits;
+      }
+      repeat += br.read_bits(extraBits) + 3;
+      final int repeatDelta = repeat - oldRepeat;
+      if (symbol + repeatDelta > numSymbols) {
+        throw Exception('Repeat count exceeds symbol count');
+      }
       for (int i = 0; i < repeatDelta; i++) {
-        codeLengths[symbol + i] = newLen;
+        codeLengths[symbol + i] = repeatCodeLen;
       }
       symbol += repeatDelta;
-      if (newLen != 0) {
-        space -= repeatDelta << (15 - newLen);
+      if (repeatCodeLen != 0) {
+        space -= repeatDelta << (15 - repeatCodeLen);
       }
     }
-    if (space < 0) break;
   }
-  if (space != 0) throw Exception('Invalid code lengths: space = $space');
+
+  if (space != 0) {
+    throw Exception('Unused Huffman space: $space');
+  }
   for (int i = symbol; i < numSymbols; i++) {
     codeLengths[i] = 0;
   }
@@ -173,22 +186,30 @@ int readHuffmanCode(int alphabetSize, List<HuffmanCode> tables, int tableIndex,
     BrotliBitReader br) {
   final Uint8List codeLengths = Uint8List(alphabetSize);
   final int simpleCodeOrSkip = br.read_bits(2);
+  // Per RFC 7932 and reference implementation:
+  // simpleCodeOrSkip == 1 means simple tree
+  // simpleCodeOrSkip == 0, 2, 3 means complex tree with skip = 0, 2, or 3
   if (simpleCodeOrSkip == 1) {
-    /* simple */ int maxBitsCounter = alphabetSize - 1;
+    /* simple tree */
+    // Calculate maxBits: 1 + log2floor(alphabetSize - 1)
+    int maxBitsCounter = alphabetSize - 1;
     int maxBits = 0;
-    final List<int> symbols = [0, 0, 0, 0];
-    final int numSymbols = br.read_bits(2) + 1;
     while (maxBitsCounter > 0) {
       maxBitsCounter >>= 1;
       maxBits++;
     }
+    
+    final List<int> symbols = [0, 0, 0, 0];
+    // Read number of symbols (NSYM - 1) in 2 bits, then add 1
+    final int numSymbols = br.read_bits(2) + 1;
+    
     for (int i = 0; i < numSymbols; i++) {
       final int symbolIndex = br.read_bits(maxBits);
       if (symbolIndex >= alphabetSize) throw Exception('Symbol index OOB');
       symbols[i] = symbolIndex;
     }
-    /* Assign lengths based on numSymbols, check duplicates */ if (numSymbols ==
-        1) {
+    /* Assign lengths based on numSymbols, check duplicates */
+    if (numSymbols == 1) {
       codeLengths[symbols[0]] = 1;
     } else if (numSymbols == 2) {
       if (symbols[0] == symbols[1]) throw Exception("dup");
@@ -221,46 +242,48 @@ int readHuffmanCode(int alphabetSize, List<HuffmanCode> tables, int tableIndex,
       }
     }
   } else {
-    /* complex */ final List<int> codeLengthCodeLengths =
-        List.filled(codeLengthCodes, 0);
+    /* complex tree */
+    // RFC 7932: simpleCodeOrSkip is 0, 2, or 3 for complex tree (1 = simple)
+    // The value is used directly as the number of symbols to skip
+    final int skip = simpleCodeOrSkip;  // 0, 2, or 3
+    final List<int> codeLengthCodeLengths = List.filled(codeLengthCodes, 0);
     int space = 32;
     int numCodes = 0;
-    for (int i = simpleCodeOrSkip; i < codeLengthCodes; i++) {
-      final int codeLenIdx = kCodeLengthCodeOrder[i];
-      final int p5 = br.read_bits(5, bits_to_skip: 0);
-      int actualCodeLenSym = 0;
-      int bitsToDrop = 0;
-      if ((p5 & 0x1) == 0) {
-        actualCodeLenSym = 0;
-        bitsToDrop = 2;
-      } else if ((p5 & 0x3) == 0x3) {
-        actualCodeLenSym = 3;
-        bitsToDrop = 2;
-      } else if ((p5 & 0x7) == 0x7) {
-        actualCodeLenSym = 2;
-        bitsToDrop = 3;
-      } else if ((p5 & 0xF) == 0xF) {
-        actualCodeLenSym = 1;
-        bitsToDrop = 4;
-      } else if ((p5 & 0x1F) == 0x1F) {
-        actualCodeLenSym = 5;
-        bitsToDrop = 5;
-      } else {
-        actualCodeLenSym = 4;
-        bitsToDrop = 4;
-      }
-      br.read_bits(0, bits_to_skip: bitsToDrop);
-      codeLengthCodeLengths[codeLenIdx] = actualCodeLenSym;
-      if (actualCodeLenSym != 0) {
-        space -= (32 >> actualCodeLenSym);
-        numCodes++;
-      }
-      if (space <= 0) break;
+    if (_debugCodeLengthLut) {
+      print('--- decode code-length hist skip=$skip');
     }
-    if (numCodes != 1 && space != 0)
-      throw Exception('Invalid code length code lengths');
+    for (int i = skip; i < codeLengthCodes; i++) {
+      final int codeLenIdx = kCodeLengthCodeOrder[i];
+      final int peek = br.read_bits(4, bits_to_skip: 0) & 0xF;
+      final int entry = kCodeLengthFixedTable[peek];
+      final int bitsToDrop = entry >> 16;
+      final int codeLen = entry & 0xFFFF;
+      br.read_bits(0, bits_to_skip: bitsToDrop);
+      if (_debugCodeLengthLut) {
+        print(
+        'codeLenIdx=$codeLenIdx peek=$peek bits=$bitsToDrop len=$codeLen');
+      }
+      codeLengthCodeLengths[codeLenIdx] = codeLen;
+      if (codeLen != 0) {
+        space -= (32 >> codeLen);
+        numCodes++;
+        if (space <= 0) {
+          break;
+        }
+      }
+    }
+    if (space != 0 && numCodes != 1) {
+      throw Exception(
+          'Invalid code length code lengths (skip=$simpleCodeOrSkip space=$space numCodes=$numCodes values=$codeLengthCodeLengths)');
+    }
+    if (_debugCodeLengthLut && alphabetSize <= 16) {
+      print('codeLengthCodeLengths: $codeLengthCodeLengths');
+    }
     readHuffmanCodeLengths(
         codeLengthCodeLengths, alphabetSize, codeLengths, br);
+    if (_debugCodeLengthLut && alphabetSize <= 16) {
+      print('decoded code lengths: ${codeLengths.sublist(0, alphabetSize)}');
+    }
   }
   int tableSize = brotli_build_huffman_table(
       tables, tableIndex, huffmanTableBits, codeLengths, alphabetSize);
@@ -457,7 +480,7 @@ void decodeBlockType(
 // ... (copyUncompressedBlockToOutput, jumpToByteBoundary - use copy_bytes, assume it works) ...
 void copyUncompressedBlockToOutput(
     int length, int pos, List<int> outputBuffer, BrotliBitReader br) {
-  if (outputBuffer.length < pos + length) outputBuffer.length = pos + length;
+  _ensureOutputCapacity(outputBuffer, pos + length);
   br.copy_bytes(outputBuffer, pos, length);
 }
 
@@ -465,14 +488,23 @@ void jumpToByteBoundary(BrotliBitReader br) {
   br.copy_bytes(Uint8List(0), 0, 0);
 } // Align using copy_bytes
 
+void _ensureOutputCapacity(List<int> buffer, int requiredLength) {
+  if (requiredLength <= buffer.length) {
+    return;
+  }
+  final growBy = requiredLength - buffer.length;
+  buffer.addAll(List<int>.filled(growBy, 0));
+}
+
 // --- Main Decompression Function
 Uint8List brotliDecompressBuffer(Uint8List inputBuffer, {int? bufferLimit}) {
   final br = BrotliBitReader(inputBuffer);
   final List<int> outputBuffer = [];
   int pos = 0;
   bool inputEnd = false;
-  final List<int> distRb = [4, 11, 15, 16];
-  int distRbIdx = 0;
+  // Initialize distance ring buffer as per Java reference: [16, 15, 11, 4]
+  final List<int> distRb = [16, 15, 11, 4];
+  int distRbIdx = 3;
   final List<HuffmanTreeGroup?> hgroup = List.filled(3, null);
   final int windowBits = decodeWindowBits(br);
   if (windowBits == 0) throw Exception("Invalid window bits");
@@ -508,10 +540,9 @@ Uint8List brotliDecompressBuffer(Uint8List inputBuffer, {int? bufferLimit}) {
       br.copy_bytes(Uint8List(0), 0, metaBlockRemainingLen);
       continue;
     }
-    if (metaBlockRemainingLen == 0 && !inputEnd) continue;
-    if (outputBuffer.length < pos + metaBlockRemainingLen) {
-      outputBuffer.length = pos + metaBlockRemainingLen;
-    }
+    // Skip empty meta-blocks (whether last or not)
+    if (metaBlockRemainingLen == 0) continue;
+    _ensureOutputCapacity(outputBuffer, pos + metaBlockRemainingLen);
 
     if (isUncompressed) {
       jumpToByteBoundary(br);
@@ -583,15 +614,20 @@ Uint8List brotliDecompressBuffer(Uint8List inputBuffer, {int? bufferLimit}) {
       final int cmdCode =
           readSymbol(hgroup[1]!.codes, huffTreeCommandIndex, br);
 
-      // --- FIX: Decode cmdCode into insert/copy codes ---
-      final int rangeIdx = cmdCode >> 6;
-      if (rangeIdx >= Prefix.kInsertRangeLut.length) {
-        // Basic bounds check
-        throw Exception("Invalid command code range index: $rangeIdx");
+      // --- Decode cmdCode into insert/copy codes using reference algorithm ---
+      int rangeIdx = cmdCode >> 6;
+      // Compute distanceContextOffset: -4 for rangeIdx<2 (cmdCode<128), 0 for rangeIdx>=2 (cmdCode>=128)
+      int distanceContextOffset = -4;
+      if (rangeIdx >= 2) {
+        rangeIdx -= 2;
+        distanceContextOffset = 0;
       }
-      final int insertLenCode =
-          Prefix.kInsertRangeLut[rangeIdx] + ((cmdCode >> 3) & 7);
-      final int copyLenCode = Prefix.kCopyRangeLut[rangeIdx] + (cmdCode & 7);
+      // Magic numbers from reference implementation:
+      // 0x29850 for insert, 0x26244 for copy
+      final int insertLenCode = 
+          (((0x29850 >> (rangeIdx * 2)) & 0x3) << 3) | ((cmdCode >> 3) & 7);
+      final int copyLenCode = 
+          (((0x26244 >> (rangeIdx * 2)) & 0x3) << 3) | (cmdCode & 7);
 
       if (insertLenCode >= kInsertLengthPrefixCode.length ||
           insertLenCode < 0) {
@@ -602,7 +638,7 @@ Uint8List brotliDecompressBuffer(Uint8List inputBuffer, {int? bufferLimit}) {
         throw Exception(
             "Invalid copy length code: $copyLenCode from cmd $cmdCode");
       }
-      // --- End FIX ---
+      // --- End decode cmdCode ---
 
       final int insertNExtra = kInsertLengthPrefixCode[insertLenCode].nbits;
       final int insertLength = kInsertLengthPrefixCode[insertLenCode].offset +
@@ -615,7 +651,7 @@ Uint8List brotliDecompressBuffer(Uint8List inputBuffer, {int? bufferLimit}) {
       int prevByte1 = (pos > 0) ? outputBuffer[pos - 1] : 0;
       int prevByte2 = (pos > 1) ? outputBuffer[pos - 2] : 0;
       for (int j = 0; j < insertLength; j++) {
-        if (pos >= outputBuffer.length) outputBuffer.length = pos + 1;
+        if (pos >= outputBuffer.length) _ensureOutputCapacity(outputBuffer, pos + 1);
         if (blockLength[0] == 0) {
           decodeBlockType(numBlockTypes[0], blockTypeTrees, 0, blockType,
               blockTypeRb, blockTypeRbIndex, br);
@@ -687,6 +723,7 @@ Uint8List brotliDecompressBuffer(Uint8List inputBuffer, {int? bufferLimit}) {
       }
 
       int distance = translateShortCodes(distanceCode, distRb, distRbIdx);
+      
       int currentMaxDistance =
           (pos < maxBackwardDistance) ? pos : maxBackwardDistance;
 
@@ -695,15 +732,15 @@ Uint8List brotliDecompressBuffer(Uint8List inputBuffer, {int? bufferLimit}) {
         int wordId = distance - currentMaxDistance - 1;
         int address = BrotliDictionary.findPos(copyLength, wordId);
         int transformId = BrotliDictionary.findTransform(wordId, copyLength);
-        if (address < 0 || transformId < 0)
-          throw Exception("Invalid dictionary lookup");
+        // Validate transformId against number of transforms (121 for RFC)
+        if (address < 0 || transformId < 0 || transformId >= 121) {
+          throw Exception("Invalid dictionary lookup: address=$address transformId=$transformId wordId=$wordId copyLength=$copyLength");
+        }
         int roughEstimate = pos + copyLength + 30; // Increased estimate
-        if (outputBuffer.length < roughEstimate)
-          outputBuffer.length = roughEstimate;
+        _ensureOutputCapacity(outputBuffer, roughEstimate);
         int transformLen = Transform.transformDictionaryWord(
             outputBuffer, pos, address, copyLength, transformId);
-        if (outputBuffer.length < pos + transformLen)
-          outputBuffer.length = pos + transformLen;
+        _ensureOutputCapacity(outputBuffer, pos + transformLen);
         pos += transformLen;
         metaBlockRemainingLen -= transformLen;
       } else {
@@ -714,8 +751,7 @@ Uint8List brotliDecompressBuffer(Uint8List inputBuffer, {int? bufferLimit}) {
         }
         if (copyLength > metaBlockRemainingLen)
           throw Exception("Copy length exceeds remaining");
-        if (pos + copyLength >= outputBuffer.length)
-          outputBuffer.length = pos + copyLength;
+        _ensureOutputCapacity(outputBuffer, pos + copyLength);
         for (int j = 0; j < copyLength; j++) {
           outputBuffer[pos] = outputBuffer[pos - distance];
           pos++;

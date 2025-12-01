@@ -259,6 +259,11 @@ plug it into the Dart decoder, and only then move to the next chunk.
 
 referencia C:\tools\brotli-1.2.0
 
+referencia https://github.com/google/brotli/tree/master/java/org/brotli/dec
+C:\MyDartProjects\tlslite\brotli-google\java\org\brotli
+
 tudo relacionado ao brotli deve esta neste diteorio C:\MyDartProjects\tlslite\lib\src\utils\brotlidecpy e tudo relacionando ao zstd deve esta neste diretorio C:\MyDartProjects\tlslite\lib\src\utils\zstd pois no futuro eu posso priclicar isso como pacotes se parados no pub.dev
 
 continue trabalhando na implementação do brotli encoder e decoder C:\MyDartProjects\tlslite\lib\src\utils\brotlidecpy
+
+comando rg para busca no codigo se necessario 

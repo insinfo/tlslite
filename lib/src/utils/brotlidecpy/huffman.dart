@@ -31,7 +31,7 @@ int _get_next_key(int key, int length) {
 /// Assumes [end] is an integer multiple of [step].
 /// The loop iterates downwards from the end index.
 void _replicate_value(
-    List<HuffmanCode?> table, int i, int step, int end, HuffmanCode code) {
+    List<HuffmanCode> table, int i, int step, int end, HuffmanCode code) {
   // Loop bounds derived from Python's range(i + end - step, i - step, -step)
   // Start: i + end - step
   // Stop: i (inclusive)
@@ -117,7 +117,7 @@ class HuffmanCode {
 /// Throws [ArgumentError] if any code length exceeds MAX_LENGTH.
 /// Throws [Exception] or [RangeError] if [root_table] is not large enough.
 int brotli_build_huffman_table(
-    List<HuffmanCode?> root_table, // The table to fill (passed by reference)
+    List<HuffmanCode> root_table, // The table to fill (passed by reference)
     int table, // Starting offset index within root_table
     int root_bits,
     List<int> code_lengths,
