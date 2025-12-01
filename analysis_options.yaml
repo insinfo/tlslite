@@ -1,0 +1,4 @@
+analyzer:
+  exclude:
+    - archive-main/**
+    - oracledb_dart/**

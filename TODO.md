@@ -28,6 +28,8 @@ coloque um comentario // TODO onde não etiver completo
 - [x] Portado tlslite/utils/lists.py para lib/src/utils/lists.dart (getFirstMatching e toStrDelimiter)
 - [x] Criados testes em test/utils/lists_test.dart cobrindo cenarios de listas vazias, unicas e multiplas
 - [x] Executado `dart test` apos adicionar lists
+- [x] Centralizado helpers de polling/timeouts com `TransportEvent` e `TransportRuntime`, abrindo reuso para TLS/DB
+- [x] Criado `SecureTransport` (interface + mixin) e provider TLS puro (`SecureSocketPureDart` + `PureDartTlsEngine`) posicionando TODOs do porte tlslite-ng
 - [x] Portado tlslite/utils/format_output.py para lib/src/utils/format_output.dart (noneAsUnknown)
 - [x] Criados testes em test/utils/format_output_test.dart cobrindo textos nulos e vazios
 - [x] Executado `dart test` apos adicionar format_output
@@ -60,8 +62,11 @@ coloque um comentario // TODO onde não etiver completo
 - [x] Adicionado lib/src/utils/cipherfactory.dart com createAES/CTR/RC4 usando implementacao python e stubs para AEAD/3DES
 - [x] Portado tlslite/utils/poly1305.py para lib/src/utils/poly1305.dart e criado testes em test/utils/poly1305_test.dart cobrindo vetores RFC 7539
 - [x] Portado tlslite/utils/chacha20_poly1305.py e python_chacha20_poly1305.py para lib/src/utils/chacha20_poly1305.dart e lib/src/utils/python_chacha20_poly1305.dart, com testes em test/utils/chacha20_poly1305_test.dart
+- [x] Portado tlslite/bufferedsocket.py para lib/src/net/buffered_socket.dart (com TODO para adaptar a um socket Dart real) e criados testes em test/net/buffered_socket_test.dart cobrindo send/flush/recv/shutdown
 
 ## Proximos passos sugeridos
+- [ ] Portar os modulos nucleares de TLS (`tlsconnection.py`, `recordlayer.py`, `messages.py`) e implementar `ensureHandshakeCompleted/sendApplicationData/receiveApplicationData` no `PureDartTlsEngine`.
+- [ ] Integrar `PureDartTlsConfig` com parsing real de certificados/chaves (via `keyfactory.dart`) e criar testes com vetores de `tlslite-ng/tests`.
 - [ ] Expor as funcoes de datefuncs num ponto de entrada publico se necessario (ex: via lib/tlslite.dart)
 - [ ] Expor e validar funcoes const-time via lib/tlslite.dart ou outro agrupador publico
 - [ ] Implementar ct_check_cbc_mac_and_pad e utilitarios relacionados (depende de um HMAC incremental em Dart)
