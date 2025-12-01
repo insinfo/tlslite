@@ -10,6 +10,7 @@ import 'state.dart';
 import 'decode.dart';
 import 'utils.dart';
 import 'brotli_error.dart';
+import 'BrotliRuntimeException.dart';
 
 class BrotliInputStream implements InputStream {
   static const int DEFAULT_INTERNAL_BUFFER_SIZE = 256;

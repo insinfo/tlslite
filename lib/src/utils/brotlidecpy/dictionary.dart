@@ -8,6 +8,7 @@ import 'dart:typed_data';
 import 'brotli_error.dart';
 import 'utils.dart';
 import 'dictionary_data_constants.dart';
+import 'BrotliRuntimeException.dart';
 
 /// Collection of static dictionary words.
 ///

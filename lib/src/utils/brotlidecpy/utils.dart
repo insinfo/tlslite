@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:math' as math;
 import 'state.dart';
 import 'brotli_error.dart';
+import 'BrotliRuntimeException.dart';
 
 class Utils {
   static final Uint8List _byteZeroes = Uint8List(1024);
