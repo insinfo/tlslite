@@ -161,10 +161,24 @@ stack TLS de `tlslite`.
 ## CLI e testes
 
 - `tool/zstd_cli_roundtrip.dart`: cobre `--dict`, `--checksum`, `--keep-artifacts`.
-- **Falta**: `tool/brotli_cli_roundtrip.dart` e `test/brotli/brotli_encoder_test.dart`.
-- Assim que o teste "literal-only meta-blocks round trip" existir, rodar
-  `dart test test/brotli/brotli_encoder_test.dart --plain-name "literal-only meta-blocks round trip"`
-  e comparar com `brotli.exe`.
+- `tool/brotli_cli_roundtrip.dart`: comprime uma entrada arbitrária usando `BrotliEncoder`,
+  opcionalmente redecodifica o resultado e grava os artefatos (`--output`,
+  `--roundtrip-output`, `--window-bits`, `--skip-roundtrip`, `--keep-artifacts`).
+  Execute `dart run tool/brotli_cli_roundtrip.dart <arquivo>` para validar os
+  bytes gerados contra o decoder Dart.
+- `test/brotli/brotli_encoder_test.dart`: cobre round-trips literal-only e
+  literal+copy usando `BrotliEncoder` diretamente.
+- `.github/workflows/dart-tests.yml`: executa `dart analyze` e `dart test` em
+  cada push/PR para impedir regressões na pipeline de compressão.
+
+### Fluxo obrigatório para mudanças no encoder Brotli
+
+1. Rode `dart test test/brotli/brotli_encoder_test.dart` para garantir que os
+  casos de round-trip literal-only e literal+copy continuam íntegros.
+2. Em seguida execute `dart run tool/brotli_cli_roundtrip.dart <fixture>` (ex. um
+  `sample.bin`) antes de abrir PR ou subir commits que alterem o encoder.
+  Documente no PR qual fixture foi usado. Esse passo substitui por enquanto a
+  automação no CI e evita regressões silenciosas.
 
 ---
 

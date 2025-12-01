@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'bit_stream_writer.dart';
+import 'block_split.dart';
 import '../dec/Huffman.dart' show MAX_LENGTH;
 import 'huffman_builder.dart';
 import 'huffman_writer.dart';
@@ -206,6 +207,18 @@ class _DistanceCode {
   static const zero = _DistanceCode(code: 0, extraBits: 0, extraValue: 0);
 }
 
+class _HistogramStats {
+  const _HistogramStats({
+    required this.literalCount,
+    required this.commandCount,
+    required this.distanceCount,
+  });
+
+  final int literalCount;
+  final int commandCount;
+  final int distanceCount;
+}
+
 /// Streaming Brotli encoder that mirrors `brotli-go/encoder.go`.
 class BrotliEncoder {
   BrotliEncoder({this.windowBits = _maxWindowBits}) {
@@ -220,6 +233,8 @@ class BrotliEncoder {
 
   final int windowBits;
   final BitStreamWriter _writer = BitStreamWriter();
+  final BlockStructureWriter _blockStructureWriter =
+      const BlockStructureWriter();
   bool _windowBitsWritten = false;
   final List<_DistanceCode> _distanceCache = <_DistanceCode>[];
 
@@ -263,7 +278,7 @@ class BrotliEncoder {
     final commandHistogram = List<int>.filled(_numInsertAndCopyCodes, 0);
     final distanceHistogram = List<int>.filled(_distanceAlphabetSize, 0);
 
-    _buildHistograms(
+    final histogramStats = _buildHistograms(
       chunk,
       matches,
       literalHistogram,
@@ -272,7 +287,15 @@ class BrotliEncoder {
     );
 
     _writeCompressedMetaBlockHeader(_writer, chunk.length);
-    _writer.writeBits(0, 13); // Single block type per tree category.
+    final literalSplit = BlockSplit.single(histogramStats.literalCount);
+    final commandSplit = BlockSplit.single(histogramStats.commandCount);
+    final distanceSplit = BlockSplit.single(histogramStats.distanceCount);
+    _blockStructureWriter.writeTrivialSplits(
+      _writer,
+      literal: literalSplit,
+      command: commandSplit,
+      distance: distanceSplit,
+    );
 
     final literalCodeLengths = _buildLiteralTree(literalHistogram);
     final literalCodes = convertBitDepthsToSymbols(literalCodeLengths);
@@ -317,7 +340,7 @@ class BrotliEncoder {
     _windowBitsWritten = true;
   }
 
-  void _buildHistograms(
+  _HistogramStats _buildHistograms(
     Uint8List chunk,
     List<BrotliMatch> matches,
     BrotliLiteralHistogram literalHistogram,
@@ -326,6 +349,9 @@ class BrotliEncoder {
   ) {
     final recentDistances = <int>[-10, -10, -10, -10];
     var cursor = 0;
+    var literalCount = 0;
+    var commandCount = 0;
+    var distanceCount = 0;
     for (var i = 0; i < matches.length; i++) {
       final match = matches[i];
       final unmatched = match.unmatchedLength;
@@ -340,6 +366,7 @@ class BrotliEncoder {
       }
       if (unmatched > 0) {
         literalHistogram.addSlice(chunk, cursor, literalEnd);
+        literalCount += unmatched;
       }
 
       final insertCode = _getInsertLengthCode(unmatched);
@@ -352,6 +379,7 @@ class BrotliEncoder {
       final command =
           _combineLengthCodes(insertCode, copyCode, useLastDistance);
       commandHistogram[command]++;
+        commandCount++;
 
       if (command >= 128 && copyLength != 0) {
         if (match.distance <= 0) {
@@ -360,6 +388,7 @@ class BrotliEncoder {
         final distCode = _selectDistanceCode(match.distance, recentDistances);
         _distanceCache[i] = distCode;
         distanceHistogram[distCode.code]++;
+        distanceCount++;
         if (distCode.code != 0) {
           recentDistances
             ..[0] = recentDistances[1]
@@ -380,6 +409,12 @@ class BrotliEncoder {
     if (cursor != chunk.length) {
       throw StateError('Matches do not cover chunk: $cursor/${chunk.length}');
     }
+
+    return _HistogramStats(
+      literalCount: literalCount,
+      commandCount: commandCount,
+      distanceCount: distanceCount,
+    );
   }
 
   Uint8List _buildLiteralTree(BrotliLiteralHistogram histogram) {
