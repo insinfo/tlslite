@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'constants.dart' as tls_constants;
+import 'errors.dart';
 import 'utils/codec.dart';
 import 'utils/cryptomath.dart';
 import 'net/security/pure_dart_with_ffi_socket/tls_extensions.dart';
@@ -1099,15 +1100,16 @@ class TlsServerKeyExchange extends TlsHandshakeMessage {
     this.curveType,
     this.namedCurve,
     this.ecdhYs = const [],
-    this.signature = const [],
-    this.hashAlg = 0,
-    this.signAlg = 0,
+     List<int> signature = const [],
+     this.hashAlg = 0,
+     this.signAlg = 0,
   }) : srpN = srpN ?? BigInt.zero,
        srpG = srpG ?? BigInt.zero,
        srpB = srpB ?? BigInt.zero,
        dhP = dhP ?? BigInt.zero,
        dhG = dhG ?? BigInt.zero,
        dhYs = dhYs ?? BigInt.zero,
+       signature = List<int>.from(signature),
        super(TlsHandshakeType.serverKeyExchange);
 
   final int cipherSuite;
@@ -1130,9 +1132,86 @@ class TlsServerKeyExchange extends TlsHandshakeMessage {
   final List<int> ecdhYs;
   
   // Signature
-  final List<int> signature;
-  final int hashAlg;
-  final int signAlg;
+  List<int> signature;
+  int hashAlg;
+  int signAlg;
+
+  Uint8List encodeParameters() {
+    final writer = Writer();
+
+    if (tls_constants.CipherSuite.srpAllSuites.contains(cipherSuite)) {
+      final srpNBytes = numberToByteArray(srpN);
+      writer.add(srpNBytes.length, 2);
+      writer.addBytes(srpNBytes);
+      final srpGBytes = numberToByteArray(srpG);
+      writer.add(srpGBytes.length, 2);
+      writer.addBytes(srpGBytes);
+      writer.addVarBytes(Uint8List.fromList(srpS), 1);
+      final srpBBytes = numberToByteArray(srpB);
+      writer.add(srpBBytes.length, 2);
+      writer.addBytes(srpBBytes);
+    } else if (tls_constants.CipherSuite.dhAllSuites.contains(cipherSuite)) {
+      final dhPBytes = numberToByteArray(dhP);
+      writer.add(dhPBytes.length, 2);
+      writer.addBytes(dhPBytes);
+      final dhGBytes = numberToByteArray(dhG);
+      writer.add(dhGBytes.length, 2);
+      writer.addBytes(dhGBytes);
+      final dhYsBytes = numberToByteArray(dhYs);
+      writer.add(dhYsBytes.length, 2);
+      writer.addBytes(dhYsBytes);
+    } else if (tls_constants.CipherSuite.ecdhAllSuites.contains(cipherSuite)) {
+      writer.add(curveType ?? tls_constants.ECCurveType.named_curve, 1);
+      if (curveType == tls_constants.ECCurveType.named_curve) {
+        writer.add(namedCurve ?? 0, 2);
+      }
+      writer.addVarBytes(Uint8List.fromList(ecdhYs), 1);
+    }
+
+    return writer.bytes;
+  }
+
+  Uint8List signatureDigest(Uint8List clientRandom, Uint8List serverRandom) {
+    final buffer = BytesBuilder()
+      ..add(clientRandom)
+      ..add(serverRandom)
+      ..add(encodeParameters());
+    final payload = buffer.toBytes();
+    final major = version.isNotEmpty ? version[0] : 3;
+    final minor = version.length > 1 ? version[1] : 3;
+    final isTls12OrLater = major > 3 || (major == 3 && minor >= 3);
+
+    if (!isTls12OrLater) {
+      final sha1Only =
+          tls_constants.CipherSuite.ecdheEcdsaSuites.contains(cipherSuite) ||
+              tls_constants.CipherSuite.dheDsaSuites.contains(cipherSuite);
+      if (sha1Only) {
+        return SHA1(payload);
+      }
+      final legacy = BytesBuilder()
+        ..add(MD5(payload))
+        ..add(SHA1(payload));
+      return legacy.toBytes();
+    }
+
+    if (hashAlg == 0 || signAlg == 0) {
+      throw TLSInternalError(
+        'Signature algorithm unset for TLS 1.2 ServerKeyExchange',
+      );
+    }
+    final schemeValue = (hashAlg << 8) | (signAlg & 0xff);
+    final schemeName = tls_constants.SignatureScheme.toRepr(schemeValue);
+    String? hashName;
+    if (schemeName != null) {
+      hashName = tls_constants.SignatureScheme.getHash(schemeName);
+    } else {
+      hashName = tls_constants.HashAlgorithm.toStr(hashAlg);
+    }
+    if (hashName == 'intrinsic') {
+      return payload;
+    }
+    return secureHash(payload, hashName);
+  }
 
   static TlsServerKeyExchange parse(Uint8List body, int cipherSuite, List<int> version) {
     final parser = Parser(body);
@@ -1207,36 +1286,8 @@ class TlsServerKeyExchange extends TlsHandshakeMessage {
 
   @override
   Uint8List serializeBody() {
-    final writer = Writer();
-    
-    if (tls_constants.CipherSuite.srpAllSuites.contains(cipherSuite)) {
-      final srpNBytes = numberToByteArray(srpN);
-      writer.add(srpNBytes.length, 2);
-      writer.addBytes(srpNBytes);
-      final srpGBytes = numberToByteArray(srpG);
-      writer.add(srpGBytes.length, 2);
-      writer.addBytes(srpGBytes);
-      writer.addVarBytes(Uint8List.fromList(srpS), 1);
-      final srpBBytes = numberToByteArray(srpB);
-      writer.add(srpBBytes.length, 2);
-      writer.addBytes(srpBBytes);
-    } else if (tls_constants.CipherSuite.dhAllSuites.contains(cipherSuite)) {
-      final dhPBytes = numberToByteArray(dhP);
-      writer.add(dhPBytes.length, 2);
-      writer.addBytes(dhPBytes);
-      final dhGBytes = numberToByteArray(dhG);
-      writer.add(dhGBytes.length, 2);
-      writer.addBytes(dhGBytes);
-      final dhYsBytes = numberToByteArray(dhYs);
-      writer.add(dhYsBytes.length, 2);
-      writer.addBytes(dhYsBytes);
-    } else if (tls_constants.CipherSuite.ecdhAllSuites.contains(cipherSuite)) {
-      writer.add(curveType ?? tls_constants.ECCurveType.named_curve, 1);
-      if (curveType == tls_constants.ECCurveType.named_curve) {
-        writer.add(namedCurve ?? 0, 2);
-      }
-      writer.addVarBytes(Uint8List.fromList(ecdhYs), 1);
-    }
+    final writer = Writer()
+      ..addBytes(encodeParameters());
 
     if (tls_constants.CipherSuite.certAllSuites.contains(cipherSuite) ||
         tls_constants.CipherSuite.ecdheEcdsaSuites.contains(cipherSuite)) {

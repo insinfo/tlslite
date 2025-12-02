@@ -1,104 +1,21 @@
-
-
 /// Handling of cryptographic operations for key exchange
 
 import 'dart:typed_data';
 
 import 'constants.dart';
 import 'errors.dart';
-import 'utils/cryptomath.dart';
+import 'ffdhe_groups.dart';
 import 'mathtls.dart';
+import 'messages.dart' as tlsmsg;
+import 'tls_protocol.dart';
+import 'utils/cryptomath.dart';
+import 'utils/dsakey.dart';
+import 'utils/ecdsakey.dart';
+import 'utils/eddsakey.dart';
+import 'utils/lists.dart';
+import 'utils/rsakey.dart';
+import 'utils/tlshashlib.dart' as tlshash;
 import 'utils/x25519.dart';
-
-// Temporary stub classes for messages - will be replaced when messages.dart is ported
-// ignore: unused_element
-class _ClientKeyExchange {
-  Uint8List? encryptedPreMasterSecret;
-  BigInt? dh_Yc;
-  Uint8List? ecdh_Yc;
-  BigInt? srp_A;
-
-  void createRSA(Uint8List? encrypted) {
-    encryptedPreMasterSecret = encrypted;
-  }
-
-  void createDH(BigInt? dhYc) {
-    dh_Yc = dhYc;
-  }
-
-  void createECDH(Uint8List? ecdhYc) {
-    ecdh_Yc = ecdhYc;
-  }
-
-  void createSRP(BigInt? srpA) {
-    srp_A = srpA;
-  }
-}
-
-// ignore: unused_element
-class _ServerKeyExchange {
-  int? hashAlg;
-  int? signAlg;
-  Uint8List? signature;
-  BigInt? dh_p;
-  BigInt? dh_g;
-  BigInt? dh_Ys;
-  BigInt? srp_N;
-  BigInt? srp_g;
-  Uint8List? srp_s;
-  BigInt? srp_B;
-  int? curve_type;
-  int? named_curve;
-  Uint8List? ecdh_Ys;
-  (int, int)? version;
-
-  _ServerKeyExchange(int cipherSuite, (int, int) ver) {
-    version = ver;
-  }
-
-  void createDH(BigInt? p, BigInt? g, Uint8List ys) {
-    dh_p = p;
-    dh_g = g;
-    dh_Ys = bytesToNumber(ys);
-  }
-
-  void createECDH(int curveType, {int? named_curve, Uint8List? point}) {
-    curve_type = curveType;
-    this.named_curve = named_curve;
-    ecdh_Ys = point;
-  }
-
-  void createSRP(BigInt? N, BigInt? g, Uint8List? s, BigInt? B) {
-    srp_N = N;
-    srp_g = g;
-    srp_s = s;
-    srp_B = B;
-  }
-
-  Uint8List hash(Uint8List clientRandom, Uint8List serverRandom) {
-    // Stub - will be implemented with proper hashing
-    return Uint8List(32);
-  }
-}
-
-// ignore: unused_element
-class _ClientHello {
-  (int, int)? client_version;
-  Uint8List? srp_username;
-
-  dynamic getExtension(int type) {
-    return null;
-  }
-}
-
-// ignore: unused_element
-class _ServerHello {
-  (int, int)? server_version;
-
-  dynamic getExtension(int type) {
-    return null;
-  }
-}
 
 /// Common API for calculating Premaster secret
 ///
@@ -116,6 +33,11 @@ abstract class KeyExchange {
   final dynamic serverHello;
   final dynamic privateKey;
 
+  List<int>? _clientVersionCache;
+  List<int>? _serverVersionCache;
+  Uint8List? _clientRandomCache;
+  Uint8List? _serverRandomCache;
+
   /// Create a ServerKeyExchange object
   ///
   /// Returns a ServerKeyExchange object for the server's initial leg in the
@@ -126,9 +48,11 @@ abstract class KeyExchange {
   }
 
   /// Create a ClientKeyExchange object
-  dynamic makeClientKeyExchange() {
-    throw UnimplementedError('makeClientKeyExchange');
-  }
+  tlsmsg.TlsClientKeyExchange makeClientKeyExchange() =>
+      tlsmsg.TlsClientKeyExchange(
+        cipherSuite: cipherSuite,
+        version: _serverVersion,
+      );
 
   /// Process ClientKeyExchange and return premaster secret
   Uint8List processClientKeyExchange(dynamic clientKeyExchange) {
@@ -148,24 +72,416 @@ abstract class KeyExchange {
     dynamic serverKeyExchange, {
     String? sigHash,
   }) {
-    throw UnimplementedError('signServerKeyExchange');
+    if (serverKeyExchange is! tlsmsg.TlsServerKeyExchange) {
+      throw TLSInternalError('ServerKeyExchange message required for signing');
+    }
+    final key = privateKey;
+    if (!_supportsSigningKey(key)) {
+      throw TLSInternalError('No private key available for ServerKeyExchange signing');
+    }
+    if (!_hasPrivateComponent(key!)) {
+      throw TLSInternalError('Signing key does not carry private material');
+    }
+
+    final normalizedSigHash = sigHash?.toLowerCase();
+    final version = _messageVersion(serverKeyExchange);
+    if (_isTls12OrLater(version)) {
+      _signTls12(serverKeyExchange, key, normalizedSigHash);
+    } else {
+      _signPreTls12(serverKeyExchange, key);
+    }
   }
-}
 
-/// Common methods for key exchanges that authenticate Server Key Exchange
-abstract class AuthenticatedKeyExchange extends KeyExchange {
-  AuthenticatedKeyExchange(
-    super.cipherSuite,
-    super.clientHello,
-    super.serverHello,
-    super.privateKey,
-  );
+  List<int> get _clientVersion =>
+      _clientVersionCache ??= _extractVersion(_tryGetClientVersion());
 
-  @override
-  dynamic makeServerKeyExchange({String? sigHash}) {
-    final ske = super.makeServerKeyExchange(sigHash: sigHash);
-    signServerKeyExchange(ske, sigHash: sigHash);
-    return ske;
+  List<int> get _serverVersion =>
+      _serverVersionCache ??=
+          _extractVersion(_tryGetServerVersion() ?? _tryGetClientVersion());
+
+  (int, int) get _serverVersionTuple => (_serverVersion[0], _serverVersion[1]);
+
+  Uint8List get _clientRandom =>
+      _clientRandomCache ??= _extractRandom(clientHello, isClient: true);
+
+  Uint8List get _serverRandom =>
+      _serverRandomCache ??= _extractRandom(serverHello, isClient: false);
+
+  dynamic _tryGetClientVersion() {
+    final hello = clientHello;
+    if (hello == null) return null;
+    try {
+      final value = hello.client_version;
+      if (value != null) return value;
+    } catch (_) {}
+    try {
+      final value = hello.clientVersion;
+      if (value != null) return value;
+    } catch (_) {}
+    return null;
+  }
+
+  dynamic _tryGetServerVersion() {
+    final hello = serverHello;
+    if (hello == null) return null;
+    try {
+      final value = hello.server_version;
+      if (value != null) return value;
+    } catch (_) {}
+    try {
+      final value = hello.serverVersion;
+      if (value != null) return value;
+    } catch (_) {}
+    try {
+      final value = hello.selected_supported_version;
+      if (value != null) return value;
+    } catch (_) {}
+    return null;
+  }
+
+  List<int> _extractVersion(dynamic version) {
+    if (version == null) {
+      return const [3, 3];
+    }
+    if (version is List<int>) {
+      if (version.length < 2) {
+        throw TLSInternalError('Malformed protocol version array');
+      }
+      return [version[0], version[1]];
+    }
+    if (version is Uint8List) {
+      if (version.length < 2) {
+        throw TLSInternalError('Malformed protocol version bytes');
+      }
+      return [version[0], version[1]];
+    }
+    if (version is (int, int)) {
+      return [version.$1, version.$2];
+    }
+    if (version is TlsProtocolVersion) {
+      return [version.major, version.minor];
+    }
+    throw TLSInternalError(
+      'Unsupported protocol version representation: ${version.runtimeType}',
+    );
+  }
+
+  Uint8List _extractRandom(dynamic hello, {required bool isClient}) {
+    if (hello == null) {
+      throw TLSInternalError(
+        'Missing ${isClient ? 'client' : 'server'} hello for key exchange',
+      );
+    }
+    dynamic value;
+    try {
+      value = hello.random;
+    } catch (_) {}
+    value ??= _tryAlternateRandom(hello);
+    if (value is Uint8List) {
+      return Uint8List.fromList(value);
+    }
+    if (value is List<int>) {
+      return Uint8List.fromList(value);
+    }
+    throw TLSInternalError(
+      'Missing ${isClient ? 'client' : 'server'} random for key exchange',
+    );
+  }
+
+  dynamic _tryAlternateRandom(dynamic hello) {
+    try {
+      return hello.client_random;
+    } catch (_) {}
+    try {
+      return hello.server_random;
+    } catch (_) {}
+    return null;
+  }
+
+  bool _supportsSigningKey(Object? key) {
+    return key is RSAKey || key is ECDSAKey || key is DSAKey || key is EdDSAKey;
+  }
+
+  bool _hasPrivateComponent(Object key) {
+    if (key is RSAKey) return key.hasPrivateKey();
+    if (key is ECDSAKey) return key.hasPrivateKey();
+    if (key is DSAKey) return key.hasPrivateKey();
+    if (key is EdDSAKey) return key.hasPrivateKey();
+    return false;
+  }
+
+  (int, int) _messageVersion(tlsmsg.TlsServerKeyExchange ske) {
+    if (ske.version.length >= 2) {
+      return (ske.version[0], ske.version[1]);
+    }
+    return _serverVersionTuple;
+  }
+
+  bool _isTls12OrLater((int, int) version) {
+    return version.$1 > 3 || (version.$1 == 3 && version.$2 >= 3);
+  }
+
+  void _signPreTls12(
+    tlsmsg.TlsServerKeyExchange ske,
+    Object key,
+  ) {
+    final digest = ske.signatureDigest(_clientRandom, _serverRandom);
+    Uint8List signature;
+    if (key is RSAKey) {
+      signature = key.sign(digest);
+      if (!key.verify(signature, digest)) {
+        throw TLSInternalError('Server Key Exchange signature invalid');
+      }
+    } else if (key is ECDSAKey) {
+      signature = key.sign(digest, hashAlg: 'sha1');
+      if (!key.verify(signature, digest, hashAlg: 'sha1')) {
+        throw TLSInternalError('Server Key Exchange signature invalid');
+      }
+    } else if (key is DSAKey) {
+      signature = key.sign(digest);
+      if (!key.verify(signature, digest)) {
+        throw TLSInternalError('Server Key Exchange signature invalid');
+      }
+    } else {
+      throw TLSIllegalParameterException(
+        'Unsupported key type for legacy ServerKeyExchange signatures',
+      );
+    }
+    ske.signature = signature;
+  }
+
+  void _signTls12(
+    tlsmsg.TlsServerKeyExchange ske,
+    Object key,
+    String? sigHash,
+  ) {
+    if (key is RSAKey) {
+      _signTls12WithRsa(ske, key, sigHash);
+      return;
+    }
+    if (key is ECDSAKey) {
+      _signTls12WithEcdsa(ske, key, sigHash);
+      return;
+    }
+    if (key is DSAKey) {
+      _signTls12WithDsa(ske, key, sigHash);
+      return;
+    }
+    if (key is EdDSAKey) {
+      _signTls12WithEdDsa(ske, key, sigHash);
+      return;
+    }
+    throw TLSIllegalParameterException(
+      'Unsupported key type for TLS 1.2 ServerKeyExchange signatures',
+    );
+  }
+
+  void _signTls12WithRsa(
+    tlsmsg.TlsServerKeyExchange ske,
+    RSAKey key,
+    String? sigHash,
+  ) {
+    final schemeName = sigHash;
+    final schemeHashId = schemeName != null
+        ? SignatureScheme.hashIdFromName(schemeName)
+        : null;
+    final schemeSignId = schemeName != null
+        ? SignatureScheme.signatureIdFromName(schemeName)
+        : null;
+
+    String padding;
+    String hashName;
+    var saltLen = 0;
+
+    if (schemeHashId != null && schemeSignId != null) {
+      final keyType = SignatureScheme.getKeyType(schemeName!);
+      if (keyType != 'rsa') {
+        throw TLSIllegalParameterException(
+          'Signature scheme $schemeName incompatible with RSA keys',
+        );
+      }
+      padding = SignatureScheme.getPadding(schemeName);
+      hashName = SignatureScheme.getHash(schemeName);
+      if (hashName == 'intrinsic') {
+        throw TLSIllegalParameterException(
+          'RSA schemes cannot rely on intrinsic hashing',
+        );
+      }
+      saltLen = padding == 'pss'
+          ? tlshash.newHash(hashName).digestSize
+          : 0;
+      ske.hashAlg = schemeHashId;
+      ske.signAlg = schemeSignId;
+    } else {
+      final fallbackName = schemeName ?? 'sha256';
+      final hashId = HashAlgorithm.fromName(fallbackName);
+      if (hashId == null) {
+        throw TLSIllegalParameterException(
+          'Unknown RSA hash algorithm: ${sigHash ?? fallbackName}',
+        );
+      }
+      ske.hashAlg = hashId;
+      ske.signAlg = SignatureAlgorithm.rsa;
+      padding = 'pkcs1';
+      hashName = fallbackName;
+    }
+
+    if (key.keyType == 'rsa-pss' && padding != 'pss') {
+      throw TLSIllegalParameterException('RSA-PSS keys must use PSS padding');
+    }
+
+    final digest = ske.signatureDigest(_clientRandom, _serverRandom);
+    final signature = key.sign(
+      digest,
+      padding: padding,
+      hashAlg: hashName,
+      saltLen: saltLen,
+    );
+    final ok = key.verify(
+      signature,
+      digest,
+      padding: padding,
+      hashAlg: hashName,
+      saltLen: saltLen,
+    );
+    if (!ok) {
+      throw TLSInternalError('Server Key Exchange signature invalid');
+    }
+    ske.signature = signature;
+  }
+
+  void _signTls12WithEcdsa(
+    tlsmsg.TlsServerKeyExchange ske,
+    ECDSAKey key,
+    String? sigHash,
+  ) {
+    final schemeName = sigHash;
+    int? hashId;
+    int? signId;
+    String hashName;
+
+    if (schemeName != null) {
+      final schemeHash = SignatureScheme.hashIdFromName(schemeName);
+      final schemeSign = SignatureScheme.signatureIdFromName(schemeName);
+      if (schemeHash != null && schemeSign != null) {
+        if (SignatureScheme.getKeyType(schemeName) != 'ecdsa') {
+          throw TLSIllegalParameterException(
+            'Signature scheme $schemeName incompatible with ECDSA keys',
+          );
+        }
+        hashId = schemeHash;
+        signId = schemeSign;
+        hashName = SignatureScheme.getHash(schemeName);
+      } else {
+        final fallback = HashAlgorithm.fromName(schemeName);
+        if (fallback == null) {
+          throw TLSIllegalParameterException(
+            'Unknown hash algorithm: $schemeName',
+          );
+        }
+        hashId = fallback;
+        signId = SignatureAlgorithm.ecdsa;
+        hashName = schemeName;
+      }
+    } else {
+      hashId = HashAlgorithm.sha256;
+      signId = SignatureAlgorithm.ecdsa;
+      hashName = 'sha256';
+    }
+
+    ske.hashAlg = hashId;
+    ske.signAlg = signId;
+
+    var digest = ske.signatureDigest(_clientRandom, _serverRandom);
+    final maxBytes = (key.bitLength + 7) ~/ 8;
+    if (digest.length > maxBytes) {
+      digest = Uint8List.fromList(digest.sublist(0, maxBytes));
+    }
+
+    final signature = key.sign(digest, hashAlg: hashName);
+    final ok = key.verify(signature, digest, hashAlg: hashName);
+    if (!ok) {
+      throw TLSInternalError('Server Key Exchange signature invalid');
+    }
+    ske.signature = signature;
+  }
+
+  void _signTls12WithDsa(
+    tlsmsg.TlsServerKeyExchange ske,
+    DSAKey key,
+    String? sigHash,
+  ) {
+    final schemeName = sigHash;
+    int? hashId;
+    int? signId;
+
+    if (schemeName != null) {
+      final schemeHash = SignatureScheme.hashIdFromName(schemeName);
+      final schemeSign = SignatureScheme.signatureIdFromName(schemeName);
+      if (schemeHash != null && schemeSign != null) {
+        if (SignatureScheme.getKeyType(schemeName) != 'dsa') {
+          throw TLSIllegalParameterException(
+            'Signature scheme $schemeName incompatible with DSA keys',
+          );
+        }
+        hashId = schemeHash;
+        signId = schemeSign;
+      } else {
+        final fallback = HashAlgorithm.fromName(schemeName);
+        if (fallback == null) {
+          throw TLSIllegalParameterException(
+            'Unknown hash algorithm: $schemeName',
+          );
+        }
+        hashId = fallback;
+        signId = SignatureAlgorithm.dsa;
+      }
+    } else {
+      hashId = HashAlgorithm.sha1;
+      signId = SignatureAlgorithm.dsa;
+    }
+
+    ske.hashAlg = hashId;
+    ske.signAlg = signId;
+
+    final digest = ske.signatureDigest(_clientRandom, _serverRandom);
+    final signature = key.sign(digest);
+    if (!key.verify(signature, digest)) {
+      throw TLSInternalError('Server Key Exchange signature invalid');
+    }
+    ske.signature = signature;
+  }
+
+  void _signTls12WithEdDsa(
+    tlsmsg.TlsServerKeyExchange ske,
+    EdDSAKey key,
+    String? sigHash,
+  ) {
+    final schemeName = sigHash;
+    if (schemeName == null) {
+      throw TLSIllegalParameterException(
+        'EdDSA signatures require an explicit signature scheme',
+      );
+    }
+    final hashId = SignatureScheme.hashIdFromName(schemeName);
+    final signId = SignatureScheme.signatureIdFromName(schemeName);
+    if (hashId == null || signId == null) {
+      throw TLSIllegalParameterException('Unknown signature scheme: $schemeName');
+    }
+    if (SignatureScheme.getKeyType(schemeName) != 'eddsa') {
+      throw TLSIllegalParameterException(
+        'Signature scheme $schemeName incompatible with EdDSA keys',
+      );
+    }
+    ske.hashAlg = hashId;
+    ske.signAlg = signId;
+
+    final payload = ske.signatureDigest(_clientRandom, _serverRandom);
+    final signature = key.hashAndSign(payload);
+    if (!key.hashAndVerify(signature, payload)) {
+      throw TLSInternalError('Server Key Exchange signature invalid');
+    }
+    ske.signature = signature;
   }
 }
 
@@ -227,11 +543,17 @@ class RSAKeyExchange extends KeyExchange {
   }
 
   @override
-  dynamic makeClientKeyExchange() {
-    // Return a client key exchange with clients key share
-    final clientKeyExchange = super.makeClientKeyExchange();
-    clientKeyExchange.createRSA(encPremasterSecret);
-    return clientKeyExchange;
+  @override
+  tlsmsg.TlsClientKeyExchange makeClientKeyExchange() {
+    final secret = encPremasterSecret;
+    if (secret == null || secret.isEmpty) {
+      throw TLSInternalError('Client premaster secret not prepared');
+    }
+    return tlsmsg.TlsClientKeyExchange(
+      cipherSuite: cipherSuite,
+      version: _clientVersion,
+      encryptedPreMasterSecret: secret,
+    );
   }
 }
 
@@ -257,37 +579,30 @@ class ADHKeyExchange extends KeyExchange {
   late BigInt dhP;
 
   @override
-  dynamic makeServerKeyExchange({String? sigHash}) {
-    // Select DH parameters
-    if (dhParams != null) {
-      dhG = dhParams!.$1;
-      dhP = dhParams!.$2;
-    } else if (dhGroups != null && dhGroups!.isNotEmpty) {
-      // TODO: Implement RFC 7919 group selection from dhGroups
-      // For now use first group as default
-      throw UnimplementedError('RFC 7919 group selection not yet implemented');
-    } else {
-      // Use default 2048-bit safe prime
-      throw UnimplementedError('Default DH params not yet implemented');
-    }
-
-    final kex = FFDHKeyExchange(0, serverHello.server_version!, generator: dhG, prime: dhP);
+  tlsmsg.TlsServerKeyExchange makeServerKeyExchange({String? sigHash}) {
+    _selectDhParameters();
+    final kex = FFDHKeyExchange(0, _serverVersionTuple, generator: dhG, prime: dhP);
     dhXs = kex.getRandomPrivateKey();
-    final dhYs = kex.calcPublicValue(dhXs);
+    final dhYsBytes = kex.calcPublicValue(dhXs);
 
-    final version = serverHello.server_version;
-    final serverKeyExchange = _ServerKeyExchange(cipherSuite, version!);
-    serverKeyExchange.createDH(dhP, dhG, dhYs);
-    // No sign for anonymous ServerKeyExchange
-    return serverKeyExchange;
+    return tlsmsg.TlsServerKeyExchange(
+      cipherSuite: cipherSuite,
+      version: _serverVersion,
+      dhP: dhP,
+      dhG: dhG,
+      dhYs: bytesToNumber(dhYsBytes),
+    );
   }
 
   @override
   Uint8List processClientKeyExchange(dynamic clientKeyExchange) {
-    final dhYc = clientKeyExchange.dh_Yc;
+    final dhValue = clientKeyExchange.dhYc as BigInt?;
+    if (dhValue == null || dhValue == BigInt.zero) {
+      throw TLSDecodeError('Missing client DH key share');
+    }
 
-    final kex = FFDHKeyExchange(0, serverHello.server_version!, generator: dhG, prime: dhP);
-    return kex.calcSharedKey(dhXs!, numberToByteArray(dhYc));
+    final kex = FFDHKeyExchange(0, _serverVersionTuple, generator: dhG, prime: dhP);
+    return kex.calcSharedKey(dhXs!, numberToByteArray(dhValue));
   }
 
   @override
@@ -295,32 +610,111 @@ class ADHKeyExchange extends KeyExchange {
     dynamic srvPublicKey,
     dynamic serverKeyExchange,
   ) {
-    final dhP = serverKeyExchange.dh_p!;
+    final dhP = serverKeyExchange.dhP as BigInt;
     // TODO: make the minimum changeable
     if (dhP < BigInt.from(2).pow(1023)) {
       throw TLSInsufficientSecurity('DH prime too small');
     }
-    final dhG = serverKeyExchange.dh_g!;
-    final dhYs = serverKeyExchange.dh_Ys!;
+    final dhG = serverKeyExchange.dhG as BigInt;
+    final dhYs = serverKeyExchange.dhYs as BigInt;
 
-    final kex = FFDHKeyExchange(0, serverHello.server_version!, generator: dhG, prime: dhP);
+    final kex = FFDHKeyExchange(0, _serverVersionTuple, generator: dhG, prime: dhP);
 
     final dhXc = kex.getRandomPrivateKey();
-    dhYc = dhXc;
+    final publicShare = kex.calcPublicValue(dhXc);
+    dhYc = bytesToNumber(publicShare);
     return kex.calcSharedKey(dhXc, numberToByteArray(dhYs));
   }
 
   @override
-  dynamic makeClientKeyExchange() {
-    final cke = _ClientKeyExchange();
-    cke.createDH(dhYc);
-    return cke;
+  tlsmsg.TlsClientKeyExchange makeClientKeyExchange() {
+    return tlsmsg.TlsClientKeyExchange(
+      cipherSuite: cipherSuite,
+      version: _serverVersion,
+      dhYc: dhYc ?? BigInt.zero,
+    );
+  }
+
+  void _selectDhParameters() {
+    if (dhParams != null) {
+      dhG = dhParams!.$1;
+      dhP = dhParams!.$2;
+      return;
+    }
+
+    final defaultGroup = goodGroupParameters[2];
+    if (dhGroups == null || dhGroups!.isEmpty) {
+      dhG = defaultGroup.generator;
+      dhP = defaultGroup.prime;
+      return;
+    }
+
+    final clientGroups = _clientSupportedFfdheGroups();
+    if (clientGroups == null || clientGroups.isEmpty) {
+      final preferred = rfc7919GroupMap[dhGroups!.first];
+      if (preferred != null) {
+        dhG = preferred.generator;
+        dhP = preferred.prime;
+        return;
+      }
+      dhG = defaultGroup.generator;
+      dhP = defaultGroup.prime;
+      return;
+    }
+
+    final commonGroup = getFirstMatching(clientGroups, dhGroups);
+    if (commonGroup != null) {
+      final params = rfc7919GroupMap[commonGroup];
+      if (params == null) {
+        throw TLSInternalError('Server selected unknown DH group $commonGroup');
+      }
+      dhG = params.generator;
+      dhP = params.prime;
+      return;
+    }
+
+    final clientOfferedFfdhe = clientGroups.any(
+      (group) => group >= GroupName.ffdhe2048 && group < 512,
+    );
+    if (clientOfferedFfdhe) {
+      throw TLSInternalError(
+        'DHE attempted without mutual RFC 7919 group agreement',
+      );
+    }
+
+    final fallback = rfc7919GroupMap[dhGroups!.first];
+    if (fallback != null) {
+      dhG = fallback.generator;
+      dhP = fallback.prime;
+      return;
+    }
+
+    dhG = defaultGroup.generator;
+    dhP = defaultGroup.prime;
+  }
+
+  List<int>? _clientSupportedFfdheGroups() {
+    try {
+      final ext = clientHello.getExtension(ExtensionType.supported_groups);
+      if (ext == null) {
+        return null;
+      }
+      final groups = ext.groups;
+      if (groups is List<int>) {
+        return groups;
+      }
+      if (groups is List) {
+        return groups.cast<int>();
+      }
+    } catch (_) {
+      // Ignore – fall back to defaults
+    }
+    return null;
   }
 }
 
 /// Helper class for conducting DHE_RSA key exchange
-class DHE_RSAKeyExchange extends AuthenticatedKeyExchange
-    implements ADHKeyExchange {
+class DHE_RSAKeyExchange extends ADHKeyExchange {
   DHE_RSAKeyExchange(
     super.cipherSuite,
     super.clientHello,
@@ -347,6 +741,13 @@ class DHE_RSAKeyExchange extends AuthenticatedKeyExchange
 
   @override
   late BigInt dhP;
+
+  @override
+  tlsmsg.TlsServerKeyExchange makeServerKeyExchange({String? sigHash}) {
+    final ske = super.makeServerKeyExchange(sigHash: sigHash);
+    signServerKeyExchange(ske, sigHash: sigHash);
+    return ske;
+  }
 }
 
 /// Handling of anonymous ECDH Key exchange
@@ -368,9 +769,12 @@ class AECDHKeyExchange extends KeyExchange {
   Uint8List? ecdhYc;
 
   @override
-  dynamic makeServerKeyExchange({String? sigHash}) {
-    // Get client supported groups
-    final clientCurvesExt = clientHello.getExtension(ExtensionType.supported_groups);
+  @override
+  tlsmsg.TlsServerKeyExchange makeServerKeyExchange({String? sigHash}) {
+    dynamic clientCurvesExt;
+    try {
+      clientCurvesExt = clientHello.getExtension(ExtensionType.supported_groups);
+    } catch (_) {}
     List<int> clientCurves;
 
     if (clientCurvesExt == null) {
@@ -381,7 +785,7 @@ class AECDHKeyExchange extends KeyExchange {
       if (groups == null || groups.isEmpty) {
         throw TLSInternalError("Can't do ECDHE with no client curves");
       }
-      clientCurves = groups;
+      clientCurves = groups.cast<int>();
     }
 
     // Pick first client preferred group we support
@@ -390,7 +794,7 @@ class AECDHKeyExchange extends KeyExchange {
       throw TLSInsufficientSecurity('No mutual groups');
     }
 
-    final kex = ECDHKeyExchange(groupId!, serverHello.server_version!);
+    final kex = ECDHKeyExchange(groupId!, _serverVersionTuple);
     ecdhXs = kex.getRandomPrivateKey();
 
     var extNegotiated = 'uncompressed';
@@ -398,30 +802,28 @@ class AECDHKeyExchange extends KeyExchange {
 
     final ecdhYs = kex.calcPublicValue(ecdhXs, extNegotiated);
 
-    final version = serverHello.server_version;
-    final serverKeyExchange = _ServerKeyExchange(cipherSuite, version!);
-    serverKeyExchange.createECDH(
-      ECCurveType.named_curve,
-      named_curve: groupId,
-      point: ecdhYs,
+    return tlsmsg.TlsServerKeyExchange(
+      cipherSuite: cipherSuite,
+      version: _serverVersion,
+      curveType: ECCurveType.named_curve,
+      namedCurve: groupId,
+      ecdhYs: ecdhYs,
     );
-    // No sign for anonymous ServerKeyExchange
-    return serverKeyExchange;
   }
 
   @override
   Uint8List processClientKeyExchange(dynamic clientKeyExchange) {
-    final ecdhYc = clientKeyExchange.ecdh_Yc;
+    final ecdhYc = clientKeyExchange.ecdhYc as List<int>?;
 
     if (ecdhYc == null || ecdhYc.isEmpty) {
       throw TLSDecodeError('No key share');
     }
 
-    final kex = ECDHKeyExchange(groupId!, serverHello.server_version!);
+    final kex = ECDHKeyExchange(groupId!, _serverVersionTuple);
     final extSupported = {'uncompressed'};
     // TODO: Handle EC point formats extension negotiation
 
-    return kex.calcSharedKey(ecdhXs, ecdhYc, extSupported);
+    return kex.calcSharedKey(ecdhXs, Uint8List.fromList(ecdhYc), extSupported);
   }
 
   @override
@@ -429,31 +831,39 @@ class AECDHKeyExchange extends KeyExchange {
     dynamic srvPublicKey,
     dynamic serverKeyExchange,
   ) {
-    if (serverKeyExchange.curve_type != ECCurveType.named_curve ||
-        !acceptedCurves!.contains(serverKeyExchange.named_curve)) {
+    final curveType = serverKeyExchange.curveType;
+    final namedCurve = serverKeyExchange.namedCurve;
+    if (curveType != ECCurveType.named_curve ||
+        !acceptedCurves!.contains(namedCurve)) {
       throw TLSIllegalParameterException("Server picked curve we didn't advertise");
     }
 
-    final ecdhYs = serverKeyExchange.ecdh_Ys;
-    if (ecdhYs == null || ecdhYs.isEmpty) {
+    final ecdhYs = serverKeyExchange.ecdhYs as List<int>;
+    if (ecdhYs.isEmpty) {
       throw TLSDecodeError('Empty server key share');
     }
 
-    final kex = ECDHKeyExchange(serverKeyExchange.named_curve!, serverHello.server_version!);
+    final kex = ECDHKeyExchange(namedCurve!, _serverVersionTuple);
     final ecdhXc = kex.getRandomPrivateKey();
     final extNegotiated = 'uncompressed';
     final extSupported = {'uncompressed'};
     // TODO: Handle EC point formats extension negotiation
 
     ecdhYc = kex.calcPublicValue(ecdhXc, extNegotiated);
-    return kex.calcSharedKey(ecdhXc, ecdhYs, extSupported);
+    return kex.calcSharedKey(ecdhXc, Uint8List.fromList(ecdhYs), extSupported);
   }
 
   @override
-  dynamic makeClientKeyExchange() {
-    final cke = _ClientKeyExchange();
-    cke.createECDH(ecdhYc);
-    return cke;
+  tlsmsg.TlsClientKeyExchange makeClientKeyExchange() {
+    final share = ecdhYc;
+    if (share == null || share.isEmpty) {
+      throw TLSInternalError('Client ECDH share not prepared');
+    }
+    return tlsmsg.TlsClientKeyExchange(
+      cipherSuite: cipherSuite,
+      version: _clientVersion,
+      ecdhYc: share,
+    );
   }
 
   int? _getFirstMatching(List<int> client, List<int>? server) {
@@ -477,7 +887,7 @@ class ECDHE_RSAKeyExchange extends AECDHKeyExchange {
   });
 
   @override
-  dynamic makeServerKeyExchange({String? sigHash}) {
+  tlsmsg.TlsServerKeyExchange makeServerKeyExchange({String? sigHash}) {
     final ske = super.makeServerKeyExchange(sigHash: sigHash);
     signServerKeyExchange(ske, sigHash: sigHash);
     return ske;
@@ -516,7 +926,8 @@ class SRPKeyExchange extends KeyExchange {
   BigInt? A;
 
   @override
-  dynamic makeServerKeyExchange({String? sigHash}) {
+  @override
+  tlsmsg.TlsServerKeyExchange makeServerKeyExchange({String? sigHash}) {
     final srpUser = clientHello.srp_username!;
 
     // Get parameters from username
@@ -535,20 +946,19 @@ class SRPKeyExchange extends KeyExchange {
     B = (powMod(g, b!, N!) + (k * v!)) % N!;
 
     // Create ServerKeyExchange, signing it if necessary
-    final serverKeyExchange = _ServerKeyExchange(cipherSuite, serverHello.server_version!);
-    serverKeyExchange.createSRP(N, g, s, B);
-
-    // TODO: Sign if cipherSuite is in srpCertSuites
-    // if (CipherSuite.srpCertSuites.contains(cipherSuite)) {
-    //   signServerKeyExchange(serverKeyExchange, sigHash);
-    // }
-
-    return serverKeyExchange;
+    return tlsmsg.TlsServerKeyExchange(
+      cipherSuite: cipherSuite,
+      version: _serverVersion,
+      srpN: N!,
+      srpG: g,
+      srpS: s,
+      srpB: B!,
+    );
   }
 
   @override
   Uint8List processClientKeyExchange(dynamic clientKeyExchange) {
-    final a = clientKeyExchange.srp_A as BigInt;
+    final a = clientKeyExchange.srpA as BigInt;
     if (a % N! == BigInt.zero) {
       throw TLSIllegalParameterException('Invalid SRP A value');
     }
@@ -566,10 +976,10 @@ class SRPKeyExchange extends KeyExchange {
     dynamic srvPublicKey,
     dynamic serverKeyExchange,
   ) {
-    final n = serverKeyExchange.srp_N as BigInt;
-    final g = serverKeyExchange.srp_g as BigInt;
-    final s = serverKeyExchange.srp_s as Uint8List;
-    final b_ = serverKeyExchange.srp_B as BigInt;
+    final n = serverKeyExchange.srpN as BigInt;
+    final g = serverKeyExchange.srpG as BigInt;
+    final s = Uint8List.fromList(serverKeyExchange.srpS as List<int>);
+    final b_ = serverKeyExchange.srpB as BigInt;
 
     // TODO: Check if (g, N) are in goodGroupParameters
     // TODO: Check minKeySize and maxKeySize from settings
@@ -602,10 +1012,17 @@ class SRPKeyExchange extends KeyExchange {
   }
 
   @override
-  dynamic makeClientKeyExchange() {
-    final cke = _ClientKeyExchange();
-    cke.createSRP(A);
-    return cke;
+  @override
+  tlsmsg.TlsClientKeyExchange makeClientKeyExchange() {
+    final publicValue = A;
+    if (publicValue == null || publicValue == BigInt.zero) {
+      throw TLSInternalError('Client SRP share not prepared');
+    }
+    return tlsmsg.TlsClientKeyExchange(
+      cipherSuite: cipherSuite,
+      version: _clientVersion,
+      srpA: publicValue,
+    );
   }
 }
 
@@ -633,14 +1050,12 @@ class FFDHKeyExchange extends RawDHKeyExchange {
     super.version, {
     BigInt? generator,
     BigInt? prime,
-  })  : generator = generator ?? BigInt.zero,
-        prime = prime ?? BigInt.zero {
-    if (prime != null && groupName != 0) {
-      throw ArgumentError(
-        "Can't set the RFC7919 group and custom params at the same time",
-      );
-    }
-    // TODO: Load RFC7919 groups when groupName is specified
+  })  : assert(
+          groupName == 0 || (generator == null && prime == null),
+          "Can't set the RFC7919 group and custom params at the same time",
+        ),
+        generator = _resolveGenerator(groupName, generator),
+        prime = _resolvePrime(groupName, prime) {
     if (this.generator <= BigInt.one || this.generator >= this.prime) {
       throw TLSIllegalParameterException('Invalid DH generator');
     }
@@ -648,6 +1063,38 @@ class FFDHKeyExchange extends RawDHKeyExchange {
 
   final BigInt generator;
   final BigInt prime;
+
+  static BigInt _resolveGenerator(int groupName, BigInt? explicitGenerator) {
+    if (groupName != 0) {
+      final group = rfc7919GroupMap[groupName];
+      if (group == null) {
+        throw TLSIllegalParameterException(
+          'Unknown RFC 7919 group identifier: $groupName',
+        );
+      }
+      return group.generator;
+    }
+    if (explicitGenerator == null) {
+      throw ArgumentError('Custom DH parameters require a generator');
+    }
+    return explicitGenerator;
+  }
+
+  static BigInt _resolvePrime(int groupName, BigInt? explicitPrime) {
+    if (groupName != 0) {
+      final group = rfc7919GroupMap[groupName];
+      if (group == null) {
+        throw TLSIllegalParameterException(
+          'Unknown RFC 7919 group identifier: $groupName',
+        );
+      }
+      return group.prime;
+    }
+    if (explicitPrime == null) {
+      throw ArgumentError('Custom DH parameters require a prime');
+    }
+    return explicitPrime;
+  }
 
   @override
   BigInt getRandomPrivateKey() {

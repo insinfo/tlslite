@@ -350,10 +350,17 @@ class HashAlgorithm {
     intrinsic: 'intrinsic',
   };
 
+  static final Map<String, int> _nameToIntMap = {
+    for (final entry in _intToNameMap.entries) entry.value.toLowerCase(): entry.key,
+  };
+
   static String? toRepr(int value) =>
       _TLSEnumHelper.intToName(value, _intToNameMap);
   static String toStr(int value) =>
       _TLSEnumHelper.intToString(value, _intToNameMap);
+
+  /// Retorna o identificador numérico para o nome do hash informado.
+  static int? fromName(String name) => _nameToIntMap[name.toLowerCase()];
 }
 
 class SignatureAlgorithm {
@@ -540,6 +547,20 @@ class SignatureScheme {
     'dsa_sha512': dsa_sha512,
   };
 
+  static _SignatureSchemeValue? _lookup(String schemeName) {
+    return _nameToValueMap[schemeName.toLowerCase()];
+  }
+
+  static bool isSupported(String schemeName) => _lookup(schemeName) != null;
+
+  static int? valueOf(String schemeName) => _lookup(schemeName)?.value;
+
+  static int? hashIdFromName(String schemeName) =>
+      _lookup(schemeName)?.hashAlgorithm;
+
+  static int? signatureIdFromName(String schemeName) =>
+      _lookup(schemeName)?.signatureAlgorithm;
+
   /// Converte o valor numérico (_SignatureSchemeValue ou int) para representação de nome
   static String? toRepr(dynamic value) {
     int? intValue;
@@ -560,30 +581,32 @@ class SignatureScheme {
   /// Retorna o nome do algoritmo de assinatura usado no esquema.
   /// Ex: para "rsa_pkcs1_sha1" retorna "rsa"
   static String getKeyType(String schemeName) {
-    if (schemeName == "ed25519" || schemeName == "ed448") {
+    final normalized = schemeName.toLowerCase();
+    if (normalized == "ed25519" || normalized == "ed448") {
       return "eddsa";
     }
-    if (!_nameToValueMap.containsKey(schemeName)) {
+    if (!_nameToValueMap.containsKey(normalized)) {
       throw ArgumentError('"$schemeName" scheme is unknown');
     }
     // Heurística baseada nos nomes comuns
-    if (schemeName.startsWith('rsa_')) return 'rsa';
-    if (schemeName.startsWith('ecdsa_')) return 'ecdsa';
-    if (schemeName.startsWith('dsa_')) return 'dsa';
+    if (normalized.startsWith('rsa_')) return 'rsa';
+    if (normalized.startsWith('ecdsa_')) return 'ecdsa';
+    if (normalized.startsWith('dsa_')) return 'dsa';
     // Casos especiais ou fallback (pode precisar de ajuste)
-    if (schemeName.contains('rsa')) return 'rsa';
-    if (schemeName.contains('ecdsa')) return 'ecdsa';
-    if (schemeName.contains('dsa')) return 'dsa';
+    if (normalized.contains('rsa')) return 'rsa';
+    if (normalized.contains('ecdsa')) return 'ecdsa';
+    if (normalized.contains('dsa')) return 'dsa';
 
     throw ArgumentError('Could not determine key type for "$schemeName"');
   }
 
   /// Retorna o nome do esquema de padding usado no esquema de assinatura.
   static String getPadding(String schemeName) {
-    if (!_nameToValueMap.containsKey(schemeName)) {
+    final normalized = schemeName.toLowerCase();
+    if (!_nameToValueMap.containsKey(normalized)) {
       throw ArgumentError('"$schemeName" scheme is unknown');
     }
-    final parts = schemeName.split('_');
+    final parts = normalized.split('_');
     // Heurística: rsa_pkcs1_..., rsa_pss_...
     if (parts.length >= 2 && parts[0] == 'rsa') {
       if (parts[1] == 'pkcs1') return 'pkcs1';
@@ -598,26 +621,27 @@ class SignatureScheme {
   /// Retorna o nome do hash usado no esquema de assinatura.
   static String getHash(String schemeName) {
     // Hash não explícito para EDDSA, veja RFC 8422
-    if (schemeName == "ed25519" || schemeName == "ed448") {
+    final normalized = schemeName.toLowerCase();
+    if (normalized == "ed25519" || normalized == "ed448") {
       return "intrinsic";
     }
-    final value = _nameToValueMap[schemeName];
+    final value = _nameToValueMap[normalized];
     if (value == null) {
       throw ArgumentError('"$schemeName" scheme is unknown');
     }
 
     // Para PSS, o hash está ligado ao MGF e não é o mesmo que o "HashAlgorithm" no valor TLS
-    if (schemeName.contains("_pss_")) {
-      if (schemeName.endsWith("_sha256")) return "sha256";
-      if (schemeName.endsWith("_sha384")) return "sha384";
-      if (schemeName.endsWith("_sha512")) return "sha512";
+    if (normalized.contains("_pss_")) {
+      if (normalized.endsWith("_sha256")) return "sha256";
+      if (normalized.endsWith("_sha384")) return "sha384";
+      if (normalized.endsWith("_sha512")) return "sha512";
       return "intrinsic"; // Ou outro valor indicando que depende dos params PSS
     }
     // Para Brainpool TLS1.3, o nome já inclui o hash
-    if (schemeName.contains("tls13")) {
-      if (schemeName.endsWith("_sha256")) return "sha256";
-      if (schemeName.endsWith("_sha384")) return "sha384";
-      if (schemeName.endsWith("_sha512")) return "sha512";
+    if (normalized.contains("tls13")) {
+      if (normalized.endsWith("_sha256")) return "sha256";
+      if (normalized.endsWith("_sha384")) return "sha384";
+      if (normalized.endsWith("_sha512")) return "sha512";
     }
 
     // Usa o mapeamento reverso de HashAlgorithm

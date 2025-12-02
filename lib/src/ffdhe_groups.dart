@@ -6,6 +6,8 @@
 /// - prime: the prime modulus defining the field
 library;
 
+import 'constants.dart';
+
 /// Container for a DH group parameter set.
 class FfdheGroup {
   const FfdheGroup(this.generator, this.prime, this.name);
@@ -411,3 +413,12 @@ final List<FfdheGroup> rfc7919Groups = [
   ffdhe6144,
   ffdhe8192,
 ];
+
+/// Quick lookup of RFC 7919 groups by their IANA group identifier.
+final Map<int, FfdheGroup> rfc7919GroupMap = {
+  GroupName.ffdhe2048: ffdhe2048,
+  GroupName.ffdhe3072: ffdhe3072,
+  GroupName.ffdhe4096: ffdhe4096,
+  GroupName.ffdhe6144: ffdhe6144,
+  GroupName.ffdhe8192: ffdhe8192,
+};
