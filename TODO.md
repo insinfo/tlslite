@@ -1,7 +1,7 @@
 # TODO geral
 - continuar portando o puro python C:\MyDartProjects\tlslite\tlslite-ng  para dart e manter C:\MyDartProjects\tlslite\TODO.md
 
-acelerar o porte da coisas necessarias para criar um Servidor HTTPS e um https client em puro dart se necessario usando ffi para chamar as funções de Windows Sockets 2 (Winsock)  do windows e do linux libc Sockets diretamente para construir uma API de Sockets SSL semelhante a implementação do python para facilitar no futuro portar outras bibliotecas python para dart como python-oracledb (https://github.com/oracle/python-oracledb) que pretendo portar mais depende de uma implementação de Sockets como a do python 
+acelerar o porte da coisas necessarias para criar um Servidor HTTPS e um https client em puro dart, se necessario usando ffi para chamar as funções de Windows Sockets 2 (Winsock)  do windows e do linux libc Sockets diretamente para construir uma API de Sockets SSL semelhante a implementação do python para facilitar no futuro portar outras bibliotecas python para dart como python-oracledb (https://github.com/oracle/python-oracledb) que pretendo portar mais depende de uma implementação de Sockets como a do python 
 
 portar os testes de C:\MyDartProjects\tlslite\tlslite-ng\tests
 C:\MyDartProjects\tlslite\tlslite-ng\unit_tests para dart
@@ -63,9 +63,25 @@ coloque um comentario // TODO onde não etiver completo
 - [x] Portado tlslite/utils/poly1305.py para lib/src/utils/poly1305.dart e criado testes em test/utils/poly1305_test.dart cobrindo vetores RFC 7539
 - [x] Portado tlslite/utils/chacha20_poly1305.py e python_chacha20_poly1305.py para lib/src/utils/chacha20_poly1305.dart e lib/src/utils/python_chacha20_poly1305.dart, com testes em test/utils/chacha20_poly1305_test.dart
 - [x] Portado tlslite/bufferedsocket.py para lib/src/net/buffered_socket.dart (com TODO para adaptar a um socket Dart real) e criados testes em test/net/buffered_socket_test.dart cobrindo send/flush/recv/shutdown
+- [x] Iniciado o porte de `tlslite-ng/tlslite/messages.py` em `lib/src/net/security/pure_dart/tls_messages.dart` (ContentType, Alert/Handshake enums, RecordHeader/TlsPlaintext e mensagens `ClientHello`, `ServerHello`, `Finished`).
+- [x] Atualizado `lib/src/net/security/pure_dart/tls_record_layer.dart` e `tls_connection.dart` para usar os novos parsers, retornar fragmentos de handshake e manter um transcript enquanto o porte completo de `tlsconnection.py` não chega.
+- [x] Adicionadas mensagens de handshake restantes (`Certificate`, `CertificateRequest`, `CertificateVerify`, `KeyUpdate`, `ChangeCipherSpec`) em `lib/src/net/security/pure_dart/tls_messages.dart`, incluindo entradas TLS 1.3.
+- [x] Criado `PureDartTlsHandshakeStateMachine` e integrado ao `PureDartTlsConnection` para controlar a progressão do handshake e marcar o `recordLayer` quando um `Finished` for observado.
+- [x] Conectado `PureDartTlsConfig` às cadeias PEM reais (`tlslite-ng/tests`) e adicionados testes (`test/net/security/pure_dart/…`) exercitando certificados e o novo estado de handshake.
+- [x] Adicionados `TlsEncryptedExtensions` e `TlsNewSessionTicket` em `lib/src/net/security/pure_dart/tls_messages.dart`, com suporte a `recordVersion` na decodificação.
+- [x] Atualizado `PureDartRecordLayer.ensureHandshake` para propagar a versão observada do record para o parser, desbloqueando mensagens TLS 1.3.
+- [x] `PureDartTlsHandshakeStateMachine` agora aceita tráfego pós-handshake (tickets, key updates e client-auth) e ganhou testes dedicados em `test/net/security/pure_dart`.
+- [x] Parseado a extensão `supported_versions` em `TlsClientHello`/`TlsServerHello`, escolhendo a versão negociada real para o estado do handshake e para o record layer.
+- [x] Adicionados testes em `test/net/security/pure_dart` validando o parsing de `supported_versions` e a propagação da versão negociada.
+- [x] Portado `tlslite-ng/tlslite/extensions.py` para `lib/src/net/security/pure_dart/tls_extensions.dart`, expondo SNI/ALPN/supported_versions via `TlsExtensionBlock` e integrando `ClientHello`, `ServerHello`, `EncryptedExtensions` e `CertificateRequest` com o novo parser/testes.
+- [x] Expandido `TlsExtensionBlock` para cobrir `status_request`, `key_share` e `signature_algorithms_cert`, expondo esses dados em `TlsClientHello`, `TlsServerHello` e `TlsCertificateRequest` e armazenando os metadados no `PureDartTlsConnection` para futuros consumidores.
+- [x] Adicionado `tls_handshake_parameters.dart` com o coordenador de key_share e selecionador de esquemas de assinatura, ligado ao `PureDartTlsConnection` para guiar OCSP/client-auth e validar HelloRetryRequest; criado `tls_handshake_parameters_test.dart` cobrindo a negociação.
 
 ## Proximos passos sugeridos
-- [ ] Portar os modulos nucleares de TLS (`tlsconnection.py`, `recordlayer.py`, `messages.py`) e implementar `ensureHandshakeCompleted/sendApplicationData/receiveApplicationData` no `PureDartTlsEngine`.
+- [ ] Finalizar o porte dos módulos nucleares de TLS (`tlsconnection.py`, extensões em `messages.py`, `recordlayer.py`) e implementar `ensureHandshakeCompleted/sendApplicationData/receiveApplicationData` no `PureDartTlsEngine`.
+- [ ] Portar `EncryptedExtensions`, `CertificateRequest` e `Certificate` helpers avançados de `tlslite-ng/tlslite/messages.py`, alinhando com `extensions.py` assim que o módulo for portado.
+- [ ] Continuar expandindo suporte às mensagens restantes de TLS 1.3 (post-handshake auth completa, `HelloRetryRequest`, `NewSessionTicket` resumption logic) e validar com testes adicionais.
+- [ ] Conectar o `PureDartKeyShareCoordinator` à geração real de shares (ECDHE/X25519) e produzir o segredo compartilhado que alimentará o key schedule em `tls_connection.dart`.
 - [ ] Integrar `PureDartTlsConfig` com parsing real de certificados/chaves (via `keyfactory.dart`) e criar testes com vetores de `tlslite-ng/tests`.
 - [ ] Expor as funcoes de datefuncs num ponto de entrada publico se necessario (ex: via lib/tlslite.dart)
 - [ ] Expor e validar funcoes const-time via lib/tlslite.dart ou outro agrupador publico

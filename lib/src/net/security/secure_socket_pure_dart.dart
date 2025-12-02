@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import '../socket/socket_native_ffi.dart';
 import 'pure_dart/pure_dart_tls_engine.dart';
+import 'pure_dart/pure_dart_tls_types.dart';
 import 'secure_transport.dart';
 
 /// Implementação inicial de um provider TLS totalmente em Dart.

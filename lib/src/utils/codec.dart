@@ -228,6 +228,11 @@ class Writer {
     add(data.length, lengthLength); // Add length prefix
     _builder.add(data); // Add the data itself
   }
+
+  /// Adds an arbitrary list of bytes to the buffer.
+  void addBytes(List<int> bytes) {
+    _builder.add(bytes);
+  }
 }
 
 // --- Parser Class (Equivalent to Python's Parser) ---
