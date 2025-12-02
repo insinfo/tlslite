@@ -2,7 +2,7 @@ import 'dart:typed_data';
 
 import '../../../utils/keyfactory.dart';
 import '../../../utils/pem.dart';
-import 'tls_messages.dart';
+import '../../../tls_messages.dart';
 
 /// Define o modo de operação esperado para o engine TLS puro Dart.
 enum PureDartTlsMode { client, server }

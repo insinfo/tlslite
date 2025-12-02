@@ -1,5 +1,10 @@
 import 'constants.dart'; // Importando as definições de AlertDescription e AlertLevel
 
+// TODO(port): Error handling integration pending:
+// - Integration with recordlayer.py/tlsrecordlayer.py for protocol exceptions
+// - Alert sending/receiving in tlsconnection.py
+// - Fault injection testing (TLSFaultError usage)
+
 // --- Base Exceptions ---
 
 /// Metaclasse para exceções TLS Lite.

@@ -3,7 +3,7 @@
 import "dart:io";
 
 import "dtls_connection.dart";
-import "generated/ffi.dart";
+import "../../openssl/generated/ffi.dart";
 
 /// Creates a string key from an [address] and [port] intended for caching a
 /// connection.

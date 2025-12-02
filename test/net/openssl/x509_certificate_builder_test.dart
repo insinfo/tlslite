@@ -1,6 +1,6 @@
 import 'package:test/test.dart';
-import 'package:tlslite/src/net/openssl/openssl_loader.dart';
-import 'package:tlslite/src/net/openssl/x509_certificate_builder.dart';
+import 'package:tlslite/src/openssl/openssl_loader.dart';
+import 'package:tlslite/src/openssl/x509_certificate_builder.dart';
 
 void main() {
   final builderResult = _BuilderResult.load();

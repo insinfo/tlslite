@@ -1,7 +1,8 @@
 import 'dart:typed_data';
 
-import '../../../constants.dart' as tls_constants;
-import '../../../utils/codec.dart';
+import 'constants.dart' as tls_constants;
+import 'utils/codec.dart';
+import 'utils/cryptomath.dart';
 import 'tls_extensions.dart';
 import 'tls_protocol.dart';
 export 'tls_protocol.dart';
@@ -84,16 +85,22 @@ enum TlsAlertDescription {
 }
 
 enum TlsHandshakeType {
+  helloRequest(tls_constants.HandshakeType.hello_request),
   clientHello(tls_constants.HandshakeType.client_hello),
   serverHello(tls_constants.HandshakeType.server_hello),
+  newSessionTicket(tls_constants.HandshakeType.new_session_ticket),
   helloRetryRequest(tls_constants.HandshakeType.hello_retry_request),
   encryptedExtensions(tls_constants.HandshakeType.encrypted_extensions),
   certificate(tls_constants.HandshakeType.certificate),
+  serverKeyExchange(tls_constants.HandshakeType.server_key_exchange),
   certificateRequest(tls_constants.HandshakeType.certificate_request),
+  serverHelloDone(tls_constants.HandshakeType.server_hello_done),
   certificateVerify(tls_constants.HandshakeType.certificate_verify),
+  clientKeyExchange(tls_constants.HandshakeType.client_key_exchange),
   finished(tls_constants.HandshakeType.finished),
-  newSessionTicket(tls_constants.HandshakeType.new_session_ticket),
+  certificateStatus(tls_constants.HandshakeType.certificate_status),
   keyUpdate(tls_constants.HandshakeType.key_update),
+  nextProtocol(tls_constants.HandshakeType.next_protocol),
   unknown(-1);
 
   const TlsHandshakeType(this.code);
@@ -1038,4 +1045,406 @@ class TlsChangeCipherSpec extends TlsMessage {
 
   @override
   Uint8List serialize() => Uint8List.fromList(<int>[value]);
+}
+
+// ============================================================================
+// Additional TLS Handshake Messages
+// ============================================================================
+
+/// HelloRequest message (TLS 1.0-1.2)
+class TlsHelloRequest extends TlsHandshakeMessage {
+  TlsHelloRequest() : super(TlsHandshakeType.helloRequest);
+
+  static TlsHelloRequest parse(Uint8List body) {
+    if (body.isNotEmpty) {
+      throw DecodeError('HelloRequest deve ter corpo vazio');
+    }
+    return TlsHelloRequest();
+  }
+
+  @override
+  Uint8List serializeBody() => Uint8List(0);
+}
+
+/// ServerHelloDone message (TLS 1.0-1.2)
+class TlsServerHelloDone extends TlsHandshakeMessage {
+  TlsServerHelloDone() : super(TlsHandshakeType.serverHelloDone);
+
+  static TlsServerHelloDone parse(Uint8List body) {
+    if (body.isNotEmpty) {
+      throw DecodeError('ServerHelloDone deve ter corpo vazio');
+    }
+    return TlsServerHelloDone();
+  }
+
+  @override
+  Uint8List serializeBody() => Uint8List(0);
+}
+
+/// ServerKeyExchange message for DHE/ECDHE/SRP key exchange
+class TlsServerKeyExchange extends TlsHandshakeMessage {
+  TlsServerKeyExchange({
+    this.cipherSuite = 0,
+    this.version = const [3, 3],
+    BigInt? srpN,
+    BigInt? srpG,
+    this.srpS = const [],
+    BigInt? srpB,
+    BigInt? dhP,
+    BigInt? dhG,
+    BigInt? dhYs,
+    this.curveType,
+    this.namedCurve,
+    this.ecdhYs = const [],
+    this.signature = const [],
+    this.hashAlg = 0,
+    this.signAlg = 0,
+  }) : srpN = srpN ?? BigInt.zero,
+       srpG = srpG ?? BigInt.zero,
+       srpB = srpB ?? BigInt.zero,
+       dhP = dhP ?? BigInt.zero,
+       dhG = dhG ?? BigInt.zero,
+       dhYs = dhYs ?? BigInt.zero,
+       super(TlsHandshakeType.serverKeyExchange);
+
+  final int cipherSuite;
+  final List<int> version;
+  
+  // SRP parameters
+  final BigInt srpN;
+  final BigInt srpG;
+  final List<int> srpS;
+  final BigInt srpB;
+  
+  // FFDHE parameters
+  final BigInt dhP;
+  final BigInt dhG;
+  final BigInt dhYs;
+  
+  // ECDHE parameters
+  final int? curveType;
+  final int? namedCurve;
+  final List<int> ecdhYs;
+  
+  // Signature
+  final List<int> signature;
+  final int hashAlg;
+  final int signAlg;
+
+  static TlsServerKeyExchange parse(Uint8List body, int cipherSuite, List<int> version) {
+    final parser = Parser(body);
+    
+    BigInt srpN = BigInt.zero;
+    BigInt srpG = BigInt.zero;
+    List<int> srpS = [];
+    BigInt srpB = BigInt.zero;
+    BigInt dhP = BigInt.zero;
+    BigInt dhG = BigInt.zero;
+    BigInt dhYs = BigInt.zero;
+    int? curveType;
+    int? namedCurve;
+    List<int> ecdhYs = [];
+    List<int> signature = [];
+    int hashAlg = 0;
+    int signAlg = 0;
+
+    // Parse based on cipher suite type
+    if (tls_constants.CipherSuite.srpAllSuites.contains(cipherSuite)) {
+      final srpNLen = parser.get(2);
+      srpN = bytesToNumber(Uint8List.fromList(parser.getFixBytes(srpNLen)));
+      final srpGLen = parser.get(2);
+      srpG = bytesToNumber(Uint8List.fromList(parser.getFixBytes(srpGLen)));
+      srpS = parser.getVarBytes(1);
+      final srpBLen = parser.get(2);
+      srpB = bytesToNumber(Uint8List.fromList(parser.getFixBytes(srpBLen)));
+    } else if (tls_constants.CipherSuite.dhAllSuites.contains(cipherSuite)) {
+      final dhPLen = parser.get(2);
+      dhP = bytesToNumber(Uint8List.fromList(parser.getFixBytes(dhPLen)));
+      final dhGLen = parser.get(2);
+      dhG = bytesToNumber(Uint8List.fromList(parser.getFixBytes(dhGLen)));
+      final dhYsLen = parser.get(2);
+      dhYs = bytesToNumber(Uint8List.fromList(parser.getFixBytes(dhYsLen)));
+    } else if (tls_constants.CipherSuite.ecdhAllSuites.contains(cipherSuite)) {
+      curveType = parser.get(1);
+      if (curveType == tls_constants.ECCurveType.named_curve) {
+        namedCurve = parser.get(2);
+      }
+      ecdhYs = parser.getVarBytes(1);
+    }
+
+    // Parse signature for authenticated suites
+    if (tls_constants.CipherSuite.certAllSuites.contains(cipherSuite) ||
+        tls_constants.CipherSuite.ecdheEcdsaSuites.contains(cipherSuite)) {
+      if (version[0] == 3 && version[1] >= 3) {
+        // TLS 1.2+
+        hashAlg = parser.get(1);
+        signAlg = parser.get(1);
+      }
+      signature = parser.getVarBytes(2);
+    }
+
+    return TlsServerKeyExchange(
+      cipherSuite: cipherSuite,
+      version: version,
+      srpN: srpN,
+      srpG: srpG,
+      srpS: srpS,
+      srpB: srpB,
+      dhP: dhP,
+      dhG: dhG,
+      dhYs: dhYs,
+      curveType: curveType,
+      namedCurve: namedCurve,
+      ecdhYs: ecdhYs,
+      signature: signature,
+      hashAlg: hashAlg,
+      signAlg: signAlg,
+    );
+  }
+
+  @override
+  Uint8List serializeBody() {
+    final writer = Writer();
+    
+    if (tls_constants.CipherSuite.srpAllSuites.contains(cipherSuite)) {
+      final srpNBytes = numberToByteArray(srpN);
+      writer.add(srpNBytes.length, 2);
+      writer.addBytes(srpNBytes);
+      final srpGBytes = numberToByteArray(srpG);
+      writer.add(srpGBytes.length, 2);
+      writer.addBytes(srpGBytes);
+      writer.addVarBytes(Uint8List.fromList(srpS), 1);
+      final srpBBytes = numberToByteArray(srpB);
+      writer.add(srpBBytes.length, 2);
+      writer.addBytes(srpBBytes);
+    } else if (tls_constants.CipherSuite.dhAllSuites.contains(cipherSuite)) {
+      final dhPBytes = numberToByteArray(dhP);
+      writer.add(dhPBytes.length, 2);
+      writer.addBytes(dhPBytes);
+      final dhGBytes = numberToByteArray(dhG);
+      writer.add(dhGBytes.length, 2);
+      writer.addBytes(dhGBytes);
+      final dhYsBytes = numberToByteArray(dhYs);
+      writer.add(dhYsBytes.length, 2);
+      writer.addBytes(dhYsBytes);
+    } else if (tls_constants.CipherSuite.ecdhAllSuites.contains(cipherSuite)) {
+      writer.add(curveType ?? tls_constants.ECCurveType.named_curve, 1);
+      if (curveType == tls_constants.ECCurveType.named_curve) {
+        writer.add(namedCurve ?? 0, 2);
+      }
+      writer.addVarBytes(Uint8List.fromList(ecdhYs), 1);
+    }
+
+    if (tls_constants.CipherSuite.certAllSuites.contains(cipherSuite) ||
+        tls_constants.CipherSuite.ecdheEcdsaSuites.contains(cipherSuite)) {
+      if (version[0] == 3 && version[1] >= 3) {
+        writer.add(hashAlg, 1);
+        writer.add(signAlg, 1);
+      }
+      writer.addVarBytes(Uint8List.fromList(signature), 2);
+    }
+    
+    return writer.bytes;
+  }
+}
+
+/// ClientKeyExchange message for various key exchange methods
+class TlsClientKeyExchange extends TlsHandshakeMessage {
+  TlsClientKeyExchange({
+    this.cipherSuite = 0,
+    this.version = const [3, 3],
+    BigInt? srpA,
+    BigInt? dhYc,
+    this.ecdhYc = const [],
+    this.encryptedPreMasterSecret = const [],
+  }) : srpA = srpA ?? BigInt.zero,
+       dhYc = dhYc ?? BigInt.zero,
+       super(TlsHandshakeType.clientKeyExchange);
+
+  final int cipherSuite;
+  final List<int> version;
+  final BigInt srpA; // SRP client public value
+  final BigInt dhYc; // DH client public value
+  final List<int> ecdhYc; // ECDH client public value
+  final List<int> encryptedPreMasterSecret; // RSA encrypted premaster
+
+  static TlsClientKeyExchange parse(Uint8List body, int cipherSuite, List<int> version) {
+    final parser = Parser(body);
+    
+    BigInt srpA = BigInt.zero;
+    BigInt dhYc = BigInt.zero;
+    List<int> ecdhYc = [];
+    List<int> encryptedPreMasterSecret = [];
+
+    if (tls_constants.CipherSuite.srpAllSuites.contains(cipherSuite)) {
+      final srpALen = parser.get(2);
+      srpA = bytesToNumber(Uint8List.fromList(parser.getFixBytes(srpALen)));
+    } else if (tls_constants.CipherSuite.dhAllSuites.contains(cipherSuite)) {
+      final dhYcLen = parser.get(2);
+      dhYc = bytesToNumber(Uint8List.fromList(parser.getFixBytes(dhYcLen)));
+    } else if (tls_constants.CipherSuite.ecdhAllSuites.contains(cipherSuite)) {
+      ecdhYc = parser.getVarBytes(1);
+    } else {
+      // RSA key exchange
+      if (version[0] == 3 && version[1] >= 1) {
+        // TLS 1.0+
+        encryptedPreMasterSecret = parser.getVarBytes(2);
+      } else {
+        // SSL 3.0
+        final remaining = parser.getRemainingLength();
+        encryptedPreMasterSecret = parser.getFixBytes(remaining);
+      }
+    }
+
+    return TlsClientKeyExchange(
+      cipherSuite: cipherSuite,
+      version: version,
+      srpA: srpA,
+      dhYc: dhYc,
+      ecdhYc: ecdhYc,
+      encryptedPreMasterSecret: encryptedPreMasterSecret,
+    );
+  }
+
+  @override
+  Uint8List serializeBody() {
+    final writer = Writer();
+    
+    if (tls_constants.CipherSuite.srpAllSuites.contains(cipherSuite)) {
+      final srpABytes = numberToByteArray(srpA);
+      writer.add(srpABytes.length, 2);
+      writer.addBytes(srpABytes);
+    } else if (tls_constants.CipherSuite.dhAllSuites.contains(cipherSuite)) {
+      final dhYcBytes = numberToByteArray(dhYc);
+      writer.add(dhYcBytes.length, 2);
+      writer.addBytes(dhYcBytes);
+    } else if (tls_constants.CipherSuite.ecdhAllSuites.contains(cipherSuite)) {
+      writer.addVarBytes(Uint8List.fromList(ecdhYc), 1);
+    } else {
+      // RSA
+      if (version[0] == 3 && version[1] >= 1) {
+        writer.addVarBytes(Uint8List.fromList(encryptedPreMasterSecret), 2);
+      } else {
+        writer.addBytes(encryptedPreMasterSecret);
+      }
+    }
+    
+    return writer.bytes;
+  }
+}
+
+/// CertificateStatus message (OCSP stapling)
+class TlsCertificateStatus extends TlsHandshakeMessage {
+  TlsCertificateStatus({
+    this.statusType = 1, // ocsp
+    this.ocspResponse = const [],
+  }) : super(TlsHandshakeType.certificateStatus);
+
+  final int statusType;
+  final List<int> ocspResponse;
+
+  static TlsCertificateStatus parse(Uint8List body) {
+    final parser = Parser(body);
+    final statusType = parser.get(1);
+    final ocspResponse = parser.getVarBytes(3);
+    
+    if (!parser.isDone) {
+      throw DecodeError('Sobrou payload após CertificateStatus');
+    }
+    
+    return TlsCertificateStatus(
+      statusType: statusType,
+      ocspResponse: ocspResponse,
+    );
+  }
+
+  @override
+  Uint8List serializeBody() {
+    final writer = Writer();
+    writer.add(statusType, 1);
+    writer.addVarBytes(Uint8List.fromList(ocspResponse), 3);
+    return writer.bytes;
+  }
+}
+
+/// NextProtocol message (NPN extension)
+class TlsNextProtocol extends TlsHandshakeMessage {
+  TlsNextProtocol({
+    this.nextProto = const [],
+  }) : super(TlsHandshakeType.nextProtocol);
+
+  final List<int> nextProto;
+
+  static TlsNextProtocol parse(Uint8List body) {
+    final parser = Parser(body);
+    final nextProto = parser.getVarBytes(1);
+    parser.getVarBytes(1); // padding
+    
+    if (!parser.isDone) {
+      throw DecodeError('Sobrou payload após NextProtocol');
+    }
+    
+    return TlsNextProtocol(nextProto: nextProto);
+  }
+
+  @override
+  Uint8List serializeBody() {
+    final writer = Writer();
+    writer.addVarBytes(Uint8List.fromList(nextProto), 1);
+    // Add padding to make message at least 32 bytes
+    final paddingLen = nextProto.length < 30 ? 32 - nextProto.length - 2 : 0;
+    writer.addVarBytes(Uint8List(paddingLen), 1);
+    return writer.bytes;
+  }
+}
+
+/// ApplicationData message
+class TlsApplicationData extends TlsMessage {
+  TlsApplicationData({required this.data})
+      : super(TlsContentType.applicationData);
+
+  final List<int> data;
+
+  static TlsApplicationData parse(Uint8List fragment) {
+    return TlsApplicationData(data: fragment);
+  }
+
+  @override
+  Uint8List serialize() => Uint8List.fromList(data);
+}
+
+/// Heartbeat message (RFC 6520)
+class TlsHeartbeat extends TlsMessage {
+  TlsHeartbeat({
+    this.messageType = 1, // request
+    this.payload = const [],
+    this.padding = const [],
+  }) : super(TlsContentType.heartbeat);
+
+  final int messageType;
+  final List<int> payload;
+  final List<int> padding;
+
+  static TlsHeartbeat parse(Uint8List fragment) {
+    final parser = Parser(fragment);
+    final messageType = parser.get(1);
+    final payload = parser.getVarBytes(2);
+    final remaining = parser.getRemainingLength();
+    final padding = parser.getFixBytes(remaining);
+    
+    return TlsHeartbeat(
+      messageType: messageType,
+      payload: payload,
+      padding: padding,
+    );
+  }
+
+  @override
+  Uint8List serialize() {
+    final writer = Writer();
+    writer.add(messageType, 1);
+    writer.addVarBytes(Uint8List.fromList(payload), 2);
+    writer.addBytes(padding);
+    return writer.bytes;
+  }
 }

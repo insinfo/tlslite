@@ -1,6 +1,46 @@
 // ignore_for_file: constant_identifier_names, non_constant_identifier_names
 import 'dart:typed_data';
 
+// TODO(port): Critical missing protocol modules (~11,000-15,000 lines remaining):
+//
+// HIGH PRIORITY (core TLS functionality):
+// - mathtls.py (983 lines): PRF functions, key derivation, FFDHE parameters, SRP
+//   Functions: PRF(), PRF_1_2(), calcMasterSecret(), calcFinished(), makeVerifier()
+//   Required by: all handshake/record layer modules
+//
+// - messages.py (~2,000 lines): 34 TLS message classes
+//   Classes: ClientHello, ServerHello, Certificate, CertificateVerify, Finished, etc.
+//   Required by: handshake processing, tlsconnection
+//
+// - recordlayer.py (~1,376 lines): Core record layer
+//   Classes: RecordSocket, ConnectionState, RecordLayer
+//   Required by: tlsrecordlayer, tlsconnection
+//
+// MEDIUM PRIORITY (extensions and configuration):
+// - extensions.py (~2,000 lines): 40+ extension classes
+//   Classes: SNIExtension, SupportedGroupsExtension, SignatureAlgorithmsExtension, etc.
+//   Required by: messages.py (ClientHello/ServerHello)
+//
+// - handshakesettings.py (~600 lines): HandshakeSettings configuration
+//   Required by: tlsconnection for configuring cipher suites, versions, etc.
+//
+// - keyexchange.py (~800 lines): Key exchange implementations
+//   Classes: RSAKeyExchange, DHE_RSAKeyExchange, ECDHE_RSAKeyExchange, etc.
+//   Required by: handshake processing
+//
+// LOW PRIORITY (advanced features):
+// - tlsrecordlayer.py (~500 lines): Encrypted record layer wrapper
+// - tlsconnection.py (~3,000 lines): Main TLS connection API
+// - handshakehelpers.py, handshakehashes.py: Handshake utilities
+// - sessioncache.py, verifierdb.py: Session/credential storage
+//
+// RECOMMENDATION: Port in this order:
+// 1. mathtls.py (enables key derivation)
+// 2. messages.py + extensions.py (enables message parsing)
+// 3. recordlayer.py (enables record I/O)
+// 4. handshakesettings.py + keyexchange.py (enables handshake logic)
+// 5. tlsrecordlayer.py + tlsconnection.py (final integration)
+
 /// Converte uma string hexadecimal em uma lista de bytes (Uint8List).
 Uint8List _hexToBytes(String hexString) {
   hexString =

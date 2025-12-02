@@ -1,9 +1,9 @@
 import 'dart:typed_data';
 
-import '../../../constants.dart' as tls_constants;
-import '../../socket/socket_native_ffi.dart';
-import 'pure_dart_tls_types.dart';
-import 'tls_handshake_parameters.dart';
+import 'constants.dart' as tls_constants;
+import 'net/socket/socket_native_ffi.dart';
+import 'net/security/pure_dart/pure_dart_tls_types.dart';
+import 'handshake_parameters.dart';
 import 'tls_handshake_state.dart';
 import 'tls_messages.dart';
 import 'tls_record_layer.dart';

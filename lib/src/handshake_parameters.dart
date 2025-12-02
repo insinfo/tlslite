@@ -1,5 +1,5 @@
-import '../../../constants.dart' as tls_constants;
-import 'pure_dart_tls_types.dart';
+import 'constants.dart' as tls_constants;
+import 'net/security/pure_dart/pure_dart_tls_types.dart';
 import 'tls_extensions.dart';
 
 /// Coordinates the key_share negotiation while the full TLS 1.3 key schedule

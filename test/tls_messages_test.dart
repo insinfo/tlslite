@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:tlslite/src/constants.dart' as tls_constants;
 import 'package:tlslite/src/net/security/pure_dart/pure_dart_tls_types.dart';
-import 'package:tlslite/src/net/security/pure_dart/tls_messages.dart';
+import 'package:tlslite/src/tls_messages.dart';
 
 void main() {
   group('TlsCertificate', () {

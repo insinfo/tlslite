@@ -4,7 +4,7 @@ import "dart:ffi";
 import "dart:io";
 
 import "generated/ffi.dart";
-import "openssl_load_exception.dart";
+import "../dtls_openssl/src/openssl_load_exception.dart";
 
 OpenSsl _loadLibrary(List<String> libNames, String libName) {
   for (final libName in libNames) {

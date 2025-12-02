@@ -6,11 +6,9 @@
 import 'dart:typed_data';
 import 'dart:math' as math;
 import 'dart:convert' show utf8;
-// Dependências de pacotes (adicione ao seu pubspec.yaml)
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:pointycastle/api.dart';
 import 'package:pointycastle/random/fortuna_random.dart';
-
 import 'package:pointycastle/digests/md5.dart';
 import 'package:pointycastle/digests/sha1.dart';
 import 'package:pointycastle/digests/sha256.dart';
@@ -19,8 +17,8 @@ import 'package:pointycastle/digests/sha512.dart';
 import 'package:pointycastle/src/platform_check/platform_check.dart'
     show Platform;
 
-// Assumindo que você tem este arquivo com a classe Writer implementada
-import 'codec.dart'; // Importe sua implementação de Writer
+
+import 'codec.dart'; 
 import 'tlshmac.dart';
 
 // --- Helper Functions ---

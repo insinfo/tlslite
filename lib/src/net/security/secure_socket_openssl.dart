@@ -6,9 +6,9 @@ import 'dart:ffi' as ffi;
 import 'dart:io' show Platform;
 import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
-import 'openssl_ffi.dart';
-import 'openssl_ssl_extension.dart';
-import '../security/secure_transport.dart';
+import '../../openssl/openssl_ffi.dart';
+import '../../openssl/openssl_ssl_extension.dart';
+import 'secure_transport.dart';
 import '../socket/native_buffer_utils.dart';
 import '../socket/socket_native_ffi.dart';
 

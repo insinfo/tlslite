@@ -12,8 +12,8 @@ import "certificate.dart";
 import "dtls_alert.dart";
 import "dtls_connection.dart";
 import "dtls_exception.dart";
-import "generated/ffi.dart";
-import "lib.dart";
+import "../../openssl/generated/ffi.dart";
+import "../../openssl/openssl_loader1.dart";
 import "util.dart";
 import "package:ffi/ffi.dart";
 

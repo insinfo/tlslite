@@ -94,6 +94,12 @@ EdDSAKey createPublicEdDSAKey(
       if (curve == 'Ed25519') {
         return PythonEdDSAKey.ed25519(publicKey: publicKey);
       }
+      if (curve == 'Ed448') {
+        if (publicKey.length != 57) {
+          throw ArgumentError('Ed448 public key must be 57 bytes');
+        }
+        return Ed448PublicKey(publicKey);
+      }
       throw UnsupportedError('Unsupported EdDSA curve: $curve');
     }
   }
@@ -240,7 +246,7 @@ Object _parsePkcs8PrivateKey(Uint8List derBytes) {
       if (childCount != 2) {
         throw const FormatException('Invalid ECDSA AlgorithmIdentifier');
       }
-      final curveName = _curveNameFromOid(algIdent.getChild(1).value.toList());
+      final curveName = curveNameFromOid(algIdent.getChild(1).value.toList());
       if (curveName == null) {
         throw const FormatException('Unknown EC curve');
       }
@@ -340,7 +346,7 @@ PythonECDSAKey _parseEcdsaPublicKey(ASN1Parser spki, ASN1Parser algId) {
   if (algId.getChildCount() != 2) {
     throw const FormatException('EC parameters missing');
   }
-  final curveName = _curveNameFromOid(algId.getChild(1).value.toList());
+  final curveName = curveNameFromOid(algId.getChild(1).value.toList());
   if (curveName == null) {
     throw const FormatException('Unknown EC curve OID');
   }
@@ -414,7 +420,7 @@ PythonECDSAKey _parseEcPrivateKey(ASN1Parser parser, {String? curveName}) {
     final type = child.type;
     if (type.tagClass == 2 && type.tagId == 0) {
       final paramsParser = ASN1Parser(child.value);
-      curve ??= _curveNameFromOid(paramsParser.value.toList());
+      curve ??= curveNameFromOid(paramsParser.value.toList());
     } else if (type.tagClass == 2 && type.tagId == 1) {
       publicField = child.value;
     }
@@ -479,7 +485,7 @@ PythonEdDSAKey _parseEd25519PrivateKey(Uint8List data) {
   return PythonEdDSAKey.ed25519(privateKey: seed);
 }
 
-String? _curveNameFromOid(List<int> oid) {
+String? curveNameFromOid(List<int> oid) {
   return _curveOidToName[_oidToString(oid)];
 }
 

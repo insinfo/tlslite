@@ -45,3 +45,36 @@ abstract class EdDSAKey {
     throw UnimplementedError('Implemented by concrete backends');
   }
 }
+
+/// Placeholder for Ed448 public keys until full Ed448 support is ported.
+class Ed448PublicKey extends EdDSAKey {
+  Ed448PublicKey(Uint8List publicKeyBytes)
+      : publicKeyBytes = Uint8List.fromList(publicKeyBytes);
+
+  /// Raw Ed448 public key bytes (57 bytes).
+  final Uint8List publicKeyBytes;
+
+  @override
+  int get bitLength => 456;
+
+  @override
+  bool hasPrivateKey() => false;
+
+  @override
+  Uint8List _hashAndSign(Uint8List data) {
+    throw UnsupportedError('Ed448 signing is not implemented yet');
+  }
+
+  @override
+  bool _hashAndVerify(Uint8List signature, Uint8List data) {
+    throw UnsupportedError('Ed448 verification is not implemented yet');
+  }
+
+  @override
+  bool acceptsPassword() => false;
+
+  @override
+  String write({String? password}) {
+    throw UnsupportedError('Ed448 serialization is not implemented yet');
+  }
+}
