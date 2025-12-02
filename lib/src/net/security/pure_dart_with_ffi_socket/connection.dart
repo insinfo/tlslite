@@ -1,12 +1,12 @@
 import 'dart:typed_data';
-import 'package:tlslite/src/net/security/pure_dart/tls_extensions.dart';
+import 'package:tlslite/src/net/security/pure_dart_with_ffi_socket/tls_extensions.dart';
 import 'package:tlslite/src/tls_protocol.dart';
 import '../../../constants.dart' as tls_constants;
 import '../../socket/socket_native_ffi.dart';
-import 'pure_dart_tls_types.dart';
+import 'dart_tls_types.dart';
 import '../../../handshake_parameters.dart';
 import 'tls_handshake_state.dart';
-import '../../../tls_messages.dart';
+import '../../../messages.dart';
 import 'tls_record_layer.dart';
 
 /// Controla o fluxo de handshake e registros para o engine puro Dart.

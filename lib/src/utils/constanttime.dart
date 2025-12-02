@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:math' as math;
 
 const int _u32Mask = 0xffffffff;
 const int _u16Mask = 0xffff;
@@ -77,8 +78,15 @@ bool ctCompareDigest(List<int> a, List<int> b) {
   return result == 0;
 }
 
-/// Placeholder for ct_check_cbc_mac_and_pad until the record layer is ported.
-Never ctCheckCbcMacAndPad(
+/// Check CBC cipher HMAC and padding. Close to constant time.
+///
+/// [data] contains the decrypted record data (including MAC and padding).
+/// [mac] is the HMAC context (e.g. TlsHmac).
+/// [seqnumBytes] is the sequence number.
+/// [contentType] is the record content type.
+/// [version] is the protocol version (major, minor).
+/// [blockSize] is the cipher block size.
+bool ctCheckCbcMacAndPad(
   Uint8List data,
   dynamic mac,
   Uint8List seqnumBytes,
@@ -86,5 +94,68 @@ Never ctCheckCbcMacAndPad(
   List<int> version,
   {int blockSize = 16}
 ) {
-  throw UnimplementedError('ct_check_cbc_mac_and_pad not yet ported');
+  // assert version in ((3, 0), (3, 1), (3, 2), (3, 3))
+  
+  final dataLen = data.length;
+  final digestSize = mac.digestSize as int;
+  
+  if (digestSize + 1 > dataLen) {
+    return false;
+  }
+
+  var result = 0;
+
+  // check padding
+  final padLength = data[dataLen - 1];
+  var padStart = dataLen - padLength - 1;
+  padStart = math.max(0, padStart);
+
+  if (version[0] == 3 && version[1] == 0) {
+    // SSLv3
+    final mask = ctLsbPropU8(ctLtU32(blockSize, padLength));
+    result |= mask;
+  } else {
+    // TLS 1.0+
+    final startPos = math.max(0, dataLen - 256);
+    for (var i = startPos; i < dataLen; i++) {
+      final mask = ctLsbPropU8(ctLeU32(padStart, i));
+      result |= (data[i] ^ padLength) & mask;
+    }
+  }
+
+  // check MAC
+  var macStart = padStart - digestSize;
+  macStart = math.max(0, macStart);
+
+  final macBlockSize = mac.blockSize as int;
+  var startPos = math.max(0, dataLen - (256 + digestSize)) ~/ macBlockSize;
+  startPos *= macBlockSize;
+
+  final dataMac = mac.copy();
+  dataMac.update(seqnumBytes);
+  dataMac.update(Uint8List.fromList([contentType]));
+  
+  if (!(version[0] == 3 && version[1] == 0)) {
+    dataMac.update(Uint8List.fromList([version[0]]));
+    dataMac.update(Uint8List.fromList([version[1]]));
+  }
+  
+  dataMac.update(Uint8List.fromList([macStart >> 8]));
+  dataMac.update(Uint8List.fromList([macStart & 0xff]));
+  dataMac.update(data.sublist(0, startPos));
+
+  final endPos = dataLen - digestSize;
+
+  for (var i = startPos; i < endPos; i++) {
+    final curMac = dataMac.copy();
+    curMac.update(data.sublist(startPos, i));
+    final macCompare = curMac.digest() as Uint8List;
+    
+    final mask = ctLsbPropU8(ctEqU32(i, macStart));
+    for (var j = 0; j < digestSize; j++) {
+      result |= (data[i + j] ^ macCompare[j]) & mask;
+    }
+  }
+
+  return result == 0;
 }

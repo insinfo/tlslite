@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import '../../socket/socket_native_ffi.dart';
-import 'pure_dart_tls_types.dart';
+import 'dart_tls_types.dart';
 import 'connection.dart';
 
 /// Engine inicial responsável por concentrar o porte do TLS puro Dart.

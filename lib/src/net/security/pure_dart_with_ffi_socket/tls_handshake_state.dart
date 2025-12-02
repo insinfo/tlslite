@@ -1,7 +1,7 @@
 import 'package:tlslite/src/tls_protocol.dart';
 
-import '../../../tls_messages.dart';
-import 'pure_dart_tls_types.dart';
+import '../../../messages.dart';
+import 'dart_tls_types.dart';
 
 enum _HandshakePhase {
   idle,

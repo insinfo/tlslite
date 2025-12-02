@@ -285,6 +285,7 @@ final Uint8List respsSha512 = _b64(
   'KUUWNCPGjHnk7gOo8C+wqmte1nz+3RTm/Dx6vvtTky176PQar5yQHeOK'
 );
 
+// ignore: unused_element
 SingleResponse _firstSingle(Uint8List der) {
   final resp = OCSPResponse(der);
   return resp.responses.first;

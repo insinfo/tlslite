@@ -2,7 +2,7 @@ import 'dart:collection';
 import 'dart:typed_data';
 
 import 'package:test/test.dart';
-import 'package:tlslite/src/net/buffered_socket.dart';
+import 'package:tlslite/src/buffered_socket.dart';
 
 class _FakeSocket {
   final List<List<int>> sentChunks = <List<int>>[];

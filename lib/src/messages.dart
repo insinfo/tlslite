@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'constants.dart' as tls_constants;
 import 'utils/codec.dart';
 import 'utils/cryptomath.dart';
-import 'net/security/pure_dart/tls_extensions.dart';
+import 'net/security/pure_dart_with_ffi_socket/tls_extensions.dart';
 import 'tls_protocol.dart';
 
 

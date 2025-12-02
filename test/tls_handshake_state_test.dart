@@ -1,9 +1,9 @@
 import 'dart:typed_data';
 
 import 'package:test/test.dart';
-import 'package:tlslite/src/net/security/pure_dart/pure_dart_tls_types.dart';
-import 'package:tlslite/src/net/security/pure_dart/tls_handshake_state.dart';
-import 'package:tlslite/src/tls_messages.dart';
+import 'package:tlslite/src/net/security/pure_dart_with_ffi_socket/dart_tls_types.dart';
+import 'package:tlslite/src/net/security/pure_dart_with_ffi_socket/tls_handshake_state.dart';
+import 'package:tlslite/src/messages.dart';
 
 import 'package:tlslite/src/tls_protocol.dart';
 
