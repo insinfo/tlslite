@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'utils/codec.dart';
+import '../../../utils/codec.dart';
 
 /// Representa uma versão TLS (major/minor).
 class TlsProtocolVersion {
@@ -30,6 +30,24 @@ class TlsProtocolVersion {
     return other is TlsProtocolVersion &&
         other.major == major &&
         other.minor == minor;
+  }
+
+  bool operator >(TlsProtocolVersion other) {
+    if (major != other.major) return major > other.major;
+    return minor > other.minor;
+  }
+
+  bool operator >=(TlsProtocolVersion other) {
+    return this > other || this == other;
+  }
+
+  bool operator <(TlsProtocolVersion other) {
+    if (major != other.major) return major < other.major;
+    return minor < other.minor;
+  }
+
+  bool operator <=(TlsProtocolVersion other) {
+    return this < other || this == other;
   }
 
   @override

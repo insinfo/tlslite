@@ -1,9 +1,9 @@
 import 'dart:math';
 import 'dart:typed_data';
 
-import 'net/socket/socket_native_ffi.dart';
-import 'utils/codec.dart' show DecodeError;
-import 'net/security/pure_dart/pure_dart_tls_types.dart';
+import '../../socket/socket_native_ffi.dart';
+import '../../../utils/codec.dart' show DecodeError;
+import 'pure_dart_tls_types.dart';
 import 'tls_messages.dart';
 
 /// Responsável por encapsular/decapsular registros TLS usando apenas Dart.

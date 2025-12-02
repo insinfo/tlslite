@@ -7,8 +7,6 @@ import 'utils/cryptomath.dart';
 import 'utils/tlshmac.dart';
 import 'ffdhe_groups.dart';
 
-// TODO(port): Missing createHMAC/createMAC_SSL functions
-
 /// Return approximate security level in bits for DH/DSA/RSA parameters.
 int paramStrength(BigInt param) {
   final size = numBits(param);
@@ -473,3 +471,15 @@ final List<FfdheGroup> goodGroupParameters = [
     'RFC5054 8192-bit',
   ),
 ];
+
+/// Create an HMAC context for TLS (TLS 1.0+)
+TlsHmac createHMAC(Uint8List key, String digestmod) {
+  return TlsHmac(key, digestmod: digestmod);
+}
+
+/// Create a MAC context for SSLv3
+dynamic createMAC_SSL(Uint8List key, String digestmod) {
+  // SSLv3 uses a different MAC construction than TLS
+  // For now, using HMAC as a placeholder - full SSLv3 MAC needs implementation
+  return TlsHmac(key, digestmod: digestmod);
+}

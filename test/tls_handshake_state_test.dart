@@ -2,8 +2,8 @@ import 'dart:typed_data';
 
 import 'package:test/test.dart';
 import 'package:tlslite/src/net/security/pure_dart/pure_dart_tls_types.dart';
-import 'package:tlslite/src/tls_handshake_state.dart';
-import 'package:tlslite/src/tls_messages.dart';
+import 'package:tlslite/src/net/security/pure_dart/tls_handshake_state.dart';
+import 'package:tlslite/src/net/security/pure_dart/tls_messages.dart';
 
 void main() {
   TlsClientHello sampleClientHello() => TlsClientHello(

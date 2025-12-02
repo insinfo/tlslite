@@ -1,5 +1,5 @@
 import 'tls_messages.dart';
-import 'net/security/pure_dart/pure_dart_tls_types.dart';
+import 'pure_dart_tls_types.dart';
 
 enum _HandshakePhase {
   idle,

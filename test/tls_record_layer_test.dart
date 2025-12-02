@@ -3,8 +3,8 @@ import 'dart:typed_data';
 
 import 'package:test/test.dart';
 import 'package:tlslite/src/net/security/pure_dart/pure_dart_tls_types.dart';
-import 'package:tlslite/src/tls_messages.dart';
-import 'package:tlslite/src/tls_record_layer.dart';
+import 'package:tlslite/src/net/security/pure_dart/tls_messages.dart';
+import 'package:tlslite/src/net/security/pure_dart/tls_record_layer.dart';
 import 'package:tlslite/src/net/socket/socket_native_ffi.dart';
 
 void main() {
