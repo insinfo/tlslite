@@ -981,9 +981,11 @@ class TlsNewSessionTicket extends TlsHandshakeMessage {
     required Uint8List ticketNonce,
     required Uint8List ticket,
     Uint8List? extensions,
+    DateTime? receivedAt,
   })  : ticketNonce = Uint8List.fromList(ticketNonce),
         ticket = Uint8List.fromList(ticket),
         extensions = Uint8List.fromList(extensions ?? Uint8List(0)),
+        receivedAt = receivedAt ?? DateTime.now(),
         super(TlsHandshakeType.newSessionTicket);
 
   final int ticketLifetime;
@@ -991,6 +993,7 @@ class TlsNewSessionTicket extends TlsHandshakeMessage {
   final Uint8List ticketNonce;
   final Uint8List ticket;
   final Uint8List extensions;
+  final DateTime receivedAt;
 
   static TlsNewSessionTicket parseBody(Uint8List body) {
     final parser = Parser(body);
@@ -1009,6 +1012,7 @@ class TlsNewSessionTicket extends TlsHandshakeMessage {
       ticketNonce: nonce,
       ticket: ticket,
       extensions: extensions,
+      receivedAt: DateTime.now(),
     );
   }
 

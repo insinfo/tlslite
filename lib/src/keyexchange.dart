@@ -8,6 +8,7 @@ import 'constants.dart';
 import 'errors.dart';
 import 'utils/cryptomath.dart';
 import 'mathtls.dart';
+import 'utils/x25519.dart';
 
 // Temporary stub classes for messages - will be replaced when messages.dart is ported
 // ignore: unused_element
@@ -364,7 +365,7 @@ class AECDHKeyExchange extends KeyExchange {
 
   dynamic ecdhXs;
   int? groupId;
-  BigInt? ecdhYc;
+  Uint8List? ecdhYc;
 
   @override
   dynamic makeServerKeyExchange({String? sigHash}) {
@@ -444,14 +445,14 @@ class AECDHKeyExchange extends KeyExchange {
     final extSupported = {'uncompressed'};
     // TODO: Handle EC point formats extension negotiation
 
-    ecdhYc = bytesToNumber(kex.calcPublicValue(ecdhXc, extNegotiated));
+    ecdhYc = kex.calcPublicValue(ecdhXc, extNegotiated);
     return kex.calcSharedKey(ecdhXc, ecdhYs, extSupported);
   }
 
   @override
   dynamic makeClientKeyExchange() {
     final cke = _ClientKeyExchange();
-    cke.createECDH(numberToByteArray(ecdhYc!));
+    cke.createECDH(ecdhYc);
     return cke;
   }
 
@@ -721,11 +722,10 @@ class ECDHKeyExchange extends RawDHKeyExchange {
   @override
   dynamic getRandomPrivateKey() {
     if (_xGroups.contains(groupName)) {
-      if (groupName == GroupName.x25519) {
-        return getRandomBytes(32); // X25519_ORDER_SIZE
-      } else {
-        return getRandomBytes(56); // X448_ORDER_SIZE
-      }
+      final size = groupName == GroupName.x25519
+          ? X25519_ORDER_SIZE
+          : X448_ORDER_SIZE;
+      return getRandomBytes(size);
     } else {
       // ECDSA curve - need ecdsa library
       throw UnimplementedError('ECDSA curves not yet supported');
@@ -734,16 +734,15 @@ class ECDHKeyExchange extends RawDHKeyExchange {
 
   @override
   Uint8List calcPublicValue(dynamic privateKey, [String? pointFormat]) {
-    if (groupName == GroupName.x25519) {
-      // X25519 key exchange - need x25519 library
-      throw UnimplementedError('X25519 not yet supported');
-    } else if (groupName == GroupName.x448) {
-      // X448 key exchange - need x448 library
-      throw UnimplementedError('X448 not yet supported');
-    } else {
-      // NIST curve point generation
+    if (!_xGroups.contains(groupName)) {
       throw UnimplementedError('ECDSA curves not yet supported');
     }
+
+    final scalar = _coerceScalar(privateKey);
+    if (groupName == GroupName.x25519) {
+      return x25519(scalar, X25519_G);
+    }
+    return x448(scalar, X448_G);
   }
 
   @override
@@ -752,17 +751,45 @@ class ECDHKeyExchange extends RawDHKeyExchange {
     Uint8List peerShare, [
     Set<String>? validPointFormats,
   ]) {
-    if (_xGroups.contains(groupName)) {
-      final size = groupName == GroupName.x25519 ? 32 : 56;
-      if (peerShare.length != size) {
-        throw TLSIllegalParameterException('Invalid key share');
-      }
-      // X25519/X448 shared secret calculation
-      throw UnimplementedError('X25519/X448 not yet supported');
-    } else {
+    if (!_xGroups.contains(groupName)) {
       // ECDH with NIST curves
       throw UnimplementedError('ECDSA curves not yet supported');
     }
+
+    final expectedLen = groupName == GroupName.x25519
+        ? X25519_ORDER_SIZE
+        : X448_ORDER_SIZE;
+    if (peerShare.length != expectedLen) {
+      throw TLSIllegalParameterException('Invalid key share');
+    }
+
+    final scalar = _coerceScalar(privateKey);
+    final secret = groupName == GroupName.x25519
+        ? x25519(scalar, peerShare)
+        : x448(scalar, peerShare);
+    _nonZeroCheck(secret);
+    return secret;
+  }
+
+  Uint8List _coerceScalar(dynamic value) {
+    final expectedLen = groupName == GroupName.x25519
+        ? X25519_ORDER_SIZE
+        : X448_ORDER_SIZE;
+
+    if (value is Uint8List) {
+      if (value.length != expectedLen) {
+        throw TLSIllegalParameterException('Invalid private key length');
+      }
+      return Uint8List.fromList(value);
+    }
+    if (value is List<int>) {
+      final bytes = Uint8List.fromList(value);
+      if (bytes.length != expectedLen) {
+        throw TLSIllegalParameterException('Invalid private key length');
+      }
+      return bytes;
+    }
+    throw TLSInternalError('Unsupported private key representation');
   }
 }
 

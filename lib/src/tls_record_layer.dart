@@ -87,6 +87,9 @@ class TLSRecordLayer {
   bool heartbeatCanSend = false;
   bool heartbeatSupported = false;
 
+  /// Whether TLS 1.3 middlebox compatibility mode stays enabled.
+  bool _middleboxCompatMode = true;
+
   /// Whether post-handshake auth must fail when the peer omits a certificate.
   bool clientCertRequired = false;
 
@@ -269,13 +272,43 @@ class TLSRecordLayer {
       );
     }
 
-    while (_readBuffer.length < min) {
-      await _pumpApplicationData();
+    final allowedTypes = <int>{ContentType.application_data};
+    Set<int>? allowedHandshakeTypes;
+    if (_isTls13Connection) {
+      allowedTypes.add(ContentType.handshake);
+      allowedHandshakeTypes = <int>{
+        HandshakeType.new_session_ticket,
+        HandshakeType.key_update,
+      };
     }
 
-    final takeLength = max == null
-        ? _readBuffer.length
-        : math.min(max, _readBuffer.length);
+    var tryOnce = true;
+    try {
+      while ((_readBuffer.length < min ||
+              (_readBuffer.isEmpty && tryOnce)) &&
+          !closed) {
+        tryOnce = false;
+        final shouldRetry = await _pumpApplicationData(
+          allowedTypes: allowedTypes,
+          allowedHandshakeTypes: allowedHandshakeTypes,
+        );
+        if (shouldRetry) {
+          tryOnce = true;
+        }
+      }
+    } on TLSRemoteAlert catch (alert) {
+      if (alert.description != AlertDescription.close_notify) {
+        rethrow;
+      }
+    } on TLSAbruptCloseError {
+      if (!ignoreAbruptClose) {
+        rethrow;
+      }
+      await _shutdown(resumable: true);
+    }
+
+    final effectiveMax = max ?? _readBuffer.length;
+    final takeLength = math.min(effectiveMax, _readBuffer.length);
     final result = Uint8List.fromList(_readBuffer.sublist(0, takeLength));
     _readBuffer = Uint8List.fromList(_readBuffer.sublist(takeLength));
     return result;
@@ -305,43 +338,49 @@ class TLSRecordLayer {
   }
 
   Future<void> handleKeyUpdateRequest(tlsmsg.TlsKeyUpdate request) async {
-    throw UnimplementedError('KeyUpdate handling not ported yet');
+    await _sendError(
+      AlertDescription.internal_error,
+      'KeyUpdate handling not ported yet',
+    );
   }
 
-  Future<void> _pumpApplicationData() async {
-    while (true) {
-      final (header, parser) = await _getNextRecord();
-      final recordType = _resolveRecordType(header);
+  Future<bool> _pumpApplicationData({
+    required Set<int> allowedTypes,
+    Set<int>? allowedHandshakeTypes,
+  }) async {
+    final message = await _getMsg(
+      allowedTypes,
+      allowedHandshakeTypes: allowedHandshakeTypes,
+    );
 
-      if (recordType == ContentType.application_data) {
-        final payload = parser.getFixBytes(parser.getRemainingLength());
-        _appendPlaintext(payload);
-        return;
-      }
-
-      if (recordType == ContentType.change_cipher_spec) {
-        continue;
-      }
-
-      if (recordType == ContentType.alert) {
-        await _handleIncomingAlert(parser);
-        continue;
-      }
-
-      if (recordType == ContentType.handshake) {
-        throw UnimplementedError('Handshake processing not ported yet');
-      }
-
-      if (recordType == ContentType.heartbeat) {
-        throw UnimplementedError('Heartbeat handling not ported yet');
-      }
-
-      throw TLSLocalAlert(
-        AlertDescription.unexpected_message,
-        AlertLevel.fatal,
-        detailedMessage: 'Received unsupported record type $recordType',
-      );
+    if (message is tlsmsg.TlsApplicationData) {
+      _appendPlaintext(Uint8List.fromList(message.data));
+      return false;
     }
+
+    if (message is tlsmsg.TlsNewSessionTicket) {
+      tickets.add(message);
+      return false;
+    }
+
+    if (message is tlsmsg.TlsKeyUpdate) {
+      await handleKeyUpdateRequest(message);
+      return true;
+    }
+
+    if (message is tlsmsg.TlsChangeCipherSpec) {
+      return false;
+    }
+
+    if (message is tlsmsg.TlsHeartbeat) {
+      throw UnimplementedError('Heartbeat handling not ported yet');
+    }
+
+    throw TLSLocalAlert(
+      AlertDescription.unexpected_message,
+      AlertLevel.fatal,
+      detailedMessage: 'Received unsupported record ${message.runtimeType}',
+    );
   }
 
   void _appendPlaintext(Uint8List chunk) {
@@ -421,23 +460,160 @@ class TLSRecordLayer {
   Future<void> _sendMsgThroughSocket(Message message) =>
       _recordLayer.sendRecord(message);
 
-  Future<Never> _sendError(int alertDescription, [String? errorStr]) async {
-    final payload = Uint8List.fromList(<int>[
-      AlertLevel.fatal,
-      alertDescription,
-    ]);
+  Future<void> _sendAlert({
+    required int level,
+    required int description,
+  }) async {
+    final payload = Uint8List.fromList(<int>[level, description]);
     await _sendRawMessage(
       ContentType.alert,
       payload,
       randomizeFirstBlock: false,
       updateHandshakeHash: false,
     );
+  }
+
+  Future<Never> _sendError(int alertDescription, [String? errorStr]) async {
+    await _sendAlert(level: AlertLevel.fatal, description: alertDescription);
     await _shutdown(resumable: false);
     throw TLSLocalAlert(
       alertDescription,
       AlertLevel.fatal,
       detailedMessage: errorStr,
     );
+  }
+
+  Future<tlsmsg.TlsMessage> _getMsg(
+    Set<int> expectedTypes, {
+    Set<int>? allowedHandshakeTypes,
+  }) async {
+    try {
+      while (true) {
+        final (header, parser) = await _getNextRecord();
+        final recordType = _resolveRecordType(header);
+
+        if (_isTls13Connection &&
+            expectedTypes.contains(ContentType.handshake) &&
+            _middleboxCompatMode &&
+            recordType == ContentType.change_cipher_spec) {
+          final fragment = parser.getFixBytes(parser.getRemainingLength());
+          final ccs = tlsmsg.TlsChangeCipherSpec.parse(fragment);
+          if (ccs.value != 1) {
+            await _sendError(
+              AlertDescription.unexpected_message,
+              'Invalid CCS message received',
+            );
+          }
+          continue;
+        }
+
+        if (_isTls13Connection &&
+            recordType != ContentType.handshake &&
+            _defragmenter.hasPending(ContentType.handshake)) {
+          await _sendError(
+            AlertDescription.unexpected_message,
+            'Interleaved Handshake and non-handshake messages',
+          );
+        }
+
+        if (!expectedTypes.contains(recordType)) {
+          if (recordType == ContentType.alert) {
+            await _handleIncomingAlert(parser);
+            continue;
+          }
+
+          if (recordType == ContentType.handshake) {
+            final payload = parser.getFixBytes(parser.getRemainingLength());
+            final handshakeType = payload.isEmpty ? null : payload.first;
+            if (_isRenegotiationAttempt(handshakeType) && session != null) {
+              await _sendAlert(
+                level: AlertLevel.warning,
+                description: AlertDescription.no_renegotiation,
+              );
+              continue;
+            }
+          }
+
+          await _sendError(
+            AlertDescription.unexpected_message,
+            'received type=$recordType',
+          );
+        }
+
+        switch (recordType) {
+          case ContentType.change_cipher_spec:
+            final fragment = parser.getFixBytes(parser.getRemainingLength());
+            return tlsmsg.TlsChangeCipherSpec.parse(fragment);
+          case ContentType.alert:
+            await _handleIncomingAlert(parser);
+            continue;
+          case ContentType.application_data:
+            final payload = parser.getFixBytes(parser.getRemainingLength());
+            return tlsmsg.TlsApplicationData(data: payload);
+          case ContentType.handshake:
+            if (header is RecordHeader2) {
+              await _sendError(
+                AlertDescription.protocol_version,
+                'SSLv2 ClientHello is not supported yet',
+              );
+            }
+
+            final fragment = parser.getFixBytes(parser.getRemainingLength());
+            final recordVersion =
+                header is RecordHeader3 ? header.version : version;
+            final messages = tlsmsg.TlsHandshakeMessage.parseFragment(
+              fragment,
+              recordVersion: recordVersion,
+            );
+            if (messages.isEmpty) {
+              await _sendError(
+                AlertDescription.decode_error,
+                'Empty handshake message payload',
+              );
+            }
+            if (messages.length != 1) {
+              await _sendError(
+                AlertDescription.unexpected_message,
+                'Expected a single handshake message per fragment',
+              );
+            }
+            final handshake = messages.single;
+            final handshakeCode = handshake.handshakeType.code;
+            if (allowedHandshakeTypes != null &&
+                !allowedHandshakeTypes.contains(handshakeCode)) {
+              await _sendError(
+                AlertDescription.unexpected_message,
+                'Expecting ${_describeHandshakeTypes(allowedHandshakeTypes)}, '
+                'got ${handshake.handshakeType.name}',
+              );
+            }
+            if (_isTls13Connection &&
+                _requiresRecordAlignment(handshakeCode) &&
+                !_defragmenter.isEmpty()) {
+              await _sendError(
+                AlertDescription.unexpected_message,
+                'CH, EOED, SH, Finished, or KU not aligned with record boundary',
+              );
+            }
+            _handshakeHash.update(fragment);
+            return handshake;
+          case ContentType.heartbeat:
+            final payload = parser.getFixBytes(parser.getRemainingLength());
+            return tlsmsg.TlsHeartbeat.parse(payload);
+          default:
+            await _sendError(
+              AlertDescription.unexpected_message,
+              'Unsupported record type $recordType',
+            );
+        }
+      }
+    } on TLSIllegalParameterException {
+      await _sendError(AlertDescription.illegal_parameter);
+    } on BadCertificateError catch (error) {
+      await _sendError(AlertDescription.bad_certificate, error.message);
+    } on DecodeError catch (error) {
+      await _sendError(AlertDescription.decode_error, error.message);
+    }
   }
 
   Future<(dynamic, Parser)> _getNextRecord() async {
@@ -544,14 +720,9 @@ class TLSRecordLayer {
     if (isCloseNotify || isWarning) {
       if (isCloseNotify) {
         try {
-          await _sendRawMessage(
-            ContentType.alert,
-            Uint8List.fromList(<int>[
-              AlertLevel.warning,
-              AlertDescription.close_notify,
-            ]),
-            randomizeFirstBlock: false,
-            updateHandshakeHash: false,
+          await _sendAlert(
+            level: AlertLevel.warning,
+            description: AlertDescription.close_notify,
           );
         } catch (_) {
           // Ignore transport errors while acknowledging alerts.
@@ -565,5 +736,40 @@ class TLSRecordLayer {
     }
 
     throw TLSRemoteAlert(description, level);
+  }
+
+  bool get _isTls13Connection =>
+      version > const TlsProtocolVersion(3, 3);
+
+  bool _isRenegotiationAttempt(int? handshakeType) {
+    if (handshakeType == null) {
+      return false;
+    }
+    if (isClient && handshakeType == HandshakeType.hello_request) {
+      return true;
+    }
+    if (!isClient && handshakeType == HandshakeType.client_hello) {
+      return true;
+    }
+    return false;
+  }
+
+  bool _requiresRecordAlignment(int handshakeType) {
+    switch (handshakeType) {
+      case HandshakeType.client_hello:
+      case HandshakeType.end_of_early_data:
+      case HandshakeType.server_hello:
+      case HandshakeType.finished:
+      case HandshakeType.key_update:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  String _describeHandshakeTypes(Set<int> handshakeTypes) {
+    return handshakeTypes
+        .map((type) => HandshakeType.toStr(type))
+        .join(', ');
   }
 }

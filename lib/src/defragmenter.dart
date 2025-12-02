@@ -164,4 +164,13 @@ class Defragmenter {
   bool isEmpty() {
     return buffers.values.every((buf) => buf.lengthInBytes == 0);
   }
+
+  /// Returns true if there is buffered data for [msgType].
+  bool hasPending(int msgType) {
+    final buffer = buffers[msgType];
+    if (buffer == null) {
+      return false;
+    }
+    return buffer.lengthInBytes > 0;
+  }
 }
