@@ -1,10 +1,11 @@
-import 'dart:io';
 import 'dart:typed_data';
-
+import 'dart:io' as io;
 import 'package:test/test.dart';
 import 'package:tlslite/src/constants.dart' as tls_constants;
 import 'package:tlslite/src/net/security/pure_dart/pure_dart_tls_types.dart';
-import 'package:tlslite/src/net/security/pure_dart/tls_messages.dart';
+import 'package:tlslite/src/net/security/pure_dart/tls_extensions.dart';
+import 'package:tlslite/src/tls_messages.dart';
+import 'package:tlslite/src/tls_protocol.dart';
 
 void main() {
   group('TlsCertificate', () {
@@ -16,8 +17,8 @@ void main() {
         ],
       );
 
-      final parsed = TlsHandshakeMessage.parseFragment(message.serialize()).
-          single as TlsCertificate;
+      final parsed = TlsHandshakeMessage.parseFragment(message.serialize())
+          .single as TlsCertificate;
 
       expect(parsed.certificateChain, hasLength(2));
       expect(parsed.certificateChain[0], equals(message.certificateChain[0]));
@@ -26,9 +27,9 @@ void main() {
 
     test('build from PEM fixture', () {
       final certPem =
-          File('tlslite-ng/tests/serverX509Cert.pem').readAsStringSync();
+          io.File('tlslite-ng/tests/serverX509Cert.pem').readAsStringSync();
       final keyPem =
-          File('tlslite-ng/tests/serverX509Key.pem').readAsStringSync();
+          io.File('tlslite-ng/tests/serverX509Key.pem').readAsStringSync();
 
       final config = PureDartTlsConfig(
         certificateChainPem: certPem,
@@ -84,7 +85,7 @@ void main() {
     );
 
     final parsed = (TlsHandshakeMessage.parseFragment(req.serialize()).single)
-      as TlsCertificateRequest;
+        as TlsCertificateRequest;
 
     expect(parsed.certificateTypes, equals(req.certificateTypes));
     expect(parsed.signatureAlgorithms, equals(req.signatureAlgorithms));
@@ -99,9 +100,8 @@ void main() {
       signatureScheme: 0x0403,
     );
 
-    final parsed =
-      (TlsHandshakeMessage.parseFragment(verify.serialize()).single)
-        as TlsCertificateVerify;
+    final parsed = (TlsHandshakeMessage.parseFragment(verify.serialize())
+        .single) as TlsCertificateVerify;
 
     expect(parsed.signatureScheme, equals(0x0403));
     expect(parsed.signature, equals(verify.signature));
@@ -109,8 +109,8 @@ void main() {
 
   test('KeyUpdate toggles flag', () {
     final update = TlsKeyUpdate(updateRequested: true);
-    final parsed = (TlsHandshakeMessage.parseFragment(update.serialize()).single)
-      as TlsKeyUpdate;
+    final parsed = (TlsHandshakeMessage.parseFragment(update.serialize())
+        .single) as TlsKeyUpdate;
 
     expect(parsed.updateRequested, isTrue);
   });
@@ -190,7 +190,8 @@ void main() {
     ).single as TlsClientHello;
 
     expect(parsed.serverNames, contains('example.com'));
-    expect(parsed.applicationProtocols, containsAll(<String>['h2', 'http/1.1']));
+    expect(
+        parsed.applicationProtocols, containsAll(<String>['h2', 'http/1.1']));
   });
 
   test('ClientHello surfaces TLS 1.3 extensions', () {
@@ -202,7 +203,9 @@ void main() {
       TlsKeyShareExtension.client(<TlsKeyShareEntry>[keyShareEntry]),
       TlsStatusRequestExtension.request(
         statusType: tls_constants.CertificateStatusType.ocsp,
-        responderIds: <Uint8List>[Uint8List.fromList(<int>[0x01])],
+        responderIds: <Uint8List>[
+          Uint8List.fromList(<int>[0x01])
+        ],
         requestExtensions: Uint8List.fromList(<int>[0x02, 0x03]),
       ),
       TlsSignatureAlgorithmsCertExtension(

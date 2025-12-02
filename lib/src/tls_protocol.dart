@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import '../../../utils/codec.dart';
+import 'utils/codec.dart';
 
 /// Representa uma versão TLS (major/minor).
 class TlsProtocolVersion {

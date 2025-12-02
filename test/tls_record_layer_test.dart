@@ -1,18 +1,20 @@
-import 'dart:io';
 import 'dart:typed_data';
-
+import 'dart:io' as io;
 import 'package:test/test.dart';
 import 'package:tlslite/src/net/security/pure_dart/pure_dart_tls_types.dart';
-import 'package:tlslite/src/net/security/pure_dart/tls_messages.dart';
+
 import 'package:tlslite/src/net/security/pure_dart/tls_record_layer.dart';
 import 'package:tlslite/src/net/socket/socket_native_ffi.dart';
+import 'package:tlslite/src/tls_messages.dart';
+
+import 'package:tlslite/src/tls_protocol.dart';
 
 void main() {
   test('uses negotiated TLS version hint for parsing', () {
     final certPem =
-        File('tlslite-ng/tests/serverX509Cert.pem').readAsStringSync();
+        io.File('tlslite-ng/tests/serverX509Cert.pem').readAsStringSync();
     final keyPem =
-        File('tlslite-ng/tests/serverX509Key.pem').readAsStringSync();
+        io.File('tlslite-ng/tests/serverX509Key.pem').readAsStringSync();
 
     final config = PureDartTlsConfig(
       certificateChainPem: certPem,
@@ -90,12 +92,10 @@ class _FakeTransport implements RawTransport {
       throw UnimplementedError('connect not supported');
 
   @override
-  void listen(int backlog) =>
-      throw UnimplementedError('listen not supported');
+  void listen(int backlog) => throw UnimplementedError('listen not supported');
 
   @override
-  RawTransport accept() =>
-      throw UnimplementedError('accept not supported');
+  RawTransport accept() => throw UnimplementedError('accept not supported');
 
   @override
   int send(Uint8List data) => data.length;

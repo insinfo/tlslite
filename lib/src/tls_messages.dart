@@ -1,12 +1,11 @@
 import 'dart:typed_data';
 
-import '../../../constants.dart' as tls_constants;
-import '../../../utils/codec.dart';
-import '../../../utils/cryptomath.dart';
-import 'tls_extensions.dart';
+import 'constants.dart' as tls_constants;
+import 'utils/codec.dart';
+import 'utils/cryptomath.dart';
+import 'net/security/pure_dart/tls_extensions.dart';
 import 'tls_protocol.dart';
-export 'tls_protocol.dart';
-export 'tls_extensions.dart';
+
 
 /// Content types alinhados com TLS 1.2/1.3.
 enum TlsContentType {
