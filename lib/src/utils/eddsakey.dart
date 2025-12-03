@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import '../ed25519_edwards/ed25519_edwards.dart' as ed;
+import '../ed448/ed448.dart' as ed448;
 import 'der.dart';
 import 'pem.dart';
 import 'pkcs8.dart';
@@ -49,16 +50,18 @@ abstract class EdDSAKey {
   }
 }
 
-/// Placeholder for Ed448 keys until full Ed448 support is ported.
+/// Ed448 public key implementation.
 class Ed448PublicKey extends EdDSAKey {
   Ed448PublicKey(Uint8List publicKeyBytes)
-      : _publicKeyBytes = Uint8List.fromList(publicKeyBytes) {
+      : _publicKeyBytes = Uint8List.fromList(publicKeyBytes),
+        _impl = ed448.Ed448PublicKeyImpl(publicKeyBytes) {
     if (_publicKeyBytes.length != _ed448KeyLength) {
       throw ArgumentError('Ed448 public key must be 57 bytes');
     }
   }
 
   final Uint8List _publicKeyBytes;
+  final ed448.Ed448PublicKeyImpl _impl;
 
   Uint8List get publicKeyBytes => Uint8List.fromList(_publicKeyBytes);
 
@@ -70,12 +73,12 @@ class Ed448PublicKey extends EdDSAKey {
 
   @override
   Uint8List _hashAndSign(Uint8List data) {
-    throw UnsupportedError('Ed448 signing is not implemented yet');
+    throw StateError('Cannot sign with a public key');
   }
 
   @override
   bool _hashAndVerify(Uint8List signature, Uint8List data) {
-    throw UnsupportedError('Ed448 verification is not implemented yet');
+    return _impl.verify(data, signature);
   }
 
   @override
@@ -98,11 +101,13 @@ class Ed448PublicKey extends EdDSAKey {
   }
 }
 
+/// Ed448 private key implementation.
 class Ed448PrivateKey extends Ed448PublicKey {
   Ed448PrivateKey({
     required Uint8List privateKeyBytes,
     required Uint8List publicKeyBytes,
   })  : _privateKeyBytes = Uint8List.fromList(privateKeyBytes),
+        _privateImpl = ed448.Ed448PrivateKeyImpl.fromSeed(privateKeyBytes),
         super(publicKeyBytes) {
     if (_privateKeyBytes.length != _ed448KeyLength) {
       throw ArgumentError('Ed448 private key must be 57 bytes');
@@ -110,9 +115,15 @@ class Ed448PrivateKey extends Ed448PublicKey {
   }
 
   final Uint8List _privateKeyBytes;
+  final ed448.Ed448PrivateKeyImpl _privateImpl;
 
   @override
   bool hasPrivateKey() => true;
+
+  @override
+  Uint8List _hashAndSign(Uint8List data) {
+    return _privateImpl.sign(data);
+  }
 
   @override
   bool acceptsPassword() => true;

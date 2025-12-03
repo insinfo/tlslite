@@ -2,3 +2,4 @@ analyzer:
   exclude:
     - archive-main/**
     - oracledb_dart/**
+    - dart-pg/**

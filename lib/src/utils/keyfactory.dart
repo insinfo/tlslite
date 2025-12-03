@@ -434,7 +434,7 @@ EdDSAKey _parseEdDsaPublicKey(ASN1Parser spki, List<int> oid) {
     }
     return Ed448PublicKey(Uint8List.fromList(keyBytes));
   }
-  throw UnsupportedError('Ed448 keys are not supported yet');
+  throw UnsupportedError('Unknown EdDSA curve OID');
 }
 
 PythonDSAKey _parseDsaPkcs8PrivateKey(Uint8List data, ASN1Parser params) {

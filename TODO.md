@@ -1,32 +1,34 @@
 # TODO - TLSLite Dart Port
 
-**Status**: 40% completo | **Testes**: 446 passando
+**Status**: 45% completo | **Testes**: 446+ passando
 
 ## PRIORIDADES
 
 ### 🔴 CRÍTICO (para TLS funcionar)
-1. **recordlayer.py** → recordlayer.dart (1.376 linhas) - STUB criado, port completo pendente
-2. **keyexchange.py** → key_exchange.dart (1.100 linhas)  
-3. **tlsconnection.py** → tls_connection.dart (4.535 linhas)
+1. **recordlayer.py** → recordlayer.dart (1.376 linhas) - ✅ PORT COMPLETO
+2. **keyexchange.py** → key_exchange.dart (1.100 linhas) - ✅ ~95% completo (falta ML-KEM/PQC)
+3. **tlsconnection.py** → tls_connection.dart (4.535 linhas) - 🔄 ~60% completo
 
-###  IMPORTANTE
-4. **handshakesettings.py**  handshake_settings.dart (716 linhas)
-5. **tlsrecordlayer.py**  tls_record_layer.dart (1.345 linhas)
-6. **handshakehelpers.py**  handshake_helpers.dart (789 linhas)
+### ✅ IMPORTANTE  
+4. **handshakesettings.py** → handshake_settings.dart (716 linhas) - ✅ COMPLETO
+5. **tlsrecordlayer.py** → tls_record_layer.dart (1.345 linhas) - ✅ COMPLETO
+6. **handshakehelpers.py** → handshake_helpers.dart (789 linhas) - ✅ COMPLETO
 
-###  BAIXA (pode esperar)
+### 🔵 BAIXA (pode esperar)
 7. verifierdb.py, dh.py, checker.py
 8. api.py, basedb.py, messagesocket.py
 
 ---
 
-## COMPLETO 
+## COMPLETO ✅
 
 **Utils**: codec, asn1parser, pem, x25519, aes, chacha20, poly1305, rsa, ecdsa, eddsa, dsa, hmac, compression, constanttime, datefuncs, lists, dns_utils, format_output, keyfactory, tlshashlib, tlshmac, tripledes, rc4
 
-**Core**: constants, errors, x509, x509certchain, ocsp, signed, session, mathtls, ffdhe_groups, defragmenter, handshake_hashes
+**Core**: constants, errors, x509, x509certchain, ocsp, signed, session, mathtls, ffdhe_groups, defragmenter, handshake_hashes, sessioncache
 
-**Parcial**: tls_messages (70%), tls_extensions (70%), buffered_socket
+**Crypto**: AES (CBC/CTR/GCM/CCM/CCM8), ChaCha20-Poly1305, TripleDES, RC4
+
+**Parcial**: tls_messages (80%), tls_extensions (85%), buffered_socket
 
 ---
 
@@ -76,12 +78,16 @@ dart analyze                 # análise estática
 - ✅ Fluxo de binders PSK TLS 1.3 portado: `TlsClientHello` agora expõe `pskTruncate/psk_truncate`, `TlsExtensionBlock`/`TlsPreSharedKeyExtension` foram adicionados e `TlsConnection` ganhou helpers para assinar/verificar binders com `HandshakeHelpers`, cobertos em `test/tlsconnection_test.dart`.
 - ✅ O envio de ClientHello agora recalcula automaticamente os binders PSK com base nos `HandshakeSettings` e tickets TLS 1.3 persistidos no `SessionCache`, garantindo que `queueHandshakeMessage`/`sendHandshakeMessage` emitam extensões válidas mesmo quando os binders vierem como placeholders.
 - ✅ No modo servidor, `TlsConnection` passa a validar binders recebidos em ClientHello, disparando `illegal_parameter` quando o valor não confere e expondo `negotiatedClientHelloPsk*` para que as rotas de handshake escolham PSK externos posteriormente; novos testes em `test/tlsconnection_test.dart` cobrem sucesso/falha.
-- 🔜 Selecionar automaticamente o PSK anunciado (incluindo TLS 1.3 tickets) durante o handshake real, enviando `pre_shared_key` no ServerHello e ligando o fluxo ao gerenciador de tickets/resumption Store.
+- ✅ **NOVO**: `selectPskFromClientHello` seleciona automaticamente o PSK anunciado (externo ou TLS 1.3 ticket), valida binders e retorna `PskSelectionResult` para construção do ServerHello.
+- ✅ **NOVO**: `buildServerPreSharedKeyExtension` gera `TlsServerPreSharedKeyExtension` com índice do PSK selecionado.
+- ✅ **NOVO**: `_tryDecryptTicket` deriva PSK de tickets armazenados usando HKDF-expand-label com resumption master secret.
+- 🔜 Conectar `PskSelectionResult` ao fluxo completo de handshake para resumptions reais sem full handshake.
 
 ### Session cache
 - ✅ `SessionCache` foi portada para `lib/src/sessioncache.dart`, preservando a ordem circular e as políticas de expiração/evicção usadas no Python.
 - ✅ Novos testes em `test/sessioncache_test.dart` cobrem expiração imediata e rotação quando o cache estoura a capacidade.
-- 🔜 Integrar o cache ao handshake server-side em `tlsconnection.dart` assim que o módulo existir, garantindo cobertura de resumption/stapling em testes integrados.
+- ✅ Integração básica com `TlsConnection` para armazenar/recuperar sessões.
+- 🔜 Integrar completamente ao handshake server-side para resumption automática.
 
 ### ECDH clássico
 - ✅ `ECDHKeyExchange` agora calcula key shares para curvas NIST/Brainpool usando PointyCastle, eliminando vários `UnimplementedError`.
@@ -100,9 +106,29 @@ dart analyze                 # análise estática
 - ✅ `ADHKeyExchange` e derivados passam a aplicar `HandshakeSettings.minKeySize`/`maxKeySize` ao validar `dhP`, substituindo o limite fixo de 1024 bits.
 - ✅ Novos testes em `test/keyexchange_test.dart` cobrem rejeição de primos abaixo/acima dos limites configurados.
 
-continue implementando os TODO e os UnimplementedError e os not implemented e os UnsupportedError e os placeholders  e stub afim de comcluir o port
-continue portando o C:\MyDartProjects\tlslite\tlslite-ng para dart e atualize o C:\MyDartProjects\tlslite\TODO.md    
+### ML-KEM / Post-Quantum Cryptography
+- 🔜 `KEMKeyExchange` possui stubs para ML-KEM-768/1024 (Kyber) - requer biblioteca PQC externa.
+- 🔜 Grupos híbridos `x25519mlkem768`, `secp256r1mlkem768`, `secp384r1mlkem1024` aguardam implementação.
 
-Next Steps
+---
 
-1️⃣ Teach the handshake routines to pick a validated PSK (external or TLS 1.3 ticket), emit the pre_shared_key selection in ServerHello, and hook into the ticket database/session cache so resumptions actually skip the full handshake.
+## UnimplementedError / UnsupportedError restantes
+
+### Ed448 (eddsakey.dart)
+- `Ed448PublicKey._hashAndSign` → precisa math Ed448
+- `Ed448PublicKey._hashAndVerify` → precisa math Ed448
+
+### ML-KEM (keyexchange.dart)
+- `KEMKeyExchange.getRandomPrivateKey` → requer lib PQC
+- `KEMKeyExchange.calcPublicValue` → requer lib PQC  
+- `KEMKeyExchange.encapsulateKey` → requer lib PQC
+- `KEMKeyExchange.calcSharedKey` → requer lib PQC
+
+---
+
+## Next Steps
+
+1️⃣ ~~Teach the handshake routines to pick a validated PSK~~ ✅ DONE
+2️⃣ Connect `PskSelectionResult` to actual handshake flow for resumptions
+3️⃣ Port Ed448 math from ed448goldilocks for full EdDSA support
+4️⃣ Evaluate ML-KEM library options for post-quantum support

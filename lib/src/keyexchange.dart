@@ -11,6 +11,7 @@ import 'handshake_hashes.dart';
 import 'handshake_settings.dart';
 import 'mathtls.dart';
 import 'messages.dart' as tlsmsg;
+import 'ml_kem/ml_kem.dart';
 import 'tls_protocol.dart';
 import 'utils/ecc.dart';
 import 'utils/cryptomath.dart';
@@ -163,6 +164,204 @@ abstract class KeyExchange {
       return payload;
     }
     return secureHash(payload, hashName);
+  }
+
+  /// Verify signature on the Server Key Exchange message.
+  ///
+  /// The only acceptable signature algorithms are specified by [validSigAlgs].
+  static void verifyServerKeyExchange(
+    tlsmsg.TlsServerKeyExchange serverKeyExchange,
+    dynamic publicKey,
+    Uint8List clientRandom,
+    Uint8List serverRandom,
+    List<(int, int)> validSigAlgs,
+  ) {
+    final version = serverKeyExchange.version;
+    final versionTuple = version.length >= 2 ? (version[0], version[1]) : (3, 3);
+
+    if (versionTuple.$1 < 3 || (versionTuple.$1 == 3 && versionTuple.$2 < 3)) {
+      // Pre-TLS 1.2 verification
+      final hashBytes = serverKeyExchange.signatureDigest(clientRandom, serverRandom);
+      final sigBytes = Uint8List.fromList(serverKeyExchange.signature);
+      if (sigBytes.isEmpty) {
+        throw TLSIllegalParameterException('Empty signature');
+      }
+      if (!_verifySignature(publicKey, sigBytes, hashBytes)) {
+        throw TLSDecryptionFailed('Server Key Exchange signature invalid');
+      }
+    } else {
+      // TLS 1.2+ verification
+      _tls12VerifySKE(serverKeyExchange, publicKey, clientRandom, serverRandom, validSigAlgs);
+    }
+  }
+
+  static void _tls12VerifySKE(
+    tlsmsg.TlsServerKeyExchange serverKeyExchange,
+    dynamic publicKey,
+    Uint8List clientRandom,
+    Uint8List serverRandom,
+    List<(int, int)> validSigAlgs,
+  ) {
+    final hashAlg = serverKeyExchange.hashAlg;
+    final signAlg = serverKeyExchange.signAlg;
+
+    final sigAlgTuple = (hashAlg, signAlg);
+    if (!validSigAlgs.contains(sigAlgTuple)) {
+      throw TLSIllegalParameterException('Server selected invalid signature algorithm');
+    }
+
+    // Check for EdDSA signatures
+    final ed25519 = SignatureScheme.valueOf('ed25519');
+    final ed448 = SignatureScheme.valueOf('ed448');
+    if ((ed25519 != null && sigAlgTuple == ((ed25519 >> 8) & 0xff, ed25519 & 0xff)) ||
+        (ed448 != null && sigAlgTuple == ((ed448 >> 8) & 0xff, ed448 & 0xff))) {
+      _verifyEdDsaSKE(serverKeyExchange, publicKey, clientRandom, serverRandom);
+      return;
+    }
+
+    // Check for ECDSA
+    if (signAlg == SignatureAlgorithm.ecdsa) {
+      _verifyEcdsaSKE(serverKeyExchange, publicKey, clientRandom, serverRandom);
+      return;
+    }
+
+    // Check for DSA
+    if (signAlg == SignatureAlgorithm.dsa) {
+      _verifyDsaSKE(serverKeyExchange, publicKey, clientRandom, serverRandom);
+      return;
+    }
+
+    // RSA verification
+    final schemeId = (hashAlg << 8) | signAlg;
+    final scheme = SignatureScheme.toRepr(schemeId);
+    String hashName;
+    String padding;
+    int saltLen;
+
+    if (scheme != null) {
+      final keyType = SignatureScheme.getKeyType(scheme);
+      if (keyType != 'rsa') {
+        throw TLSInternalError('Non-RSA signature scheme with RSA algorithm ID');
+      }
+      hashName = SignatureScheme.getHash(scheme);
+      padding = SignatureScheme.getPadding(scheme);
+      saltLen = padding == 'pss' ? tlshash.newHash(hashName).digestSize : 0;
+    } else {
+      if (signAlg != SignatureAlgorithm.rsa) {
+        throw TLSInternalError('Non-RSA sigs are not supported');
+      }
+      hashName = HashAlgorithm.toRepr(hashAlg) ??
+          (throw TLSIllegalParameterException('Unknown hash ID: $hashAlg'));
+      padding = 'pkcs1';
+      saltLen = 0;
+    }
+
+    final hashBytes = serverKeyExchange.signatureDigest(clientRandom, serverRandom);
+    final sigBytes = Uint8List.fromList(serverKeyExchange.signature);
+
+    if (sigBytes.isEmpty) {
+      throw TLSIllegalParameterException('Empty signature');
+    }
+
+    if (publicKey is! RSAKey) {
+      throw TLSInternalError('Expected RSA key for RSA signature verification');
+    }
+
+    if (!publicKey.verify(sigBytes, hashBytes,
+        padding: padding, hashAlg: hashName, saltLen: saltLen)) {
+      throw TLSDecryptionFailed('Server Key Exchange signature invalid');
+    }
+  }
+
+  static void _verifyEdDsaSKE(
+    tlsmsg.TlsServerKeyExchange serverKeyExchange,
+    dynamic publicKey,
+    Uint8List clientRandom,
+    Uint8List serverRandom,
+  ) {
+    final sigBytes = Uint8List.fromList(serverKeyExchange.signature);
+    if (sigBytes.isEmpty) {
+      throw TLSIllegalParameterException('Empty signature');
+    }
+    final hashBytes = serverKeyExchange.signatureDigest(clientRandom, serverRandom);
+
+    if (publicKey is! EdDSAKey) {
+      throw TLSInternalError('Expected EdDSA key for EdDSA signature verification');
+    }
+
+    if (!publicKey.hashAndVerify(sigBytes, hashBytes)) {
+      throw TLSDecryptionFailed('Server Key Exchange signature invalid');
+    }
+  }
+
+  static void _verifyEcdsaSKE(
+    tlsmsg.TlsServerKeyExchange serverKeyExchange,
+    dynamic publicKey,
+    Uint8List clientRandom,
+    Uint8List serverRandom,
+  ) {
+    final hashAlg = serverKeyExchange.hashAlg;
+    final hashName = HashAlgorithm.toRepr(hashAlg) ??
+        (throw TLSIllegalParameterException('Unknown hash algorithm'));
+
+    var hashBytes = serverKeyExchange.signatureDigest(clientRandom, serverRandom);
+
+    if (publicKey is! ECDSAKey) {
+      throw TLSInternalError('Expected ECDSA key for ECDSA signature verification');
+    }
+
+    // Truncate hash to curve base length
+    final curveLen = (publicKey.bitLength + 7) ~/ 8;
+    if (hashBytes.length > curveLen) {
+      hashBytes = Uint8List.fromList(hashBytes.sublist(0, curveLen));
+    }
+
+    final sigBytes = Uint8List.fromList(serverKeyExchange.signature);
+    if (sigBytes.isEmpty) {
+      throw TLSIllegalParameterException('Empty signature');
+    }
+
+    if (!publicKey.verify(sigBytes, hashBytes, hashAlg: hashName)) {
+      throw TLSDecryptionFailed('Server Key Exchange signature invalid');
+    }
+  }
+
+  static void _verifyDsaSKE(
+    tlsmsg.TlsServerKeyExchange serverKeyExchange,
+    dynamic publicKey,
+    Uint8List clientRandom,
+    Uint8List serverRandom,
+  ) {
+    final hashBytes = serverKeyExchange.signatureDigest(clientRandom, serverRandom);
+    final sigBytes = Uint8List.fromList(serverKeyExchange.signature);
+
+    if (sigBytes.isEmpty) {
+      throw TLSIllegalParameterException('Empty signature');
+    }
+
+    if (publicKey is! DSAKey) {
+      throw TLSInternalError('Expected DSA key for DSA signature verification');
+    }
+
+    if (!publicKey.verify(sigBytes, hashBytes)) {
+      throw TLSDecryptionFailed('Server Key Exchange signature invalid');
+    }
+  }
+
+  static bool _verifySignature(dynamic key, Uint8List signature, Uint8List data) {
+    if (key is RSAKey) {
+      return key.verify(signature, data);
+    }
+    if (key is ECDSAKey) {
+      return key.verify(signature, data);
+    }
+    if (key is DSAKey) {
+      return key.verify(signature, data);
+    }
+    if (key is EdDSAKey) {
+      return key.hashAndVerify(signature, data);
+    }
+    return false;
   }
 
   List<int>? _clientVersionCache;
@@ -1636,32 +1835,167 @@ class ECDHKeyExchange extends RawDHKeyExchange {
 /// Caution: KEMs are not symmetric! While the client calls the
 /// same getRandomPrivateKey(), calcPublicValue(), and calcSharedKey()
 /// as in FFDH or ECDH, the server calls just the encapsulateKey() method.
+///
+/// This implementation uses Hybrid ML-KEM (Kyber) combined with
+/// traditional ECDH, following draft-kwiatkowski-tls-ecdhe-mlkem.
+// ignore: unused_element
 class KEMKeyExchange {
-  KEMKeyExchange(this.group);
+  KEMKeyExchange(this.group) {
+    if (!GroupName.allKEM.contains(group)) {
+      throw TLSInternalError('KEMKeyExchange called with wrong group: $group');
+    }
+    
+    // Determine the classic ECDH group used in the hybrid
+    if (group == GroupName.secp256r1mlkem768) {
+      _classicGroup = GroupName.secp256r1;
+      _mlKem = mlKem768Instance;
+    } else if (group == GroupName.x25519mlkem768) {
+      _classicGroup = GroupName.x25519;
+      _mlKem = mlKem768Instance;
+    } else {
+      assert(group == GroupName.secp384r1mlkem1024);
+      _classicGroup = GroupName.secp384r1;
+      _mlKem = mlKem1024Instance;
+    }
+  }
 
   final int group;
+  late final int _classicGroup;
+  late final MlKem _mlKem;
+  
+  /// ML-KEM is now available in pure Dart.
+  static const bool mlKemAvailable = true;
 
-  /// Get a random private key for the key exchange
+  /// Get a random private key for the key exchange.
+  ///
+  /// Returns a tuple of ((pqcEk, pqcDk), classicKey).
+  /// To be used only to generate the KeyShare in ClientHello.
   dynamic getRandomPrivateKey() {
-    // ML-KEM (Kyber) key generation
-    // TODO: Add proper ML-KEM group constants to GroupName
-    // For now, just stub out the implementation
-    throw UnimplementedError('ML-KEM not yet supported - group: $group');
+    // Generate ML-KEM keypair
+    final (pqcEk, pqcDk) = _mlKem.keygen();
+    
+    // Generate classic key
+    final classicKex = ECDHKeyExchange(_classicGroup, (3, 4));
+    final classicKey = classicKex.getRandomPrivateKey();
+    
+    return ((pqcEk, pqcDk), classicKey);
   }
 
-  /// Calculate the public value for given private key
-  Uint8List calcPublicValue(dynamic privateKey) {
-    throw UnimplementedError('KEMKeyExchange.calcPublicValue');
+  /// Calculate the public value for given private key.
+  ///
+  /// To be used only to generate the KeyShare in ClientHello.
+  Uint8List calcPublicValue(dynamic privateKey, {String pointFormat = 'uncompressed'}) {
+    final ((pqcEk, _), classicPrivKey) = privateKey as ((Uint8List, Uint8List), dynamic);
+    
+    final classicKex = ECDHKeyExchange(_classicGroup, (3, 4));
+    final classicPubKeyShare = classicKex.calcPublicValue(classicPrivKey);
+    
+    // For x25519mlkem768: PQC first, then classic
+    // For NIST curves: classic first, then PQC
+    if (group == GroupName.x25519mlkem768) {
+      return Uint8List.fromList([...pqcEk, ...classicPubKeyShare]);
+    }
+    return Uint8List.fromList([...classicPubKeyShare, ...pqcEk]);
   }
 
-  /// Generate a random secret and encapsulate it (server side)
+  /// Returns group parameters: (classicKeyLen, pqcEkKeyLen, pqcCiphertextLen, pqcFirst).
+  (int, int, int, bool) _groupToParams() {
+    if (group == GroupName.secp256r1mlkem768) {
+      return (65, 1184, 1088, false);  // secp256r1: 65 bytes uncompressed
+    } else if (group == GroupName.x25519mlkem768) {
+      return (32, 1184, 1088, true);   // x25519: 32 bytes
+    } else {
+      assert(group == GroupName.secp384r1mlkem1024);
+      return (97, 1568, 1568, false);  // secp384r1: 97 bytes uncompressed
+    }
+  }
+
+  /// Split combined key share into PQC and classic portions.
+  static (Uint8List, Uint8List) _splitKeyShares(
+      Uint8List public, bool pqcFirst, int pqcKeyLen, int classicKeyLen) {
+    final expectedLen = classicKeyLen + pqcKeyLen;
+    if (public.length != expectedLen) {
+      throw TLSIllegalParameterException(
+          'Invalid key size for the selected group. '
+          'Expected: $expectedLen, received: ${public.length}');
+    }
+    
+    Uint8List pqcKey;
+    Uint8List classicKeyShare;
+    if (pqcFirst) {
+      pqcKey = Uint8List.sublistView(public, 0, pqcKeyLen);
+      classicKeyShare = Uint8List.sublistView(public, pqcKeyLen);
+    } else {
+      classicKeyShare = Uint8List.sublistView(public, 0, classicKeyLen);
+      pqcKey = Uint8List.sublistView(public, classicKeyLen);
+    }
+    
+    return (pqcKey, classicKeyShare);
+  }
+
+  /// Generate a random secret and encapsulate it (server side).
+  ///
+  /// Returns (sharedSecret, keyEncapsulation).
+  /// To be used for generation of KeyShare in ServerHello.
   (Uint8List, Uint8List) encapsulateKey(Uint8List publicKey) {
-    // Returns (ciphertext, shared_secret)
-    throw UnimplementedError('KEMKeyExchange.encapsulateKey');
+    final (classicKeyLen, pqcKeyLen, _, pqcFirst) = _groupToParams();
+    final (pqcEk, classicKeyShare) = _splitKeyShares(
+        publicKey, pqcFirst, pqcKeyLen, classicKeyLen);
+    
+    // Classic ECDH key exchange
+    final classicKex = ECDHKeyExchange(_classicGroup, (3, 4));
+    final classicPrivKey = classicKex.getRandomPrivateKey();
+    final classicMyKeyShare = classicKex.calcPublicValue(classicPrivKey);
+    final classicSharedSecret = classicKex.calcSharedKey(classicPrivKey, classicKeyShare);
+    
+    // ML-KEM encapsulation
+    Uint8List pqcSharedSecret, pqcCiphertext;
+    try {
+      final (ss, ct) = _mlKem.encaps(pqcEk);
+      pqcSharedSecret = ss;
+      pqcCiphertext = ct;
+    } catch (e) {
+      throw TLSIllegalParameterException('Invalid PQC key from peer: $e');
+    }
+    
+    // Combine shared secrets and key encapsulations
+    Uint8List sharedSecret, keyEncapsulation;
+    if (pqcFirst) {
+      sharedSecret = Uint8List.fromList([...pqcSharedSecret, ...classicSharedSecret]);
+      keyEncapsulation = Uint8List.fromList([...pqcCiphertext, ...classicMyKeyShare]);
+    } else {
+      sharedSecret = Uint8List.fromList([...classicSharedSecret, ...pqcSharedSecret]);
+      keyEncapsulation = Uint8List.fromList([...classicMyKeyShare, ...pqcCiphertext]);
+    }
+    
+    return (sharedSecret, keyEncapsulation);
   }
 
-  /// Decapsulate the key share received from server (client side)
+  /// Decapsulate the key share received from server (client side).
   Uint8List calcSharedKey(dynamic privateKey, Uint8List keyEncaps) {
-    throw UnimplementedError('KEMKeyExchange.calcSharedKey');
+    final (classicKeyLen, _, pqcCiphertextLen, pqcFirst) = _groupToParams();
+    final (pqcCiphertext, classicKeyShare) = _splitKeyShares(
+        keyEncaps, pqcFirst, pqcCiphertextLen, classicKeyLen);
+    
+    final ((_, pqcDk), classicPrivKey) = privateKey as ((Uint8List, Uint8List), dynamic);
+    
+    // Classic ECDH shared secret
+    final classicKex = ECDHKeyExchange(_classicGroup, (3, 4));
+    final classicSharedSecret = classicKex.calcSharedKey(classicPrivKey, classicKeyShare);
+    
+    // ML-KEM decapsulation
+    Uint8List pqcSharedSecret;
+    try {
+      pqcSharedSecret = _mlKem.decaps(pqcDk, pqcCiphertext);
+    } catch (e) {
+      throw TLSIllegalParameterException('Error in KEM decapsulation: $e');
+    }
+    
+    // Combine shared secrets
+    if (pqcFirst) {
+      return Uint8List.fromList([...pqcSharedSecret, ...classicSharedSecret]);
+    } else {
+      return Uint8List.fromList([...classicSharedSecret, ...pqcSharedSecret]);
+    }
   }
 }

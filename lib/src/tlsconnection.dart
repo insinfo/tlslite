@@ -818,4 +818,254 @@ class TlsConnection extends MessageSocket {
         return true;
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // PSK Selection for TLS 1.3 (server-side)
+  // ---------------------------------------------------------------------------
+
+  /// Result of PSK selection from ClientHello.
+  PskSelectionResult? _selectedPsk;
+
+  /// Get the result of PSK selection after processing ClientHello.
+  PskSelectionResult? get selectedPsk => _selectedPsk;
+
+  /// Select a PSK from the ClientHello for TLS 1.3 handshake.
+  ///
+  /// This method should be called by the server after receiving ClientHello.
+  /// It validates binders and returns selection result that can be used to
+  /// build the ServerHello pre_shared_key extension.
+  ///
+  /// Returns null if no acceptable PSK is found.
+  Future<PskSelectionResult?> selectPskFromClientHello(
+    TlsClientHello clientHello, {
+    required String prfName,
+  }) async {
+    _selectedPsk = null;
+
+    // Check if client advertised PSK extension
+    final extensions = clientHello.extensions;
+    if (extensions == null) {
+      return null;
+    }
+
+    final pskExt = extensions.last;
+    if (pskExt is! TlsPreSharedKeyExtension) {
+      return null;
+    }
+
+    // Check PSK key exchange modes
+    final pskModesExt = extensions.byType(ExtensionType.psk_key_exchange_modes);
+    if (pskModesExt == null) {
+      return null;
+    }
+
+    final supportedModes = _extractPskModes(pskModesExt);
+    final serverModes = handshakeSettings.pskModes;
+    final hasDheKe = supportedModes.contains(PskKeyExchangeMode.psk_dhe_ke) &&
+        serverModes.contains('psk_dhe_ke');
+    final hasKe = supportedModes.contains(PskKeyExchangeMode.psk_ke) &&
+        serverModes.contains('psk_ke');
+
+    if (!hasDheKe && !hasKe) {
+      return null;
+    }
+
+    // No server-side PSK configs and no ticket keys
+    if (handshakeSettings.pskConfigs.isEmpty &&
+        handshakeSettings.ticketKeys.isEmpty) {
+      return null;
+    }
+
+    // Iterate over client identities to find a match
+    for (var i = 0; i < pskExt.identities.length; i++) {
+      final identity = pskExt.identities[i];
+
+      // Try external PSK first
+      final externalConfig = _findPskConfig(identity.identity);
+      if (externalConfig != null) {
+        // Check if PSK hash matches the selected PRF
+        if (externalConfig.hash != prfName) {
+          continue;
+        }
+
+        // Verify binder
+        try {
+          verifyClientHelloPskBinder(
+            clientHello: clientHello,
+            binderIndex: i,
+            secret: externalConfig.secret,
+            hashName: externalConfig.hash,
+            external: true,
+          );
+        } on TLSIllegalParameterException {
+          await _sendAlert(AlertLevel.fatal, AlertDescription.illegal_parameter);
+          rethrow;
+        }
+
+        _selectedPsk = PskSelectionResult(
+          selectedIndex: i,
+          psk: externalConfig.secret,
+          pskHash: externalConfig.hash,
+          isExternal: true,
+          identity: identity.identity,
+          useDheKe: hasDheKe,
+        );
+        return _selectedPsk;
+      }
+
+      // Try to decrypt session ticket
+      final ticketResult = _tryDecryptTicket(identity);
+      if (ticketResult != null) {
+        final (psk, ticket) = ticketResult;
+        final ticketHash = psk.length == 32 ? 'sha256' : 'sha384';
+
+        // Check if ticket hash matches selected PRF
+        if (ticketHash != prfName) {
+          continue;
+        }
+
+        // Verify binder
+        try {
+          verifyClientHelloPskBinder(
+            clientHello: clientHello,
+            binderIndex: i,
+            secret: psk,
+            hashName: ticketHash,
+            external: false,
+          );
+        } on TLSIllegalParameterException {
+          await _sendAlert(AlertLevel.fatal, AlertDescription.illegal_parameter);
+          rethrow;
+        }
+
+        _selectedPsk = PskSelectionResult(
+          selectedIndex: i,
+          psk: psk,
+          pskHash: ticketHash,
+          isExternal: false,
+          identity: identity.identity,
+          useDheKe: hasDheKe,
+          ticket: ticket,
+        );
+        return _selectedPsk;
+      }
+    }
+
+    return null;
+  }
+
+  /// Build the pre_shared_key extension for ServerHello.
+  ///
+  /// Returns null if no PSK was selected.
+  TlsServerPreSharedKeyExtension? buildServerPreSharedKeyExtension() {
+    final selection = _selectedPsk;
+    if (selection == null) {
+      return null;
+    }
+    return TlsServerPreSharedKeyExtension(
+      selectedIdentity: selection.selectedIndex,
+    );
+  }
+
+  /// Extract PSK modes from the extension.
+  List<int> _extractPskModes(TlsExtension ext) {
+    if (ext is TlsRawExtension) {
+      final body = ext.body;
+      if (body.isEmpty) {
+        return const <int>[];
+      }
+      final parser = Parser(body);
+      final length = parser.get(1);
+      if (length > parser.getRemainingLength()) {
+        return const <int>[];
+      }
+      final modes = <int>[];
+      for (var i = 0; i < length; i++) {
+        modes.add(parser.get(1));
+      }
+      return modes;
+    }
+    // Try dynamic access for typed extension
+    try {
+      final dynamic typedExt = ext;
+      final modes = typedExt.modes;
+      if (modes is List<int>) {
+        return modes;
+      }
+      if (modes is List) {
+        return modes.cast<int>();
+      }
+    } catch (_) {}
+    return const <int>[];
+  }
+
+  /// Try to decrypt a session ticket identity.
+  ///
+  /// Returns (psk, ticket) if successful, null otherwise.
+  (Uint8List, TlsNewSessionTicket)? _tryDecryptTicket(TlsPskIdentity identity) {
+    final ticketKeys = handshakeSettings.ticketKeys;
+    if (ticketKeys.isEmpty) {
+      return null;
+    }
+
+    // For now, we check if the identity matches any stored ticket
+    // Full ticket decryption requires the ticket encryption key infrastructure
+    for (final ticket in tls13Tickets) {
+      if (_bytesEqual(identity.identity, ticket.ticket)) {
+        // Derive PSK from resumption master secret
+        final resSecret = session.resumptionMasterSecret;
+        if (resSecret.isEmpty) {
+          continue;
+        }
+
+        final ticketHash = resSecret.length == 32 ? 'sha256' : 'sha384';
+        final psk = HKDF_expand_label(
+          resSecret,
+          Uint8List.fromList('resumption'.codeUnits),
+          ticket.ticketNonce,
+          resSecret.length,
+          ticketHash,
+        );
+
+        return (psk, ticket);
+      }
+    }
+
+    return null;
+  }
+}
+
+/// Result of PSK selection from ClientHello.
+class PskSelectionResult {
+  PskSelectionResult({
+    required this.selectedIndex,
+    required Uint8List psk,
+    required this.pskHash,
+    required this.isExternal,
+    required Uint8List identity,
+    required this.useDheKe,
+    this.ticket,
+  })  : psk = Uint8List.fromList(psk),
+        identity = Uint8List.fromList(identity);
+
+  /// Index of the selected PSK identity in the ClientHello extension.
+  final int selectedIndex;
+
+  /// The PSK secret.
+  final Uint8List psk;
+
+  /// Hash algorithm for the PSK ('sha256' or 'sha384').
+  final String pskHash;
+
+  /// Whether this is an external PSK (vs resumption).
+  final bool isExternal;
+
+  /// The identity that was selected.
+  final Uint8List identity;
+
+  /// Whether to use PSK with DHE key exchange.
+  final bool useDheKe;
+
+  /// The ticket if this is a resumption PSK.
+  final TlsNewSessionTicket? ticket;
 }
