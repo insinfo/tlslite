@@ -119,11 +119,7 @@ void main() {
       harness.connection.queueRecord(handshakeHeader, handshakePayload);
 
       await expectLater(() => harness.connection.recvHandshakeMessage(),
-          throwsA(isA<TLSUnexpectedMessage>()));
-
-      final (header, parser) = await harness.connection.recvMessage();
-      expect(header.type, equals(ContentType.alert));
-      expect(parser.getRemainingLength(), equals(alertPayload.length));
+          throwsA(isA<TLSRemoteAlert>()));
 
       final msg = await harness.connection.recvHandshakeMessage();
       expect(msg.handshakeType, equals(TlsHandshakeType.helloRequest));
@@ -148,6 +144,349 @@ void main() {
       ]);
       expect(record.contentType, equals(ContentType.handshake));
       expect(record.data, equals(expectedPayload));
+    });
+
+    test('heartbeat request handled transparently when negotiated', () async {
+      final harness = await _TlsConnectionHarness.create();
+      addTearDown(() async => harness.dispose());
+
+      harness.connection.heartbeatSupported = true;
+      harness.connection.heartbeatCanReceive = true;
+
+      final request = TlsHeartbeat(
+        messageType: HeartbeatMessageType.heartbeat_request,
+        payload: const [0x01, 0x02],
+        padding: List<int>.filled(16, 0xAB),
+      );
+      final requestBytes = request.serialize();
+      final hbHeader = RecordHeader3().create(const TlsProtocolVersion(3, 3),
+          ContentType.heartbeat, requestBytes.length);
+      harness.connection.queueRecord(hbHeader, requestBytes);
+
+      final handshakePayload = _handshakeFragment([
+        0x33,
+      ], handshakeType: TlsHandshakeType.helloRequest.code);
+      final handshakeHeader = RecordHeader3().create(
+          const TlsProtocolVersion(3, 3),
+          ContentType.handshake,
+          handshakePayload.length);
+      harness.connection.queueRecord(handshakeHeader, handshakePayload);
+
+      final msg = await harness.connection.recvHandshakeMessage();
+      expect(msg.handshakeType, equals(TlsHandshakeType.helloRequest));
+
+      final hbRecord = harness.connection.sentRecords
+          .firstWhere((m) => m.contentType == ContentType.heartbeat);
+      final response = TlsHeartbeat.parse(hbRecord.data);
+      expect(response.messageType,
+          equals(HeartbeatMessageType.heartbeat_response));
+      expect(response.payload, equals(request.payload));
+      expect(response.padding.length, equals(request.padding.length));
+    });
+
+    test('renegotiation attempts emit warning alert and are skipped', () async {
+      final harness = await _TlsConnectionHarness.create();
+      addTearDown(() async => harness.dispose());
+
+      harness.connection.handshakeEstablished = true;
+
+      final helloRequest = _handshakeFragment(
+        const <int>[],
+        handshakeType: TlsHandshakeType.helloRequest.code,
+      );
+      final helloHeader = RecordHeader3().create(const TlsProtocolVersion(3, 3),
+          ContentType.handshake, helloRequest.length);
+      harness.connection.queueRecord(helloHeader, helloRequest);
+
+      final followUp = _handshakeFragment(
+        const <int>[],
+        handshakeType: TlsHandshakeType.serverHelloDone.code,
+      );
+      final followUpHeader = RecordHeader3().create(
+          const TlsProtocolVersion(3, 3),
+          ContentType.handshake,
+          followUp.length);
+      harness.connection.queueRecord(followUpHeader, followUp);
+
+      final msg = await harness.connection.recvHandshakeMessage();
+      expect(msg.handshakeType, equals(TlsHandshakeType.serverHelloDone));
+
+      final alertRecord = harness.connection.sentRecords
+          .firstWhere((m) => m.contentType == ContentType.alert);
+      expect(
+          alertRecord.data,
+          equals(Uint8List.fromList([
+            AlertLevel.warning,
+            AlertDescription.no_renegotiation,
+          ])));
+    });
+
+    test('recvHandshakeMessage skips application data while buffering',
+        () async {
+      final harness = await _TlsConnectionHarness.create();
+      addTearDown(() async => harness.dispose());
+
+      final appPayload = Uint8List.fromList([0x99, 0x00]);
+      final appHeader = RecordHeader3().create(const TlsProtocolVersion(3, 3),
+          ContentType.application_data, appPayload.length);
+      harness.connection.queueRecord(appHeader, appPayload);
+
+      final handshakePayload = _handshakeFragment([
+        0x55,
+      ], handshakeType: TlsHandshakeType.helloRequest.code);
+      final handshakeHeader = RecordHeader3().create(
+          const TlsProtocolVersion(3, 3),
+          ContentType.handshake,
+          handshakePayload.length);
+      harness.connection.queueRecord(handshakeHeader, handshakePayload);
+
+      final msg = await harness.connection.recvHandshakeMessage();
+      expect(msg.handshakeType, equals(TlsHandshakeType.helloRequest));
+
+      final (header, parser) = await harness.connection.recvMessage();
+      expect(header.type, equals(ContentType.application_data));
+      expect(parser.getRemainingLength(), equals(appPayload.length));
+      expect(parser.getFixBytes(appPayload.length), equals(appPayload));
+    });
+
+      test('handshake transcript tracks buffered messages', () async {
+        final harness = await _TlsConnectionHarness.create();
+        addTearDown(() async => harness.dispose());
+
+        final message = _rawHandshakeMessage(
+          TlsHandshakeType.serverHelloDone,
+          Uint8List(0),
+        );
+        _queueHandshakeMessage(harness.connection, message,
+            version: const TlsProtocolVersion(3, 3));
+
+        final parsed = await harness.connection.recvHandshakeMessage();
+        expect(parsed.handshakeType, equals(TlsHandshakeType.serverHelloDone));
+
+        final digest = harness.connection.handshakeHashes.digest('intrinsic');
+        expect(digest, equals(message.serialize()));
+      });
+
+      test('key updates handled post-handshake and acked', () async {
+        final harness = await _TlsConnectionHarness.create();
+        addTearDown(() async => harness.dispose());
+
+        final conn = harness.connection;
+        conn.version = TlsProtocolVersion.tls13;
+        conn.handshakeEstablished = true;
+        conn.session = Session()
+          ..cipherSuite = 0x1301
+          ..clAppSecret = Uint8List.fromList(
+              List<int>.generate(32, (index) => index + 1))
+          ..srAppSecret = Uint8List.fromList(
+              List<int>.generate(32, (index) => 0x80 + index));
+
+        final originalClient = Uint8List.fromList(conn.session.clAppSecret);
+        final originalServer = Uint8List.fromList(conn.session.srAppSecret);
+
+        final keyUpdate = TlsKeyUpdate(updateRequested: true);
+        _queueHandshakeMessage(conn, keyUpdate, version: TlsProtocolVersion.tls13);
+
+        final finished = TlsFinished(
+          verifyData: Uint8List.fromList(List<int>.filled(12, 0x44)),
+        );
+        _queueHandshakeMessage(conn, finished, version: TlsProtocolVersion.tls13);
+
+        final parsed = await conn.recvHandshakeMessage();
+        expect(parsed.handshakeType, equals(TlsHandshakeType.finished));
+
+        final digest = conn.handshakeHashes.digest('intrinsic');
+        expect(digest, equals(finished.serialize()));
+
+        expect(conn.session.clAppSecret, isNot(equals(originalClient)));
+        expect(conn.session.srAppSecret, isNot(equals(originalServer)));
+
+        final ackRecord = conn.sentRecords
+            .lastWhere((msg) => msg.contentType == ContentType.handshake);
+        final ackMessages = TlsHandshakeMessage.parseFragment(
+          ackRecord.data,
+          recordVersion: TlsProtocolVersion.tls13,
+        );
+        expect(ackMessages.single, isA<TlsKeyUpdate>());
+        expect((ackMessages.single as TlsKeyUpdate).updateRequested, isFalse);
+      });
+
+      test('new session tickets stored after handshake completes', () async {
+        final harness = await _TlsConnectionHarness.create();
+        addTearDown(() async => harness.dispose());
+
+        final conn = harness.connection;
+        conn.version = TlsProtocolVersion.tls13;
+        conn.handshakeEstablished = true;
+
+        final ticket = TlsNewSessionTicket(
+          ticketLifetime: 7200,
+          ticketAgeAdd: 0x01020304,
+          ticketNonce: Uint8List.fromList(<int>[1, 2, 3]),
+          ticket: Uint8List.fromList(<int>[4, 5, 6, 7]),
+          extensions: Uint8List(0),
+        );
+        _queueHandshakeMessage(conn, ticket, version: TlsProtocolVersion.tls13);
+
+        final finished = TlsFinished(
+          verifyData: Uint8List.fromList(List<int>.filled(12, 0x55)),
+        );
+        _queueHandshakeMessage(conn, finished, version: TlsProtocolVersion.tls13);
+
+        final parsed = await conn.recvHandshakeMessage();
+        expect(parsed.handshakeType, equals(TlsHandshakeType.finished));
+
+        expect(conn.tls13Tickets, hasLength(1));
+        expect(conn.tls13Tickets.single.ticket, equals(ticket.ticket));
+
+        final digest = conn.handshakeHashes.digest('intrinsic');
+        expect(digest, equals(finished.serialize()));
+      });
+
+      test('handshake completion toggles via state machine', () async {
+        final harness = await _TlsConnectionHarness.create();
+        addTearDown(() async => harness.dispose());
+
+        final conn = harness.connection;
+
+        final serverHello = _serverHello();
+        _queueHandshakeMessage(conn, serverHello,
+            version: TlsProtocolVersion.tls12);
+
+        final finished = TlsFinished(
+          verifyData: Uint8List.fromList(List<int>.filled(12, 0x11)),
+        );
+        _queueHandshakeMessage(conn, finished,
+            version: TlsProtocolVersion.tls12);
+
+        expect(conn.handshakeEstablished, isFalse);
+        final hello = await conn.recvHandshakeMessage();
+        expect(hello.handshakeType, equals(TlsHandshakeType.serverHello));
+        expect(conn.handshakeEstablished, isFalse);
+
+        final done = await conn.recvHandshakeMessage();
+        expect(done.handshakeType, equals(TlsHandshakeType.finished));
+        expect(conn.handshakeEstablished, isTrue);
+      });
+
+      test('server mode enforces ClientHello ordering', () async {
+        final harness = await _TlsConnectionHarness.create();
+        addTearDown(() async => harness.dispose());
+
+        final conn = harness.connection;
+        conn.client = false;
+
+        final serverHello = _serverHello();
+        _queueHandshakeMessage(conn, serverHello,
+            version: TlsProtocolVersion.tls12);
+
+        await expectLater(() => conn.recvHandshakeMessage(),
+            throwsA(isA<TLSUnexpectedMessage>()));
+      });
+
+      test('tls13 tickets propagate into cached sessions', () async {
+        final cache = SessionCache(maxEntries: 4, maxAgeSeconds: 3600);
+        final harness = await _TlsConnectionHarness.create(cache: cache);
+        addTearDown(() async => harness.dispose());
+
+        final conn = harness.connection;
+        conn.version = TlsProtocolVersion.tls13;
+        conn.handshakeEstablished = true;
+        conn.session = Session()
+          ..sessionID = Uint8List.fromList(<int>[0xAA])
+          ..cipherSuite = 0x1301
+          ..resumable = true
+          ..clAppSecret = Uint8List.fromList(List<int>.filled(32, 1))
+          ..srAppSecret = Uint8List.fromList(List<int>.filled(32, 2));
+
+        final ticket = _newSessionTicket();
+        _queueHandshakeMessage(conn, ticket, version: TlsProtocolVersion.tls13);
+
+        final finished = TlsFinished(
+          verifyData: Uint8List.fromList(List<int>.filled(12, 0x77)),
+        );
+        _queueHandshakeMessage(conn, finished, version: TlsProtocolVersion.tls13);
+
+        await conn.recvHandshakeMessage();
+
+        expect(conn.session.tls13Tickets, hasLength(1));
+        expect(conn.session.tls13Tickets.single.ticket,
+            equals(ticket.ticket));
+
+        conn.cacheCurrentSession();
+        final cached = cache.getOrNull(conn.session.sessionID);
+        expect(cached, isNotNull);
+        expect(cached!.tls13Tickets, hasLength(1));
+        expect(cached.tls13Tickets.single.ticket, equals(ticket.ticket));
+      });
+
+    test('tls13 rejects interleaved records during handshake', () async {
+      final harness = await _TlsConnectionHarness.create();
+      addTearDown(() async => harness.dispose());
+
+      harness.connection.version = TlsProtocolVersion.tls13;
+
+      final fullFragment = _handshakeFragment(
+        List<int>.filled(8, 0x01),
+        handshakeType: TlsHandshakeType.finished.code,
+      );
+      final splitIndex = fullFragment.length - 2;
+      final firstChunk = Uint8List.fromList(fullFragment.sublist(0, splitIndex));
+
+      final firstHeader = RecordHeader3().create(const TlsProtocolVersion(3, 3),
+          ContentType.handshake, firstChunk.length);
+      harness.connection.queueRecord(firstHeader, firstChunk);
+
+      final appPayload = Uint8List.fromList([0xDE, 0xAD]);
+      final appHeader = RecordHeader3().create(const TlsProtocolVersion(3, 3),
+          ContentType.application_data, appPayload.length);
+      harness.connection.queueRecord(appHeader, appPayload);
+
+      await expectLater(() => harness.connection.recvHandshakeMessage(),
+          throwsA(isA<TLSUnexpectedMessage>()));
+
+      final alertRecord = harness.connection.sentRecords
+          .firstWhere((m) => m.contentType == ContentType.alert);
+      expect(
+          alertRecord.data,
+          equals(Uint8List.fromList([
+            AlertLevel.fatal,
+            AlertDescription.unexpected_message,
+          ])));
+    });
+
+    test('tls13 enforces exclusive handshake records', () async {
+      final harness = await _TlsConnectionHarness.create();
+      addTearDown(() async => harness.dispose());
+
+      harness.connection.version = TlsProtocolVersion.tls13;
+
+      final finished = TlsFinished(
+        verifyData: Uint8List.fromList(List<int>.filled(12, 0x22)),
+      );
+      final trailing = _rawHandshakeMessage(
+        TlsHandshakeType.helloRequest,
+        Uint8List.fromList([0x00]),
+      );
+      final combined = Uint8List.fromList([
+        ...finished.serialize(),
+        ...trailing.serialize(),
+      ]);
+      final header = RecordHeader3().create(const TlsProtocolVersion(3, 3),
+          ContentType.handshake, combined.length);
+      harness.connection.queueRecord(header, combined);
+
+      await expectLater(() => harness.connection.recvHandshakeMessage(),
+          throwsA(isA<TLSUnexpectedMessage>()));
+
+      final alertRecord = harness.connection.sentRecords
+          .firstWhere((m) => m.contentType == ContentType.alert);
+      expect(
+          alertRecord.data,
+          equals(Uint8List.fromList([
+            AlertLevel.fatal,
+            AlertDescription.unexpected_message,
+          ])));
     });
   });
 }
@@ -222,4 +561,34 @@ Uint8List _handshakeFragment(List<int> body, {int handshakeType = 1}) {
 RawTlsHandshakeMessage _rawHandshakeMessage(
     TlsHandshakeType type, Uint8List body) {
   return RawTlsHandshakeMessage(type: type, body: body);
+}
+
+void _queueHandshakeMessage(_FakeTlsConnection connection,
+    TlsHandshakeMessage message,
+    {TlsProtocolVersion version = TlsProtocolVersion.tls13}) {
+  final payload = message.serialize();
+  final header =
+      RecordHeader3().create(version, ContentType.handshake, payload.length);
+  connection.queueRecord(header, payload);
+}
+
+TlsServerHello _serverHello() {
+  return TlsServerHello(
+    serverVersion: TlsProtocolVersion.tls12,
+    random: Uint8List(32),
+    sessionId: Uint8List(32),
+    cipherSuite: 0x1301,
+    compressionMethod: 0,
+    selectedSupportedVersion: TlsProtocolVersion.tls13,
+  );
+}
+
+TlsNewSessionTicket _newSessionTicket() {
+  return TlsNewSessionTicket(
+    ticketLifetime: 7200,
+    ticketAgeAdd: 0x01020304,
+    ticketNonce: Uint8List.fromList(<int>[1, 2, 3, 4]),
+    ticket: Uint8List.fromList(<int>[4, 5, 6, 7, 8]),
+    extensions: Uint8List(0),
+  );
 }

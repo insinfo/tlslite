@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'constants.dart';
+import 'messages.dart' show TlsNewSessionTicket;
 import 'x509certchain.dart';
 
 /// Representation of a TLS session and related metadata.
@@ -27,6 +28,7 @@ class Session {
   List<Ticket>? tickets;
   List<Ticket>? tls10Tickets;
   int ecPointFormat = 0;
+  List<TlsNewSessionTicket> tls13Tickets = <TlsNewSessionTicket>[];
 
   /// Populate the session with negotiated handshake data.
   void create({
@@ -50,6 +52,7 @@ class Session {
     List<Ticket>? tickets,
     List<Ticket>? tls10Tickets,
     int? ecPointFormat,
+    List<TlsNewSessionTicket>? tls13SessionTickets,
   }) {
     this.masterSecret = _bytes(masterSecret);
     this.sessionID = _bytes(sessionID);
@@ -72,6 +75,10 @@ class Session {
     this.tls10Tickets = tls10Tickets;
     if (ecPointFormat != null) {
       this.ecPointFormat = ecPointFormat;
+    }
+    if (tls13SessionTickets != null) {
+      tls13Tickets = List<TlsNewSessionTicket>.from(tls13SessionTickets,
+          growable: false);
     }
   }
 
@@ -98,6 +105,7 @@ class Session {
     other.tickets = tickets;
     other.tls10Tickets = tls10Tickets;
     other.ecPointFormat = ecPointFormat;
+    other.tls13Tickets = List<TlsNewSessionTicket>.from(tls13Tickets);
     return other;
   }
 
@@ -105,7 +113,9 @@ class Session {
   bool valid() {
     final hasId = sessionID.isNotEmpty;
     final hasTickets =
-        (tickets?.isNotEmpty ?? false) || (tls10Tickets?.isNotEmpty ?? false);
+      (tickets?.isNotEmpty ?? false) ||
+      (tls10Tickets?.isNotEmpty ?? false) ||
+      tls13Tickets.isNotEmpty;
     return resumable && (hasId || hasTickets);
   }
 

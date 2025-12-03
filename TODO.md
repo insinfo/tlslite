@@ -65,7 +65,13 @@ dart analyze                 # análise estática
 - ✅ `TlsConnection` ganhou fila interna de handshakes e helpers `recvHandshakeMessage`/`recvHandshakeFlight`, com parsing automático usando `messages.dart` e verificação opcional de tipos esperados.
 - ✅ Novos helpers `queueHandshakeMessage`, `sendHandshakeMessage` e `sendHandshakeFlight` permitem reenviar flights completos reaproveitando os buffers da `MessageSocket`, com cobertura em `test/tlsconnection_test.dart`.
 - ✅ `TlsConnection` agora preserva registros não-handshake ao buscar handshakes e acusa `TLSUnexpectedMessage` quando o fluxo diverge, desbloqueando o porte incremental de `_getMsg` do Python.
-- 🔜 Portar o restante da lógica de `_getMsg` (alert handling, heartbeats e renegociação) e conectar o handshake hash/HandshakeHelpers para processar flights reais.
+- ✅ A fila de handshakes ignora registros pendentes ao buscar novos dados, reenfileirando `application_data` para consumo posterior e disparando `TLSRemoteAlert` imediatamente quando um alerta chega fora de ordem (testado em `test/tlsconnection_test.dart`).
+- ✅ Heartbeats são respondidos/ignorados conforme o RFC 6520 (`heartbeatSupported`/`heartbeatCanReceive`) e tentativas de renegociação em conexões estabelecidas geram `no_renegotiation`, alinhando o comportamento com `_getMsg` (novos testes em `test/tlsconnection_test.dart`).
+- ✅ Conexões TLS 1.3 agora rejeitam registros intercalados durante o handshake e exigem que ClientHello/ServerHello/Finished/KeyUpdate fiquem sozinhos no record, com regressões em `test/tlsconnection_test.dart`.
+- ✅ `_bufferHandshakeMessages` atualiza `HandshakeHashes`, processa KeyUpdate/NewSessionTicket pós-handshake (com ACK automático e armazenamento de tickets TLS 1.3) e expõe os novos testes em `test/tlsconnection_test.dart`.
+- ✅ Os flights agora passam pelo `PureDartTlsHandshakeStateMachine`, o que marca `handshakeEstablished` automaticamente e impede sequências inválidas sem quebrar os testes existentes.
+- ✅ Tickets TLS 1.3 recém-recebidos são persistidos no `Session` e propagados para o `SessionCache`, liberando testes de resumption (`tlsconnection_test.dart`).
+- 🔜 Conectar `TlsConnection` aos `HandshakeHelpers`/`HandshakeSettings`, gerar Finished/CertificateVerify reais e exercitar resumption (session cache + TLS 1.3 tickets) em testes integrados.
 
 ### Session cache
 - ✅ `SessionCache` foi portada para `lib/src/sessioncache.dart`, preservando a ordem circular e as políticas de expiração/evicção usadas no Python.
