@@ -3,3 +3,4 @@ analyzer:
     - archive-main/**
     - oracledb_dart/**
     - dart-pg/**
+    - referencias/**

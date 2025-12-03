@@ -1,4 +1,3 @@
-library;
 
 import 'dart:typed_data';
 
@@ -681,9 +680,7 @@ final class Fp448 {
     mul(u, vInv, ratio);
 
     // For p ≡ 3 (mod 4): sqrt(x) = x^((p+1)/4)
-    // (p+1)/4 = (p-3)/4 + 1 = powPm3d4 * x
     _powPm3d4(ratio, result);
-    nSqr(result, 2, result);
     mul(result, ratio, result);
 
     // Verify: result^2 == ratio
@@ -699,9 +696,8 @@ final class Fp448 {
     final result = create();
     final check = create();
 
-    // (p+1)/4 = (p-3)/4 + 1 = powPm3d4 * x
+    // For p ≡ 3 (mod 4): sqrt(x) = x^((p+1)/4)
     _powPm3d4(x, result);
-    nSqr(result, 2, result);
     mul(result, x, result);
 
     // Verify: result^2 == x

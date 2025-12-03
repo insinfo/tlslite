@@ -107,7 +107,7 @@ class Ed448PrivateKey extends Ed448PublicKey {
     required Uint8List privateKeyBytes,
     required Uint8List publicKeyBytes,
   })  : _privateKeyBytes = Uint8List.fromList(privateKeyBytes),
-        _privateImpl = ed448.Ed448PrivateKeyImpl.fromSeed(privateKeyBytes),
+        _privateImpl = _derivePrivateImpl(privateKeyBytes, publicKeyBytes),
         super(publicKeyBytes) {
     if (_privateKeyBytes.length != _ed448KeyLength) {
       throw ArgumentError('Ed448 private key must be 57 bytes');
@@ -140,6 +140,38 @@ class Ed448PrivateKey extends Ed448PublicKey {
     }
     return pem(pkcs8, 'PRIVATE KEY');
   }
+}
+
+ed448.Ed448PrivateKeyImpl _derivePrivateImpl(
+  Uint8List seed,
+  Uint8List publicKeyBytes,
+) {
+  final rfc = ed448.Ed448PrivateKeyImpl.fromSeed(
+    seed,
+    generator: ed448.Ed448Generator.rfc8032,
+  );
+  if (_bytesEqual(rfc.publicKeyBytes, publicKeyBytes)) {
+    return rfc;
+  }
+
+  final legacy = ed448.Ed448PrivateKeyImpl.fromSeed(
+    seed,
+    generator: ed448.Ed448Generator.legacy,
+  );
+  if (_bytesEqual(legacy.publicKeyBytes, publicKeyBytes)) {
+    return legacy;
+  }
+
+  return rfc;
+}
+
+bool _bytesEqual(Uint8List a, Uint8List b) {
+  if (identical(a, b)) return true;
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
 }
 
 const int _ed448KeyLength = 57;

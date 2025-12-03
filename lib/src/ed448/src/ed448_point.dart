@@ -1,4 +1,4 @@
-library;
+
 
 import 'dart:typed_data';
 import 'fp448.dart';
@@ -51,9 +51,8 @@ class Ed448Point {
     return Ed448Point._(X, Y, Z, T);
   }
 
-  /// The Ed448-Goldilocks base point
+  /// The Ed448-Goldilocks base point (legacy generator used by reference impls)
   static Ed448Point get generator {
-    // x = 0xaaaa...9555...55 (isogeny from the old basepoint)
     final x = Fp448.create();
     x.setAll(0, [
       118276190,
@@ -74,7 +73,6 @@ class Ed448Point {
       82941708,
     ]);
 
-    // y coordinate
     final y = Fp448.create();
     y.setAll(0, [
       36764180,
@@ -132,58 +130,49 @@ class Ed448Point {
     return (x, y);
   }
 
-  /// Point addition using unified formula
-  /// Based on https://iacr.org/archive/asiacrypt2008/53500329/53500329.pdf (3.1)
+  /// Point addition using unified Hisil et al. formula (a = 1)
   Ed448Point operator +(Ed448Point other) {
-    final aXX = Fp448.create(); // X1 * X2
-    final dTT = Fp448.create(); // d * T1 * T2
-    final ZZ = Fp448.create(); // Z1 * Z2
-    final YY = Fp448.create(); // Y1 * Y2
-    final temp1 = Fp448.create();
-    final temp2 = Fp448.create();
+    final x1y2 = Fp448.create();
+    final y1x2 = Fp448.create();
+    final xSum = Fp448.create();
+    final xx = Fp448.create();
+    final yy = Fp448.create();
+    final zz = Fp448.create();
+    final tt = Fp448.create();
+    final dtt = Fp448.create();
+    final zzMinusDtt = Fp448.create();
+    final zzPlusDtt = Fp448.create();
+    final yyMinusXx = Fp448.create();
+    final X3 = Fp448.create();
+    final Y3 = Fp448.create();
+    final Z3 = Fp448.create();
+    final T3 = Fp448.create();
 
-    Fp448.mul(X, other.X, aXX);
-    Fp448.mul(T, other.T, temp1);
-    Fp448.mul(temp1, _edwardsD, dTT);
-    Fp448.mul(Z, other.Z, ZZ);
-    Fp448.mul(Y, other.Y, YY);
+    Fp448.mul(X, other.Y, x1y2);
+    Fp448.mul(Y, other.X, y1x2);
+    Fp448.add(x1y2, y1x2, xSum);
 
-    // X3 = (X1*Y2 + Y1*X2) * (Z1*Z2 - d*T1*T2)
-    final x3 = Fp448.create();
-    Fp448.mul(X, other.Y, temp1);
-    Fp448.mul(Y, other.X, temp2);
-    Fp448.add(temp1, temp2, temp1); // X1*Y2 + Y1*X2
-    Fp448.sub(ZZ, dTT, temp2); // Z1*Z2 - d*T1*T2
-    Fp448.mul(temp1, temp2, x3);
+    Fp448.mul(X, other.X, xx);
+    Fp448.mul(Y, other.Y, yy);
+    Fp448.mul(Z, other.Z, zz);
 
-    // Y3 = (Y1*Y2 - X1*X2) * (Z1*Z2 + d*T1*T2)
-    final y3 = Fp448.create();
-    Fp448.sub(YY, aXX, temp1); // Y1*Y2 - X1*X2
-    Fp448.add(ZZ, dTT, temp2); // Z1*Z2 + d*T1*T2
-    Fp448.mul(temp1, temp2, y3);
+    Fp448.mul(T, other.T, tt);
+    Fp448.mul(_edwardsD, tt, dtt);
 
-    // T3 = (Y1*Y2 - X1*X2) * (X1*Y2 + Y1*X2)
-    final t3 = Fp448.create();
-    Fp448.sub(YY, aXX, temp1); // Y1*Y2 - X1*X2
-    Fp448.mul(X, other.Y, temp2);
-    final temp3 = Fp448.create();
-    Fp448.mul(Y, other.X, temp3);
-    Fp448.add(temp2, temp3, temp2); // X1*Y2 + Y1*X2
-    Fp448.mul(temp1, temp2, t3);
+    Fp448.sub(zz, dtt, zzMinusDtt);
+    Fp448.add(zz, dtt, zzPlusDtt);
+    Fp448.sub(yy, xx, yyMinusXx);
 
-    // Z3 = (Z1*Z2 - d*T1*T2) * (Z1*Z2 + d*T1*T2)
-    final z3 = Fp448.create();
-    Fp448.sub(ZZ, dTT, temp1);
-    Fp448.add(ZZ, dTT, temp2);
-    Fp448.mul(temp1, temp2, z3);
+    Fp448.mul(xSum, zzMinusDtt, X3);
+    Fp448.mul(yyMinusXx, zzPlusDtt, Y3);
+    Fp448.mul(yyMinusXx, xSum, T3);
+    Fp448.mul(zzMinusDtt, zzPlusDtt, Z3);
 
-    return Ed448Point._(x3, y3, z3, t3);
+    return Ed448Point._(X3, Y3, Z3, T3);
   }
 
   /// Point doubling
-  Ed448Point double_() {
-    return this + this; // Using unified formula
-  }
+  Ed448Point double_() => this + this;
 
   /// Point negation: -(X:Y:Z:T) = (-X:Y:Z:-T)
   Ed448Point negate() {
@@ -247,16 +236,28 @@ class Ed448Point {
     if (bytes.length != 57) return null;
 
     // Extract sign bit
-    final sign = (bytes[56] >> 7) & 1;
+    final signByte = bytes[56];
+    final sign = (signByte >> 7) & 1;
+    if ((signByte & 0x7F) != 0) {
+      return null; // high bits of y must be zero
+    }
 
     // Extract Y
     final yBytes = Uint8List(56);
     yBytes.setRange(0, 56, bytes);
     final y = Fp448.decode(yBytes);
 
+    // Reject non-canonical encodings (y >= p)
+    final canonicalY = Fp448.encode(y);
+    for (var i = 0; i < 56; i++) {
+      if (canonicalY[i] != yBytes[i]) {
+        return null;
+      }
+    }
+
     // Compute x from curve equation: x² + y² = 1 + d*x²*y²
-    // => x² (1 - d*y²) = y² - 1
-    // => x² = (y² - 1) / (1 - d*y²)
+    // => 1 - y² = x² (1 - d*y²)
+    // => x² = (1 - y²) / (1 - d*y²)
     final yy = Fp448.create();
     final num = Fp448.create();
     final den = Fp448.create();
@@ -264,7 +265,7 @@ class Ed448Point {
 
     Fp448.sqr(y, yy);
     Fp448.one(one);
-    Fp448.sub(yy, one, num); // y² - 1
+    Fp448.sub(one, yy, num); // 1 - y²
 
     // 1 - d*y²
     final dyy = Fp448.create();

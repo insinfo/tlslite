@@ -91,21 +91,23 @@ void main() {
       expect(point!.isOnCurve(), isTrue);
     });
 
-    test('derive base points via doubling', () {
-      final oldX =
-          '4f1970c66bed0ded221d15a622bf36da9e146570470f1767ea6de324a3d3a46412ae1af72ab66511433b80e18b00938e2626a82bc70cc05e';
-      final oldY =
-          '693f46716eb6bc248876203756c9c7624bea73736ca3984087789c1e05a0c2d73ad3ff1ce67c39c4fdbd132c4ed7c8ad9808795bf230fa14';
-      final newX =
-          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa955555555555555555555555555555555555555555555555555555555';
-      final newY =
-          'ae05e9634ad7048db359d6205086c2b0036ed7a035884dd7b7e36d728ad8c4b80d6565833a2a3098bbbcb2bed1cda06bdaeafbcdea9386ed';
+    test('legacy and RFC base points decode correctly', () {
+      final legacyX =
+        'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa955555555555555555555555555555555555555555555555555555555';
+      final legacyY =
+        'ae05e9634ad7048db359d6205086c2b0036ed7a035884dd7b7e36d728ad8c4b80d6565833a2a3098bbbcb2bed1cda06bdaeafbcdea9386ed';
+      final rfcX =
+        '4f1970c66bed0ded221d15a622bf36da9e146570470f1767ea6de324a3d3a46412ae1af72ab66511433b80e18b00938e2626a82bc70cc05e';
+      final rfcY =
+        '693f46716eb6bc248876203756c9c7624bea73736ca3984087789c1e05a0c2d73ad3ff1ce67c39c4fdbd132c4ed7c8ad9808795bf230fa14';
 
-      final oldBase = pointFromHex(oldX, oldY);
-      final newBase = pointFromHex(newX, newY);
+      final legacyBase = pointFromHex(legacyX, legacyY);
+      final rfcBase = pointFromHex(rfcX, rfcY);
 
-      expect(oldBase.double_().double_(), equals(newBase));
-      expect(curve.Ed448Point.generator, equals(newBase));
+      expect(legacyBase.isOnCurve(), isTrue);
+      expect(rfcBase.isOnCurve(), isTrue);
+      expect(legacyBase, isNot(equals(rfcBase)));
+      expect(curve.Ed448Point.generator, equals(rfcBase));
     });
 
     test('compress/decompress generator round trip', () {
@@ -115,10 +117,10 @@ void main() {
     });
 
     test('isogeny equivalence evidence', () {
-      final xHex =
-          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa955555555555555555555555555555555555555555555555555555555';
-      final yHex =
-          'ae05e9634ad7048db359d6205086c2b0036ed7a035884dd7b7e36d728ad8c4b80d6565833a2a3098bbbcb2bed1cda06bdaeafbcdea9386ed';
+        final xHex =
+          '4f1970c66bed0ded221d15a622bf36da9e146570470f1767ea6de324a3d3a46412ae1af72ab66511433b80e18b00938e2626a82bc70cc05e';
+        final yHex =
+          '693f46716eb6bc248876203756c9c7624bea73736ca3984087789c1e05a0c2d73ad3ff1ce67c39c4fdbd132c4ed7c8ad9808795bf230fa14';
       final point = pointFromHex(xHex, yHex);
       final doubleTwice = point.double_().double_();
       expect(doubleTwice.isOnCurve(), isTrue);
@@ -162,14 +164,50 @@ void main() {
         equals('a7ad5629142315c3c03730ab126380eb99a33cf01d06dfc3cf8ca3ae66bde9dc2d6d74f3dd3d05e1d41fd0233f032d967d8909b1536a9c64'),
       );
 
-      final identityBytes = hexToBytes(
-          '0100000000000000000000000000000000000000000000000000000000000000'
-          '000000000000000000000000000000000000000000000000000000000000');
+        final identityBytes = Uint8List(57)..[0] = 1;
       final identityPoint = curve.Ed448Point.decompress(identityBytes);
       expect(identityPoint, isNotNull);
       final (ix, iy) = identityPoint!.toAffine();
       expect(fieldToHex(ix), equals('0' * 112));
       expect(fieldToHex(iy), equals(('0' * 111) + '1'));
+    });
+
+    test('sign/verify roundtrip with both generators', () {
+      final seed = Uint8List.fromList(List<int>.generate(57, (i) => (i * 7) & 0xff));
+      final message = Uint8List.fromList(List<int>.generate(32, (i) => i));
+
+      final legacyKey = ed448.Ed448PrivateKeyImpl.fromSeed(
+        seed,
+        generator: ed448.Ed448Generator.legacy,
+      );
+      final legacySig = legacyKey.sign(message);
+      final legacyPk = legacyKey.publicKey;
+
+      expect(legacyPk.verify(message, legacySig), isTrue);
+      expect(
+        legacyPk.verify(
+          message,
+          legacySig,
+          enableLegacyFallback: false,
+        ),
+        isFalse,
+      );
+
+      final rfcKey = ed448.Ed448PrivateKeyImpl.fromSeed(
+        seed,
+        generator: ed448.Ed448Generator.rfc8032,
+      );
+      final rfcSig = rfcKey.sign(message);
+      final rfcPk = rfcKey.publicKey;
+
+      expect(
+        rfcPk.verify(
+          message,
+          rfcSig,
+          enableLegacyFallback: false,
+        ),
+        isTrue,
+      );
     });
   });
 }

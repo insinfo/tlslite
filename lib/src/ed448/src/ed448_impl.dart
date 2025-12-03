@@ -6,10 +6,13 @@
 /// - d = -39081
 /// - Base point order: n (446-bit prime)
 /// - Cofactor: 4
-library ed448_impl;
+
 
 import 'dart:typed_data';
 import '../../crypto/shake256.dart' as shake;
+
+/// Selects which base point to use for Ed448 operations.
+enum Ed448Generator { rfc8032, legacy }
 
 /// Size of Ed448 public keys in bytes (57 bytes = 456 bits / 8 + 1 sign bit).
 const int publicKeySize = 57;
@@ -40,22 +43,41 @@ final BigInt _order = BigInt.parse(
 // ignore: unused_element
 const int _cofactor = 4;
 
-/// Base point x-coordinate
+/// Base point x-coordinate (RFC 8032 basepoint)
 final BigInt _gx = BigInt.parse(
-  '224580040295924300187604334099896036246789641632564134246125461686950415467406032909'
-  '029192869357953282333340685722450545367369298317172964326132393085645664904753614756'
-  '18316095330952923',
+  '4f1970c66bed0ded221d15a622bf36da9e146570470f1767ea6de324a3d3a46412ae1af72ab66511433b80e18b00938e2626a82bc70cc05e',
+  radix: 16,
 );
 
-/// Base point y-coordinate
+/// Base point y-coordinate (RFC 8032 basepoint)
 final BigInt _gy = BigInt.parse(
-  '693998712399773422652122552594193154315514376950421989760617166107442590097862628006'
-  '438546900155042495644146682009517082038682453823536808735824402655517594231906761862'
-  '80679766463195756',
+  '693f46716eb6bc248876203756c9c7624bea73736ca3984087789c1e05a0c2d73ad3ff1ce67c39c4fdbd132c4ed7c8ad9808795bf230fa14',
+  radix: 16,
 );
 
-/// Base point G
-late final Ed448Point _basePoint = Ed448Point(_gx, _gy);
+/// Legacy (pre-RFC) generator x-coordinate.
+final BigInt _legacyGx = BigInt.parse(
+  'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa955555555555555555555555555555555555555555555555555555555',
+  radix: 16,
+);
+
+/// Legacy (pre-RFC) generator y-coordinate.
+final BigInt _legacyGy = BigInt.parse(
+  'ae05e9634ad7048db359d6205086c2b0036ed7a035884dd7b7e36d728ad8c4b80d6565833a2a3098bbbcb2bed1cda06bdaeafbcdea9386ed',
+  radix: 16,
+);
+
+/// RFC 8032 base point.
+late final Ed448Point _rfcBasePoint = Ed448Point(_gx, _gy);
+
+/// Legacy base point used by older Goldilocks implementations.
+late final Ed448Point _legacyBasePoint = Ed448Point(_legacyGx, _legacyGy);
+
+Ed448Point _basePointFor(Ed448Generator generator) {
+  return generator == Ed448Generator.rfc8032
+      ? _rfcBasePoint
+      : _legacyBasePoint;
+}
 
 /// Modular inverse using extended Euclidean algorithm
 BigInt _modInverse(BigInt a, BigInt modulus) {
@@ -98,38 +120,23 @@ class Ed448Point {
     return Ed448Point(xNorm, yNorm);
   }
 
-  /// Point addition using extended coordinates
-  /// Uses the unified addition formula for Edwards curves
+  /// Point addition using the unified addition formula for twisted Edwards curves
   Ed448Point operator +(Ed448Point other) {
-    // Extended coordinates addition for twisted Edwards curve
-    // Formula from "Twisted Edwards Curves Revisited" - Hisil et al.
-
     final x1 = x, y1 = y, z1 = z, t1 = t;
     final x2 = other.x, y2 = other.y, z2 = other.z, t2 = other.t;
 
-    // A = X1 * X2
     final a = (x1 * x2) % _p;
-    // B = Y1 * Y2
     final b = (y1 * y2) % _p;
-    // C = T1 * d * T2
     final c = (t1 * _d % _p * t2) % _p;
-    // D = Z1 * Z2
-    final dd = (z1 * z2) % _p;
-    // E = (X1 + Y1) * (X2 + Y2) - A - B
+    final dVal = (z1 * z2) % _p;
     final e = ((x1 + y1) * (x2 + y2) - a - b) % _p;
-    // F = D - C
-    final f = (dd - c) % _p;
-    // G = D + C
-    final g = (dd + c) % _p;
-    // H = B - a * A (a = 1 for Ed448)
+    final f = (dVal - c) % _p;
+    final g = (dVal + c) % _p;
     final h = (b - a) % _p;
-    // X3 = E * F
+
     final x3 = (e * f) % _p;
-    // Y3 = G * H
     final y3 = (g * h) % _p;
-    // T3 = E * H
     final t3 = (e * h) % _p;
-    // Z3 = F * G
     final z3 = (f * g) % _p;
 
     return Ed448Point.extended(x3, y3, z3, t3);
@@ -137,30 +144,19 @@ class Ed448Point {
 
   /// Point doubling
   Ed448Point double_() {
-    // Doubling formula for twisted Edwards curves
     final x1 = x, y1 = y, z1 = z;
 
-    // A = X1^2
     final a = (x1 * x1) % _p;
-    // B = Y1^2
     final b = (y1 * y1) % _p;
-    // C = 2 * Z1^2
     final c = (BigInt.two * z1 * z1) % _p;
-    // H = A + B
     final h = (a + b) % _p;
-    // E = H - (X1 + Y1)^2
-    final e = (h - ((x1 + y1) * (x1 + y1))) % _p;
-    // G = A - B
+    final e = (h - ((x1 + y1) * (x1 + y1) % _p)) % _p;
     final g = (a - b) % _p;
-    // F = C + G
     final f = (c + g) % _p;
-    // X3 = E * F
+
     final x3 = (e * f) % _p;
-    // Y3 = G * H
     final y3 = (g * h) % _p;
-    // T3 = E * H
     final t3 = (e * h) % _p;
-    // Z3 = F * G
     final z3 = (f * g) % _p;
 
     return Ed448Point.extended(x3, y3, z3, t3);
@@ -218,12 +214,12 @@ class Ed448Point {
     final y = _bytesToBigInt(yBytes);
     if (y >= _p) return null;
 
-    // Compute x from curve equation: -x² + y² = 1 + d*x²*y²
-    // => y² - 1 = x² (1 + d*y²)
-    // => x² = (y² - 1) / (1 + d*y²)
+    // Curve equation: x² + y² = 1 + d*x²*y² (with d = -39081)
+    // => 1 - y² = x² (1 - d*y²)
+    // => x² = (1 - y²) / (1 - d*y²)
     final y2 = (y * y) % _p;
-    final num = (y2 - BigInt.one) % _p;
-    final den = (BigInt.one + _d * y2) % _p;
+    final num = (BigInt.one - y2) % _p;
+    final den = (BigInt.one - _d * y2) % _p;
 
     if (den == BigInt.zero) return null;
 
@@ -355,8 +351,17 @@ class Ed448PublicKeyImpl {
     return Ed448PublicKeyImpl._(Uint8List.fromList(bytes), point);
   }
 
-  /// Verify a signature
-  bool verify(Uint8List message, Uint8List signature, {Uint8List? context}) {
+  /// Verify a signature.
+  ///
+  /// By default the verifier first tries the RFC 8032 base point and, if that
+  /// fails, retries with the legacy base point that older Goldilocks ports
+  /// used. Set [enableLegacyFallback] to false to enforce RFC-only semantics.
+  bool verify(
+    Uint8List message,
+    Uint8List signature, {
+    Uint8List? context,
+    bool enableLegacyFallback = true,
+  }) {
     if (signature.length != signatureSize) return false;
 
     context ??= Uint8List(0);
@@ -381,12 +386,26 @@ class Ed448PublicKeyImpl {
     final hBytes = _shake256(toHash, 114);
     final h = _bytesToBigInt(Uint8List.fromList(hBytes)) % _order;
 
-    // Verify: [S]B = R + [h]A
-    final sb = _basePoint * s;
+    // Verify: [S]B = R + [h]A for each supported base point.
     final ha = _point * h;
     final rPlusHa = r + ha;
 
-    return sb == rPlusHa;
+    if (_matchesEquation(_rfcBasePoint, s, rPlusHa)) {
+      return true;
+    }
+    if (!enableLegacyFallback) {
+      return false;
+    }
+    return _matchesEquation(_legacyBasePoint, s, rPlusHa);
+  }
+
+  bool _matchesEquation(
+    Ed448Point basePoint,
+    BigInt scalar,
+    Ed448Point expected,
+  ) {
+    final sb = basePoint * scalar;
+    return sb == expected;
   }
 }
 
@@ -397,11 +416,15 @@ class Ed448PrivateKeyImpl {
   // ignore: unused_field
   final Ed448Point _publicPoint;
   final BigInt _scalar;
+  final Ed448Generator generator;
 
-  Ed448PrivateKeyImpl._(
-      this._seed, this._publicKeyBytes, this._publicPoint, this._scalar);
+  Ed448PrivateKeyImpl._(this._seed, this._publicKeyBytes, this._publicPoint,
+      this._scalar, this.generator);
 
-  factory Ed448PrivateKeyImpl.fromSeed(Uint8List seed) {
+  factory Ed448PrivateKeyImpl.fromSeed(
+    Uint8List seed, {
+    Ed448Generator generator = Ed448Generator.rfc8032,
+  }) {
     if (seed.length != seedSize) {
       throw ArgumentError('Ed448 seed must be $seedSize bytes');
     }
@@ -419,7 +442,8 @@ class Ed448PrivateKeyImpl {
     final scalar = _bytesToBigInt(scalarBytes);
 
     // Compute public key: A = [s]B
-    final publicPoint = _basePoint * scalar;
+    final basePoint = _basePointFor(generator);
+    final publicPoint = basePoint * scalar;
     final publicKeyBytes = publicPoint.encode();
 
     return Ed448PrivateKeyImpl._(
@@ -427,6 +451,7 @@ class Ed448PrivateKeyImpl {
       publicKeyBytes,
       publicPoint,
       scalar,
+      generator,
     );
   }
 
@@ -453,7 +478,8 @@ class Ed448PrivateKeyImpl {
     final r = _bytesToBigInt(Uint8List.fromList(rHash)) % _order;
 
     // Compute R = [r]B
-    final rPoint = _basePoint * r;
+    final basePoint = _basePointFor(generator);
+    final rPoint = basePoint * r;
     final rBytes = rPoint.encode();
 
     // Compute k = H(dom4(F, C) || R || A || M) mod L
@@ -487,23 +513,36 @@ List<int> _computeDom4(int flag, Uint8List context) {
 }
 
 /// Generate a new Ed448 key pair
-Ed448PrivateKeyImpl generateEd448KeyPair(Uint8List seed) {
-  return Ed448PrivateKeyImpl.fromSeed(seed);
+Ed448PrivateKeyImpl generateEd448KeyPair(
+  Uint8List seed, {
+  Ed448Generator generator = Ed448Generator.rfc8032,
+}) {
+  return Ed448PrivateKeyImpl.fromSeed(seed, generator: generator);
 }
 
 /// Verify an Ed448 signature
 bool verifyEd448(Uint8List publicKey, Uint8List message, Uint8List signature,
-    {Uint8List? context}) {
+    {Uint8List? context, bool enableLegacyFallback = true}) {
   try {
     final pk = Ed448PublicKeyImpl(publicKey);
-    return pk.verify(message, signature, context: context);
+    return pk.verify(
+      message,
+      signature,
+      context: context,
+      enableLegacyFallback: enableLegacyFallback,
+    );
   } catch (e) {
     return false;
   }
 }
 
 /// Sign a message with Ed448
-Uint8List signEd448(Uint8List seed, Uint8List message, {Uint8List? context}) {
-  final sk = Ed448PrivateKeyImpl.fromSeed(seed);
+Uint8List signEd448(
+  Uint8List seed,
+  Uint8List message, {
+  Uint8List? context,
+  Ed448Generator generator = Ed448Generator.rfc8032,
+}) {
+  final sk = Ed448PrivateKeyImpl.fromSeed(seed, generator: generator);
   return sk.sign(message, context: context);
 }
