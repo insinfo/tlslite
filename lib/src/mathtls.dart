@@ -7,6 +7,33 @@ import 'utils/cryptomath.dart';
 import 'utils/tlshmac.dart';
 import 'ffdhe_groups.dart';
 
+const _tls13TranscriptLabels = <String>{
+  'c e traffic',
+  's e traffic',
+  'c hs traffic',
+  's hs traffic',
+  'c ap traffic',
+  's ap traffic',
+  'exp master',
+  'res master',
+};
+
+const _tls13ContextFreeDeriveLabels = <String>{
+  'derived',
+  'ext binder',
+  'res binder',
+};
+
+const _tls13ExpandDefaultLenLabels = <String>{
+  'finished',
+  'traffic upd',
+};
+
+const _tls13KeyMaterialLabels = <String>{
+  'key',
+  'iv',
+};
+
 /// Return approximate security level in bits for DH/DSA/RSA parameters.
 int paramStrength(BigInt param) {
   final size = numBits(param);
@@ -306,9 +333,54 @@ Uint8List calcKey(
     }
   }
 
-  // TLS 1.3 (future)
+  // TLS 1.3 and later
   else {
-    throw UnimplementedError('TLS 1.3 key derivation not yet implemented');
+    assert(version[0] == 3 && version[1] >= 4);
+    final useSha384 = CipherSuite.sha384PrfSuites.contains(cipherSuite);
+    final prfName = useSha384 ? 'sha384' : 'sha256';
+    final digestLength = useSha384 ? 48 : 32;
+    final labelString = String.fromCharCodes(label);
+    final labelBytes = Uint8List.fromList(label);
+    final baseSecret = Uint8List.fromList(secret);
+
+    Uint8List deriveSecret({required bool requireTranscript}) {
+      if (requireTranscript && handshakeHashes == null) {
+        throw ArgumentError(
+          'handshakeHashes required for TLS 1.3 label $labelString',
+        );
+      }
+      final transcript = requireTranscript ? handshakeHashes : null;
+      return derive_secret(baseSecret, labelBytes, transcript, prfName);
+    }
+
+    Uint8List expandLabel(int outLen, {Uint8List? context}) {
+      final ctx = context ?? Uint8List(0);
+      return HKDF_expand_label(baseSecret, labelBytes, ctx, outLen, prfName);
+    }
+
+    if (_tls13TranscriptLabels.contains(labelString)) {
+      return deriveSecret(requireTranscript: true);
+    }
+
+    if (_tls13ContextFreeDeriveLabels.contains(labelString)) {
+      return deriveSecret(requireTranscript: false);
+    }
+
+    if (_tls13ExpandDefaultLenLabels.contains(labelString)) {
+      final outLen = outputLength ?? digestLength;
+      return expandLabel(outLen);
+    }
+
+    if (_tls13KeyMaterialLabels.contains(labelString)) {
+      if (outputLength == null) {
+        throw ArgumentError(
+          'outputLength required for TLS 1.3 label $labelString',
+        );
+      }
+      return expandLabel(outputLength);
+    }
+
+    throw ArgumentError('Unsupported TLS 1.3 label: $labelString');
   }
 }
 

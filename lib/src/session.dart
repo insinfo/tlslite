@@ -104,8 +104,8 @@ class Session {
   /// Whether this session can be used for resumption attempts.
   bool valid() {
     final hasId = sessionID.isNotEmpty;
-    final hasTickets = (tickets?.isNotEmpty ?? false) ||
-        (tls10Tickets?.isNotEmpty ?? false);
+    final hasTickets =
+        (tickets?.isNotEmpty ?? false) || (tls10Tickets?.isNotEmpty ?? false);
     return resumable && (hasId || hasTickets);
   }
 
@@ -168,7 +168,6 @@ class Session {
 }
 
 // TODO(port): Session integration pending:
-// - sessioncache.py (SessionCache class for server-side session storage)
 // - Integration with tlsconnection.py/tlsrecordlayer.py for actual resumption
 // - TACK extension support (getTackId/getBreakSigs need utils/tackwrapper.dart)
 

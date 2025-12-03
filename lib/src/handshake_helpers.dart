@@ -4,9 +4,11 @@
 
 import 'dart:typed_data';
 
-import 'utils/cryptomath.dart';
-import 'utils/constanttime.dart';
+import 'constants.dart';
 import 'errors.dart';
+import 'utils/codec.dart';
+import 'utils/constanttime.dart';
+import 'utils/cryptomath.dart';
 
 /// Helper functions to be used with a TLS handshake
 class HandshakeHelpers {
@@ -185,8 +187,26 @@ class HandshakeHelpers {
 
 // Temporary stub for PaddingExtension
 class _PaddingExtension {
-  dynamic create(int size) {
-    // TODO: Implement proper PaddingExtension
+  _PaddingExtension() : extType = ExtensionType.client_hello_padding;
+
+  final int extType;
+  Uint8List _paddingData = Uint8List(0);
+
+  Uint8List get extData => _paddingData;
+
+  _PaddingExtension create(int size) {
+    if (size < 0 || size > 0xffff) {
+      throw ArgumentError('Padding size must be in the range 0..65535');
+    }
+    _paddingData = Uint8List(size);
     return this;
+  }
+
+  Uint8List write() {
+    final writer = Writer();
+    writer.addTwo(extType);
+    writer.addTwo(_paddingData.length);
+    writer.addBytes(_paddingData);
+    return writer.bytes;
   }
 }

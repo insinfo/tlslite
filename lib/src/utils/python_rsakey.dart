@@ -96,11 +96,29 @@ class PythonRSAKey extends RSAKey {
   }
 
   @override
-  bool acceptsPassword() => false;
+  bool acceptsPassword() => hasPrivateKey();
 
   @override
   String write({String? password}) {
-    throw UnimplementedError('PEM serialization not yet ported');
+    if (n == BigInt.zero || e == BigInt.zero) {
+      throw StateError('RSA modulus and exponent must be set');
+    }
+    if (password != null) {
+      if (!hasPrivateKey()) {
+        throw StateError('Cannot encrypt public-only RSA key');
+      }
+      final pkcs8 = encodePkcs8PrivateKey(
+        algorithmOid: _rsaEncryptionOid,
+        algorithmParams: derEncodeNull(),
+        privateKeyDer: _encodePrivateKeyDer(),
+      );
+      return encodeEncryptedPrivateKeyPem(pkcs8, password);
+    }
+    final hasPrivate = hasPrivateKey();
+    final derBytes =
+        hasPrivate ? _encodePrivateKeyDer() : _encodePublicKeyDer();
+    final label = hasPrivate ? 'RSA PRIVATE KEY' : 'PUBLIC KEY';
+    return pem(derBytes, label);
   }
 
   static PythonRSAKey generate(int bits, {String keyType = 'rsa'}) {
@@ -132,4 +150,37 @@ class PythonRSAKey extends RSAKey {
 
   @override
   String toString() => 'PythonRSAKey(len=${bitLength})';
+
+  Uint8List _encodePrivateKeyDer() {
+    if (_p == BigInt.zero || _q == BigInt.zero || _d == BigInt.zero) {
+      throw StateError('Private key requires CRT parameters');
+    }
+    final sequence = [
+      derEncodeInteger(BigInt.zero),
+      derEncodeInteger(n),
+      derEncodeInteger(e),
+      derEncodeInteger(_d),
+      derEncodeInteger(_p),
+      derEncodeInteger(_q),
+      derEncodeInteger(_dP),
+      derEncodeInteger(_dQ),
+      derEncodeInteger(_qInv),
+    ];
+    return derEncodeSequence(sequence);
+  }
+
+  Uint8List _encodePublicKeyDer() {
+    final publicKey = derEncodeSequence([
+      derEncodeInteger(n),
+      derEncodeInteger(e),
+    ]);
+    final algorithmIdentifier = derEncodeSequence([
+      derEncodeObjectIdentifier(_rsaEncryptionOid),
+      derEncodeNull(),
+    ]);
+    final subjectPublicKey = derEncodeBitString(publicKey);
+    return derEncodeSequence([algorithmIdentifier, subjectPublicKey]);
+  }
 }
+
+const List<int> _rsaEncryptionOid = [1, 2, 840, 113549, 1, 1, 1];

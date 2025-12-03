@@ -263,6 +263,64 @@ void main() {
     expect(parsed.keyShare!.group, equals(entry.group));
   });
 
+  test('ClientHello surfaces supported_groups and ec_point_formats', () {
+    final block = TlsExtensionBlock(extensions: <TlsExtension>[
+      TlsSupportedGroupsExtension(groups: <int>[
+        tls_constants.GroupName.secp256r1,
+        tls_constants.GroupName.x25519,
+      ]),
+      TlsEcPointFormatsExtension(formats: <int>[
+        tls_constants.ECPointFormat.uncompressed,
+      ]),
+    ]);
+
+    final hello = TlsClientHello(
+      clientVersion: TlsProtocolVersion.tls12,
+      random: Uint8List(32),
+      sessionId: Uint8List(0),
+      cipherSuites: <int>[0xC02F],
+      compressionMethods: <int>[0],
+      extensions: block,
+    );
+
+    final parsed = TlsHandshakeMessage.parseFragment(
+      hello.serialize(),
+      recordVersion: TlsProtocolVersion.tls12,
+    ).single as TlsClientHello;
+
+    expect(parsed.supportedGroups, containsAll(<int>[
+      tls_constants.GroupName.secp256r1,
+      tls_constants.GroupName.x25519,
+    ]));
+    expect(parsed.ecPointFormats,
+        equals(<int>[tls_constants.ECPointFormat.uncompressed]));
+  });
+
+  test('ServerHello surfaces ec_point_formats', () {
+    final block = TlsExtensionBlock(extensions: <TlsExtension>[
+      TlsEcPointFormatsExtension(formats: <int>[
+        tls_constants.ECPointFormat.uncompressed,
+      ]),
+    ]);
+
+    final hello = TlsServerHello(
+      serverVersion: TlsProtocolVersion.tls12,
+      random: Uint8List(32),
+      sessionId: Uint8List(0),
+      cipherSuite: 0xC02F,
+      compressionMethod: 0,
+      extensions: block,
+    );
+
+    final parsed = TlsHandshakeMessage.parseFragment(
+      hello.serialize(),
+      recordVersion: TlsProtocolVersion.tls12,
+    ).single as TlsServerHello;
+
+    expect(parsed.ecPointFormats,
+        equals(<int>[tls_constants.ECPointFormat.uncompressed]));
+  });
+
   test('EncryptedExtensions roundtrip', () {
     final block = TlsExtensionBlock(extensions: <TlsExtension>[
       TlsAlpnExtension(protocols: <String>['h2']),
@@ -322,5 +380,56 @@ void main() {
     expect(parsed.statusRequest, isNotNull);
     expect(parsed.statusRequest!.statusType,
         equals(tls_constants.CertificateStatusType.ocsp));
+  });
+
+  group('TlsServerKeyExchange', () {
+    test('SRP suites keep large parameter encodings', () {
+      final ske = TlsServerKeyExchange(
+        cipherSuite: tls_constants.CipherSuite.TLS_SRP_SHA_WITH_AES_128_CBC_SHA,
+        version: const <int>[3, 3],
+        srpN: BigInt.parse('E487B9', radix: 16),
+        srpG: BigInt.from(5),
+        srpS: <int>[0xAA, 0xBB],
+        srpB: BigInt.parse('C0FFEE', radix: 16),
+      );
+
+      final parsed = TlsServerKeyExchange.parse(
+        ske.serializeBody(),
+        ske.cipherSuite,
+        ske.version,
+      );
+
+      expect(parsed.srpN, equals(ske.srpN));
+      expect(parsed.srpG, equals(ske.srpG));
+      expect(parsed.srpS, equals(ske.srpS));
+      expect(parsed.srpB, equals(ske.srpB));
+    });
+
+    test('ECDHE suites retain curve identifiers and public share', () {
+      final ske = TlsServerKeyExchange(
+        cipherSuite:
+            tls_constants.CipherSuite.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+        version: const <int>[3, 3],
+        curveType: tls_constants.ECCurveType.named_curve,
+        namedCurve: tls_constants.GroupName.x25519,
+        ecdhYs: <int>[0x01, 0x02, 0x03],
+        signature: <int>[0x10, 0x11, 0x12],
+        hashAlg: tls_constants.HashAlgorithm.sha256,
+        signAlg: tls_constants.SignatureAlgorithm.rsa,
+      );
+
+      final parsed = TlsServerKeyExchange.parse(
+        ske.serializeBody(),
+        ske.cipherSuite,
+        ske.version,
+      );
+
+      expect(parsed.curveType, equals(ske.curveType));
+      expect(parsed.namedCurve, equals(ske.namedCurve));
+      expect(parsed.ecdhYs, equals(ske.ecdhYs));
+      expect(parsed.signature, equals(ske.signature));
+      expect(parsed.hashAlg, equals(ske.hashAlg));
+      expect(parsed.signAlg, equals(ske.signAlg));
+    });
   });
 }

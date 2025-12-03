@@ -45,6 +45,8 @@ class TlsExtensionRegistry {
     tls_constants.ExtensionType.server_name: _parseServerName,
     tls_constants.ExtensionType.alpn: _parseAlpn,
     tls_constants.ExtensionType.supported_versions: _parseSupportedVersions,
+    tls_constants.ExtensionType.supported_groups: _parseSupportedGroups,
+    tls_constants.ExtensionType.ec_point_formats: _parseEcPointFormats,
     tls_constants.ExtensionType.status_request: _parseStatusRequest,
     tls_constants.ExtensionType.signature_algorithms_cert:
         _parseSignatureAlgorithmsCert,
@@ -129,6 +131,54 @@ class TlsExtensionRegistry {
     return TlsSupportedVersionsExtension.server(
       TlsProtocolVersion(major, minor),
     );
+  }
+
+  static TlsExtension _parseSupportedGroups(
+    Uint8List body,
+    TlsExtensionContext context,
+  ) {
+    if (body.isEmpty) {
+      return TlsSupportedGroupsExtension(groups: const <int>[]);
+    }
+    final parser = Parser(body);
+    final listLength = parser.get(2);
+    if (listLength % 2 != 0 || listLength > parser.getRemainingLength()) {
+      throw DecodeError('supported_groups length is invalid');
+    }
+    final listBytes = parser.getFixBytes(listLength);
+    final listParser = Parser(listBytes);
+    final groups = <int>[];
+    while (!listParser.isDone) {
+      groups.add(listParser.get(2));
+    }
+    if (!parser.isDone) {
+      throw DecodeError('Dados extras após supported_groups');
+    }
+    return TlsSupportedGroupsExtension(groups: groups);
+  }
+
+  static TlsExtension _parseEcPointFormats(
+    Uint8List body,
+    TlsExtensionContext context,
+  ) {
+    final parser = Parser(body);
+    if (parser.isDone) {
+      // RFC 4492 requires at least one format, but be lenient and treat empty
+      // payloads as "no preference".
+      return TlsEcPointFormatsExtension(formats: const <int>[]);
+    }
+    final listLength = parser.get(1);
+    if (listLength > parser.getRemainingLength()) {
+      throw DecodeError('ec_point_formats length exceeds payload size');
+    }
+    final formats = <int>[];
+    for (var i = 0; i < listLength; i++) {
+      formats.add(parser.get(1));
+    }
+    if (!parser.isDone) {
+      throw DecodeError('Dados extras após ec_point_formats');
+    }
+    return TlsEcPointFormatsExtension(formats: formats);
   }
 
   static TlsExtension _parseStatusRequest(
@@ -264,6 +314,15 @@ class TlsExtensionBlock {
 
   bool get isEmpty => _extensions.isEmpty;
 
+  TlsExtension? byType(int type) {
+    for (final extension in _extensions) {
+      if (extension.type == type) {
+        return extension;
+      }
+    }
+    return null;
+  }
+
   T? first<T extends TlsExtension>() {
     for (final extension in _extensions) {
       if (extension is T) {
@@ -378,6 +437,42 @@ class TlsSignatureAlgorithmsCertExtension extends TlsExtension {
     for (final scheme in signatureSchemes) {
       writer.add((scheme >> 8) & 0xff, 1);
       writer.add(scheme & 0xff, 1);
+    }
+    return writer.bytes;
+  }
+}
+
+class TlsEcPointFormatsExtension extends TlsExtension {
+  TlsEcPointFormatsExtension({List<int>? formats})
+      : formats = List<int>.unmodifiable(formats ?? const <int>[]),
+        super(tls_constants.ExtensionType.ec_point_formats);
+
+  final List<int> formats;
+
+  @override
+  Uint8List serializeBody() {
+    final writer = Writer();
+    writer.add(formats.length, 1);
+    for (final format in formats) {
+      writer.add(format, 1);
+    }
+    return writer.bytes;
+  }
+}
+
+class TlsSupportedGroupsExtension extends TlsExtension {
+  TlsSupportedGroupsExtension({List<int>? groups})
+      : groups = List<int>.unmodifiable(groups ?? const <int>[]),
+        super(tls_constants.ExtensionType.supported_groups);
+
+  final List<int> groups;
+
+  @override
+  Uint8List serializeBody() {
+    final writer = Writer();
+    writer.add(groups.length * 2, 2);
+    for (final group in groups) {
+      writer.add(group, 2);
     }
     return writer.bytes;
   }

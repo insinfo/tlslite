@@ -326,6 +326,8 @@ class TlsClientHello extends TlsHandshakeMessage {
     List<TlsKeyShareEntry>? keyShares,
     TlsStatusRequestExtension? statusRequest,
     List<int>? signatureAlgorithmsCert,
+    List<int>? supportedGroups,
+    List<int>? ecPointFormats,
   })  : random = Uint8List.fromList(random),
         sessionId = Uint8List.fromList(sessionId),
         cipherSuites = List<int>.from(cipherSuites, growable: false),
@@ -365,6 +367,16 @@ class TlsClientHello extends TlsHandshakeMessage {
         ),
         statusRequest =
             statusRequest ?? extensions?.first<TlsStatusRequestExtension>(),
+        supportedGroups = List<int>.unmodifiable(
+          supportedGroups ??
+              extensions?.first<TlsSupportedGroupsExtension>()?.groups ??
+              const <int>[],
+        ),
+        ecPointFormats = List<int>.unmodifiable(
+          ecPointFormats ??
+              extensions?.first<TlsEcPointFormatsExtension>()?.formats ??
+              const <int>[],
+        ),
         super(TlsHandshakeType.clientHello) {
     if (this.random.length != 32) {
       throw ArgumentError('ClientHello.random precisa de 32 bytes');
@@ -383,6 +395,10 @@ class TlsClientHello extends TlsHandshakeMessage {
   final List<TlsKeyShareEntry> keyShares;
   final List<int> signatureAlgorithmsCert;
   final TlsStatusRequestExtension? statusRequest;
+  final List<int> supportedGroups;
+  final List<int> ecPointFormats;
+
+  TlsExtension? getExtension(int type) => extensions?.byType(type);
 
   static TlsClientHello parseBody(Uint8List body) {
     final parser = Parser(body);
@@ -488,6 +504,7 @@ class TlsServerHello extends TlsHandshakeMessage {
     TlsProtocolVersion? selectedSupportedVersion,
     List<String>? applicationProtocols,
     TlsKeyShareEntry? keyShare,
+    List<int>? ecPointFormats,
   })  : random = Uint8List.fromList(random),
         sessionId = Uint8List.fromList(sessionId),
         extensions = extensions,
@@ -503,6 +520,11 @@ class TlsServerHello extends TlsHandshakeMessage {
         ),
         keyShare =
             keyShare ?? extensions?.first<TlsKeyShareExtension>()?.serverShare,
+        ecPointFormats = List<int>.unmodifiable(
+          ecPointFormats ??
+              extensions?.first<TlsEcPointFormatsExtension>()?.formats ??
+              const <int>[],
+        ),
         super(TlsHandshakeType.serverHello) {
     if (this.random.length != 32) {
       throw ArgumentError('ServerHello.random precisa de 32 bytes');
@@ -518,6 +540,9 @@ class TlsServerHello extends TlsHandshakeMessage {
   final TlsProtocolVersion? selectedSupportedVersion;
   final List<String> applicationProtocols;
   final TlsKeyShareEntry? keyShare;
+  final List<int> ecPointFormats;
+
+  TlsExtension? getExtension(int type) => extensions?.byType(type);
 
   static TlsServerHello parseBody(Uint8List body) {
     final parser = Parser(body);

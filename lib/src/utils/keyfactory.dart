@@ -2,12 +2,16 @@ import 'dart:typed_data';
 
 import 'asn1parser.dart';
 import 'cryptomath.dart';
+import 'curve_oids.dart';
 import 'dsakey.dart';
 import 'ecdsakey.dart';
 import 'eddsakey.dart';
 import 'pem.dart';
+import 'pkcs8.dart';
 import 'python_ecdsakey.dart';
 import 'rsakey.dart';
+
+export 'curve_oids.dart' show curveNameFromOid, curveOidFromName, decodeOid;
 
 typedef PasswordCallback = String Function();
 
@@ -32,14 +36,15 @@ Object parsePEMKey(
   PasswordCallback? passwordCallback,
   List<String> implementations = const ['python'],
 }) {
-  final accepted = implementations.any((impl) => impl.toLowerCase() == 'python');
+  final accepted =
+      implementations.any((impl) => impl.toLowerCase() == 'python');
   if (!accepted) {
     throw ArgumentError('No acceptable implementations: $implementations');
   }
-  if (passwordCallback != null) {
-    throw UnsupportedError('Encrypted PEM files are not supported yet');
-  }
-  final key = _parsePemWithPurePython(pemData);
+  final key = _parsePemWithPurePython(
+    pemData,
+    passwordCallback: passwordCallback,
+  );
   return _parseKeyHelper(key, private: private, public: public);
 }
 
@@ -63,7 +68,8 @@ ECDSAKey createPublicECDSAKey(
 }) {
   for (final impl in implementations) {
     if (impl.toLowerCase() == 'python') {
-      return PythonECDSAKey(pointX: pointX, pointY: pointY, curveName: curveName);
+      return PythonECDSAKey(
+          pointX: pointX, pointY: pointY, curveName: curveName);
     }
   }
   throw ArgumentError('No acceptable implementations: $implementations');
@@ -157,10 +163,28 @@ Object _stripToPublicKey(Object key) {
   if (key is PythonEdDSAKey) {
     return PythonEdDSAKey.ed25519(publicKey: key.publicKeyBytes);
   }
+  if (key is Ed448PrivateKey) {
+    return Ed448PublicKey(key.publicKeyBytes);
+  }
+  if (key is Ed448PublicKey) {
+    return Ed448PublicKey(key.publicKeyBytes);
+  }
   return key;
 }
 
-Object _parsePemWithPurePython(String pemData) {
+Object _parsePemWithPurePython(
+  String pemData, {
+  PasswordCallback? passwordCallback,
+}) {
+  if (pemSniff(pemData, 'ENCRYPTED PRIVATE KEY')) {
+    final encrypted = dePem(pemData, 'ENCRYPTED PRIVATE KEY');
+    if (passwordCallback == null) {
+      throw StateError('Password callback required for encrypted PEM');
+    }
+    final password = passwordCallback();
+    final decrypted = decodeEncryptedPrivateKey(encrypted, password);
+    return _parsePkcs8PrivateKey(decrypted);
+  }
   if (pemSniff(pemData, 'PRIVATE KEY')) {
     final der = dePem(pemData, 'PRIVATE KEY');
     return _parsePkcs8PrivateKey(der);
@@ -226,6 +250,24 @@ Object _parsePkcs8PrivateKey(Uint8List derBytes) {
   }
   final childCount = algIdent.getChildCount();
   final privateKeyOctet = parser.getChild(2);
+  Uint8List? publicKeyBytes;
+  final totalChildren = parser.getChildCount();
+  for (var i = 3; i < totalChildren; i++) {
+    final child = parser.getChild(i);
+    final type = child.type;
+    if (type.tagClass == 2 && type.tagId == 1) {
+      final bitString = ASN1Parser(child.value);
+      if (bitString.type.tagId != 3) {
+        throw const FormatException('Invalid PKCS#8 public key encoding');
+      }
+      final value = bitString.value;
+      if (value.isEmpty || value.first != 0) {
+        throw const FormatException('Invalid public key BIT STRING');
+      }
+      publicKeyBytes = value.sublist(1);
+      break;
+    }
+  }
   if (childCount > 2) {
     throw const FormatException('Invalid AlgorithmIdentifier encoding');
   }
@@ -241,20 +283,24 @@ Object _parsePkcs8PrivateKey(Uint8List derBytes) {
       if (childCount != 2) {
         throw const FormatException('Invalid DSA AlgorithmIdentifier');
       }
-      return _parseDsaPkcs8PrivateKey(privateKeyOctet.value, algIdent.getChild(1));
+      return _parseDsaPkcs8PrivateKey(
+          privateKeyOctet.value, algIdent.getChild(1));
     case 'ecdsa':
       if (childCount != 2) {
         throw const FormatException('Invalid ECDSA AlgorithmIdentifier');
       }
-      final curveName = curveNameFromOid(algIdent.getChild(1).value.toList());
+      final curveName = curveNameFromOid(
+        decodeOid(algIdent.getChild(1).value.toList()),
+      );
       if (curveName == null) {
         throw const FormatException('Unknown EC curve');
       }
-      return _parseEcPrivateKey(ASN1Parser(privateKeyOctet.value), curveName: curveName);
+      return _parseEcPrivateKey(ASN1Parser(privateKeyOctet.value),
+          curveName: curveName);
     case 'Ed25519':
-      return _parseEd25519PrivateKey(privateKeyOctet.value);
+      return _parseEd25519PrivateKey(privateKeyOctet.value, publicKeyBytes);
     case 'Ed448':
-      throw UnsupportedError('Ed448 keys are not supported yet');
+      return _parseEd448PrivateKey(privateKeyOctet.value, publicKeyBytes);
     default:
       throw UnsupportedError('Unsupported PKCS#8 algorithm: $keyType');
   }
@@ -346,7 +392,9 @@ PythonECDSAKey _parseEcdsaPublicKey(ASN1Parser spki, ASN1Parser algId) {
   if (algId.getChildCount() != 2) {
     throw const FormatException('EC parameters missing');
   }
-  final curveName = curveNameFromOid(algId.getChild(1).value.toList());
+  final curveName = curveNameFromOid(
+    decodeOid(algId.getChild(1).value.toList()),
+  );
   if (curveName == null) {
     throw const FormatException('Unknown EC curve OID');
   }
@@ -368,7 +416,7 @@ PythonECDSAKey _parseEcdsaPublicKey(ASN1Parser spki, ASN1Parser algId) {
   return PythonECDSAKey(pointX: x, pointY: y, curveName: curveName);
 }
 
-PythonEdDSAKey _parseEdDsaPublicKey(ASN1Parser spki, List<int> oid) {
+EdDSAKey _parseEdDsaPublicKey(ASN1Parser spki, List<int> oid) {
   final bitString = ASN1Parser(spki.getChildBytes(1));
   if (bitString.value.isEmpty || bitString.value.first != 0) {
     throw const FormatException('Invalid EdDSA public key encoding');
@@ -379,6 +427,12 @@ PythonEdDSAKey _parseEdDsaPublicKey(ASN1Parser spki, List<int> oid) {
       throw const FormatException('Ed25519 public keys must be 32 bytes');
     }
     return PythonEdDSAKey.ed25519(publicKey: Uint8List.fromList(keyBytes));
+  }
+  if (_listsEqual(oid, _oidEd448)) {
+    if (keyBytes.length != _ed448KeyLengthBytes) {
+      throw const FormatException('Ed448 public keys must be 57 bytes');
+    }
+    return Ed448PublicKey(Uint8List.fromList(keyBytes));
   }
   throw UnsupportedError('Ed448 keys are not supported yet');
 }
@@ -420,7 +474,7 @@ PythonECDSAKey _parseEcPrivateKey(ASN1Parser parser, {String? curveName}) {
     final type = child.type;
     if (type.tagClass == 2 && type.tagId == 0) {
       final paramsParser = ASN1Parser(child.value);
-      curve ??= curveNameFromOid(paramsParser.value.toList());
+      curve ??= curveNameFromOid(decodeOid(paramsParser.value.toList()));
     } else if (type.tagClass == 2 && type.tagId == 1) {
       publicField = child.value;
     }
@@ -467,7 +521,41 @@ PythonECDSAKey _parseEcPrivateKey(ASN1Parser parser, {String? curveName}) {
   return (x: x, y: y);
 }
 
-PythonEdDSAKey _parseEd25519PrivateKey(Uint8List data) {
+PythonEdDSAKey _parseEd25519PrivateKey(
+    Uint8List data, Uint8List? publicKeyBytes) {
+  final seed = _extractEdPrivateSeed(data, 32,
+      error: 'Ed25519 private keys must be 32 bytes');
+  Uint8List? publicKey;
+  if (publicKeyBytes != null) {
+    if (publicKeyBytes.length != 32) {
+      throw const FormatException('Ed25519 public keys must be 32 bytes');
+    }
+    publicKey = Uint8List.fromList(publicKeyBytes);
+  }
+  return PythonEdDSAKey.ed25519(
+    privateKey: seed,
+    publicKey: publicKey,
+  );
+}
+
+Ed448PrivateKey _parseEd448PrivateKey(
+    Uint8List data, Uint8List? publicKeyBytes) {
+  final seed = _extractEdPrivateSeed(data, _ed448KeyLengthBytes,
+      error: 'Ed448 private keys must be 57 bytes');
+  if (publicKeyBytes == null) {
+    throw const FormatException('Ed448 PKCS#8 keys must include public key');
+  }
+  if (publicKeyBytes.length != _ed448KeyLengthBytes) {
+    throw const FormatException('Ed448 public keys must be 57 bytes');
+  }
+  return Ed448PrivateKey(
+    privateKeyBytes: seed,
+    publicKeyBytes: Uint8List.fromList(publicKeyBytes),
+  );
+}
+
+Uint8List _extractEdPrivateSeed(Uint8List data, int expectedLength,
+    {required String error}) {
   Uint8List seed = data;
   if (seed.isNotEmpty && seed.first == 0x04) {
     try {
@@ -479,17 +567,11 @@ PythonEdDSAKey _parseEd25519PrivateKey(Uint8List data) {
       // Fallback to treating data as raw seed
     }
   }
-  if (seed.length != 32) {
-    throw const FormatException('Ed25519 private keys must be 32 bytes');
+  if (seed.length != expectedLength) {
+    throw FormatException(error);
   }
-  return PythonEdDSAKey.ed25519(privateKey: seed);
+  return Uint8List.fromList(seed);
 }
-
-String? curveNameFromOid(List<int> oid) {
-  return _curveOidToName[_oidToString(oid)];
-}
-
-String _oidToString(List<int> oid) => oid.join('.');
 
 BigInt _extractInteger(Uint8List data) {
   if (data.isEmpty) {
@@ -513,15 +595,4 @@ const _oidDsa = [42, 134, 72, 206, 56, 4, 1];
 const _oidEcdsa = [42, 134, 72, 206, 61, 2, 1];
 const _oidEd25519 = [43, 101, 112];
 const _oidEd448 = [43, 101, 113];
-
-const Map<String, String> _curveOidToName = {
-  '1.2.840.10045.3.1.7': 'secp256r1',
-  '1.3.132.0.34': 'secp384r1',
-  '1.3.132.0.35': 'secp521r1',
-  '1.3.36.3.3.2.8.1.1.7': 'brainpoolp256r1',
-  '1.3.36.3.3.2.8.1.1.11': 'brainpoolp384r1',
-  '1.3.36.3.3.2.8.1.1.13': 'brainpoolp512r1',
-  '1.3.36.3.3.2.8.1.1.11.1': 'brainpoolp384r1tls13',
-  '1.3.36.3.3.2.8.1.1.13.1': 'brainpoolp512r1tls13',
-  '1.3.36.3.3.2.8.1.1.7.1': 'brainpoolp256r1tls13',
-};
+const int _ed448KeyLengthBytes = 57;

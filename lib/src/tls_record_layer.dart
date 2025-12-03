@@ -12,6 +12,7 @@ import 'recordlayer.dart';
 import 'session.dart';
 import 'tls_protocol.dart';
 import 'utils/codec.dart';
+import 'utils/cryptomath.dart';
 
 /// Dart translation of tlslite-ng's ``tlsrecordlayer.py``.
 ///
@@ -272,7 +273,10 @@ class TLSRecordLayer {
       );
     }
 
-    final allowedTypes = <int>{ContentType.application_data};
+    final allowedTypes = <int>{
+      ContentType.application_data,
+      ContentType.heartbeat,
+    };
     Set<int>? allowedHandshakeTypes;
     if (_isTls13Connection) {
       allowedTypes.add(ContentType.handshake);
@@ -334,14 +338,105 @@ class TLSRecordLayer {
   }
 
   Future<void> sendHeartbeatRequest(Uint8List payload, int paddingLength) async {
-    throw UnimplementedError('Heartbeat handling not ported yet');
+    if (paddingLength < 0) {
+      throw ArgumentError.value(paddingLength, 'paddingLength', 'must be >= 0');
+    }
+    if (payload.length > 0xffff) {
+      throw ArgumentError.value(
+        payload.length,
+        'payload',
+        'Heartbeat payload cannot exceed 65535 bytes',
+      );
+    }
+    if (closed) {
+      throw TLSClosedConnectionError('attempt to write to closed connection');
+    }
+    if (!heartbeatSupported || !heartbeatCanSend) {
+      throw TLSInternalError(
+        'attempt to send Heartbeat request when we cannot send it to the peer',
+      );
+    }
+
+    final padding = paddingLength == 0 ? Uint8List(0) : getRandomBytes(paddingLength);
+    final heartbeat = tlsmsg.TlsHeartbeat(
+      messageType: HeartbeatMessageType.heartbeat_request,
+      payload: payload,
+      padding: padding,
+    );
+
+    await _sendMsg(
+      heartbeat,
+      randomizeFirstBlock: false,
+      updateHandshakeHash: false,
+    );
   }
 
   Future<void> handleKeyUpdateRequest(tlsmsg.TlsKeyUpdate request) async {
-    await _sendError(
-      AlertDescription.internal_error,
-      'KeyUpdate handling not ported yet',
+    if (!_isTls13Connection) {
+      await _sendError(
+        AlertDescription.illegal_parameter,
+        'KeyUpdate is only defined for TLS 1.3',
+      );
+    }
+
+    final activeSession = session;
+    if (activeSession == null) {
+      await _sendError(
+        AlertDescription.internal_error,
+        'KeyUpdate received without an active session',
+      );
+    } else if (activeSession.clAppSecret.isEmpty ||
+        activeSession.srAppSecret.isEmpty) {
+      await _sendError(
+        AlertDescription.internal_error,
+        'KeyUpdate received before traffic secrets were established',
+      );
+    } else {
+      final (newClientSecret, newServerSecret) =
+          _recordLayer.calcTLS1_3KeyUpdateReceiver(
+        activeSession.cipherSuite,
+        activeSession.clAppSecret,
+        activeSession.srAppSecret,
+      );
+      activeSession.clAppSecret = newClientSecret;
+      activeSession.srAppSecret = newServerSecret;
+
+      if (request.updateRequested) {
+        await sendKeyUpdate(updateRequested: false);
+      }
+    }
+  }
+
+  Future<void> sendKeyUpdate({bool updateRequested = false}) async {
+    if (closed) {
+      throw TLSClosedConnectionError('attempt to write to closed connection');
+    }
+    if (!_isTls13Connection) {
+      throw TLSIllegalParameterException('KeyUpdate is only defined for TLS 1.3');
+    }
+
+    final activeSession = session;
+    if (activeSession == null) {
+      throw TLSInternalError('Cannot send KeyUpdate without an active session');
+    }
+    if (activeSession.clAppSecret.isEmpty || activeSession.srAppSecret.isEmpty) {
+      throw TLSInternalError(
+        'Cannot send KeyUpdate before application traffic secrets are available',
+      );
+    }
+
+    await _sendMsg(
+      tlsmsg.TlsKeyUpdate(updateRequested: updateRequested),
     );
+
+    final (newClientSecret, newServerSecret) =
+        _recordLayer.calcTLS1_3KeyUpdateSender(
+      activeSession.cipherSuite,
+      activeSession.clAppSecret,
+      activeSession.srAppSecret,
+    );
+    activeSession.clAppSecret = newClientSecret;
+    activeSession.srAppSecret = newServerSecret;
   }
 
   Future<bool> _pumpApplicationData({
@@ -373,7 +468,8 @@ class TLSRecordLayer {
     }
 
     if (message is tlsmsg.TlsHeartbeat) {
-      throw UnimplementedError('Heartbeat handling not ported yet');
+      await _handleHeartbeatMessage(message);
+      return true;
     }
 
     throw TLSLocalAlert(
@@ -397,6 +493,50 @@ class TLSRecordLayer {
     combined.setRange(0, _readBuffer.length, _readBuffer);
     combined.setRange(_readBuffer.length, combined.length, chunk);
     _readBuffer = combined;
+  }
+
+  Future<void> _handleHeartbeatMessage(tlsmsg.TlsHeartbeat heartbeat) async {
+    if (!heartbeatSupported) {
+      await _sendError(
+        AlertDescription.unexpected_message,
+        'Heartbeat message received without negotiation',
+      );
+    }
+
+    switch (heartbeat.messageType) {
+      case HeartbeatMessageType.heartbeat_request:
+        if (!heartbeatCanReceive) {
+          await _sendError(
+            AlertDescription.unexpected_message,
+            'Received Heartbeat request while peer_not_allowed_to_send is set',
+          );
+        }
+        if (heartbeat.padding.length < 16) {
+          // RFC 6520 mandates a minimum of 16 bytes; ignore malformed peers silently.
+          return;
+        }
+        final paddingLength = heartbeat.padding.length;
+        final response = tlsmsg.TlsHeartbeat(
+          messageType: HeartbeatMessageType.heartbeat_response,
+          payload: heartbeat.payload,
+          padding:
+              paddingLength == 0 ? Uint8List(0) : getRandomBytes(paddingLength),
+        );
+        await _sendMsg(
+          response,
+          randomizeFirstBlock: false,
+          updateHandshakeHash: false,
+        );
+        return;
+      case HeartbeatMessageType.heartbeat_response:
+        heartbeatResponseCallback?.call(heartbeat);
+        return;
+      default:
+        await _sendError(
+          AlertDescription.illegal_parameter,
+          'Heartbeat message with unknown type ${heartbeat.messageType}',
+        );
+    }
   }
 
   /// Serialize and send a TLS message, fragmenting as necessary.

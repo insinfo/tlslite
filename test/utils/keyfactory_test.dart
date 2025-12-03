@@ -70,6 +70,41 @@ void main() {
       expect(rsaKey.hasPrivateKey(), isFalse);
       expect(rsaKey.bitLength, equals(1024));
     });
+
+    test('parses encrypted PKCS#8 when password callback provided', () {
+      final key = _expectRsaKey(parsePrivateKey(_pkcs8WithNewlines));
+      final encryptedPem = key.write(password: 'hunter2');
+      final parsed = parsePEMKey(
+        encryptedPem,
+        private: true,
+        passwordCallback: () => 'hunter2',
+      );
+      final rsaKey = _expectRsaKey(parsed);
+      expect(rsaKey.hasPrivateKey(), isTrue);
+      expect(rsaKey.privateExponent, equals(key.privateExponent));
+    });
+
+    test('throws without password callback for encrypted PKCS#8', () {
+      final key = _expectRsaKey(parsePrivateKey(_pkcs8WithNewlines));
+      final encryptedPem = key.write(password: 'hunter2');
+      expect(
+        () => parsePEMKey(encryptedPem, private: true),
+        throwsStateError,
+      );
+    });
+
+    test('throws when password callback returns wrong password', () {
+      final key = _expectRsaKey(parsePrivateKey(_pkcs8WithNewlines));
+      final encryptedPem = key.write(password: 'hunter2');
+      expect(
+        () => parsePEMKey(
+          encryptedPem,
+          private: true,
+          passwordCallback: () => 'wrong',
+        ),
+        throwsA(isA<FormatException>()),
+      );
+    });
   });
 }
 

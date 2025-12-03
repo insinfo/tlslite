@@ -3,6 +3,9 @@ import 'dart:typed_data';
 import '../errors.dart';
 import 'constanttime.dart' as ct;
 import 'cryptomath.dart';
+import 'der.dart';
+import 'pem.dart';
+import 'pkcs8.dart';
 import 'tlshashlib.dart' as tlshash;
 
 part 'python_rsakey.dart';
@@ -351,8 +354,8 @@ abstract class RSAKey {
     if (priv == null) {
       throw StateError('Private exponent missing');
     }
-    _keyHash ??=
-        secureHash(numberToByteArray(priv, howManyBytes: numBytes(n)), 'sha256');
+    _keyHash ??= secureHash(
+        numberToByteArray(priv, howManyBytes: numBytes(n)), 'sha256');
     final kdk = secureHMAC(_keyHash!, encBytes, 'sha256');
     final lengthRandoms =
         _decPrf(kdk, Uint8List.fromList('length'.codeUnits), 128 * 2 * 8);
@@ -363,8 +366,8 @@ abstract class RSAKey {
     final lengthMask = (1 << numBits(BigInt.from(maxSepOffset))) - 1;
     for (var i = 0; i < lengthRandoms.length; i += 2) {
       if (i + 1 >= lengthRandoms.length) break;
-      var candidate = ((lengthRandoms[i] << 8) + lengthRandoms[i + 1]) &
-          lengthMask;
+      var candidate =
+          ((lengthRandoms[i] << 8) + lengthRandoms[i + 1]) & lengthMask;
       final mask =
           ct.ctLsbPropU16(ct.ctLtU32(candidate, maxSepOffset)) & 0xffff;
       synthLength = (synthLength & (0xffff ^ mask)) | (candidate & mask);
@@ -381,8 +384,7 @@ abstract class RSAKey {
     var msgStart = 0;
     for (var pos = 2; pos < length; pos++) {
       final val = decBytes[pos];
-      errorDetected |=
-          ct.ctLtU32(pos, 10) & (1 ^ ct.ctIsNonZeroU32(val));
+      errorDetected |= ct.ctLtU32(pos, 10) & (1 ^ ct.ctIsNonZeroU32(val));
       var mask = (1 ^ ct.ctLtU32(pos, 10)) &
           (1 ^ ct.ctIsNonZeroU32(val)) &
           (1 ^ ct.ctIsNonZeroU32(msgStart));
@@ -391,8 +393,7 @@ abstract class RSAKey {
     }
     errorDetected |= 1 ^ ct.ctIsNonZeroU32(msgStart);
     final mask = ct.ctLsbPropU16(errorDetected);
-    final retMsgStart =
-        (msgStart & (0xffff ^ mask)) | (synthMsgStart & mask);
+    final retMsgStart = (msgStart & (0xffff ^ mask)) | (synthMsgStart & mask);
 
     final mask8 = ct.ctLsbPropU8(errorDetected);
     final notMask = 0xff ^ mask8;
@@ -442,7 +443,10 @@ abstract class RSAKey {
   String write({String? password});
 
   static RSAKey generate(int bits, {String keyType = 'rsa'}) {
-    throw UnimplementedError('Subclass must implement generate');
+    if (bits < 512) {
+      throw ArgumentError('RSA keys smaller than 512 bits are insecure');
+    }
+    return PythonRSAKey.generate(bits, keyType: keyType);
   }
 
   Uint8List _addPKCS1Padding(Uint8List bytes, int blockType) {

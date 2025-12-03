@@ -61,8 +61,10 @@ class MessageSocket extends RecordLayer {
         return (header, parser);
       }
 
-      // TODO: SSL2 handling
-      // if (header.ssl2) return (header, parser);
+      // SSLv2 records are already message-aligned, so bypass the defragmenter.
+      if (header is RecordHeader2) {
+        return (header, parser);
+      }
 
       // Add to defragmenter
       final remainingBytes = parser.getFixBytes(parser.getRemainingLength());
@@ -109,5 +111,22 @@ class MessageSocket extends RecordLayer {
   Future<void> sendMessage(Message msg) async {
     await queueMessage(msg);
     await flush();
+  }
+
+  /// Blocking variants kept for API parity with tlslite-ng generators.
+  Future<(dynamic, Parser)> recvMessageBlocking() {
+    return recvMessage();
+  }
+
+  Future<void> flushBlocking() {
+    return flush();
+  }
+
+  Future<void> queueMessageBlocking(Message msg) {
+    return queueMessage(msg);
+  }
+
+  Future<void> sendMessageBlocking(Message msg) {
+    return sendMessage(msg);
   }
 }

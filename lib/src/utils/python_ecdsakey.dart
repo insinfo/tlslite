@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:pointycastle/api.dart' as pc
-  show Digest, PrivateKeyParameter, PublicKeyParameter;
+    show Digest, PrivateKeyParameter, PublicKeyParameter;
 import 'package:pointycastle/digests/md5.dart';
 import 'package:pointycastle/digests/sha1.dart';
 import 'package:pointycastle/digests/sha224.dart';
@@ -12,9 +12,13 @@ import 'package:pointycastle/ecc/api.dart' as ecc;
 import 'package:pointycastle/macs/hmac.dart';
 import 'package:pointycastle/signers/ecdsa_signer.dart';
 
+import 'cryptomath.dart';
+import 'curve_oids.dart';
 import 'der.dart';
 import 'ecdsakey.dart';
 import 'ecc.dart';
+import 'pem.dart';
+import 'pkcs8.dart';
 
 class PythonECDSAKey extends ECDSAKey {
   PythonECDSAKey({
@@ -22,19 +26,25 @@ class PythonECDSAKey extends ECDSAKey {
     BigInt? pointY,
     required String curveName,
     BigInt? secretMultiplier,
-  })  : curveName = curveName {
+  }) : curveName = curveName {
     final domain = getCurveByName(curveName);
     _domain = domain;
+    ecc.ECPoint? publicPoint;
     if (secretMultiplier == null && (pointX == null || pointY == null)) {
-      throw ArgumentError('Provide either a private multiplier or public point');
+      throw ArgumentError(
+          'Provide either a private multiplier or public point');
     }
     if (secretMultiplier != null) {
       _privateKey = ecc.ECPrivateKey(secretMultiplier, domain);
-      _publicPoint = (domain.G * secretMultiplier)!;
+      publicPoint = (domain.G * secretMultiplier)!;
     }
     if (pointX != null && pointY != null) {
-      _publicPoint = domain.curve.createPoint(pointX, pointY);
+      publicPoint = domain.curve.createPoint(pointX, pointY);
     }
+    if (publicPoint == null) {
+      throw StateError('Unable to determine public point');
+    }
+    _publicPoint = publicPoint;
     _publicKey = ecc.ECPublicKey(_publicPoint, domain);
   }
 
@@ -75,11 +85,28 @@ class PythonECDSAKey extends ECDSAKey {
   }
 
   @override
-  bool acceptsPassword() => false;
+  bool acceptsPassword() => hasPrivateKey();
 
   @override
   String write({String? password}) {
-    throw UnimplementedError('ECDSA PEM serialization not yet implemented');
+    if (password != null) {
+      if (!hasPrivateKey()) {
+        throw StateError('Cannot encrypt public-only ECDSA key');
+      }
+      final curveOid = curveOidFromName(curveName);
+      if (curveOid == null) {
+        throw UnsupportedError('Unknown curve OID for $curveName');
+      }
+      final pkcs8 = encodePkcs8PrivateKey(
+        algorithmOid: _ecPublicKeyOid,
+        algorithmParams: derEncodeObjectIdentifier(curveOid),
+        privateKeyDer: _encodeEcPrivateKey(),
+      );
+      return encodeEncryptedPrivateKeyPem(pkcs8, password);
+    }
+    final derBytes = hasPrivateKey() ? _encodeEcPrivateKey() : _encodeSpki();
+    final label = hasPrivateKey() ? 'EC PRIVATE KEY' : 'PUBLIC KEY';
+    return pem(derBytes, label);
   }
 
   BigInt get publicPointX {
@@ -141,4 +168,52 @@ class PythonECDSAKey extends ECDSAKey {
         throw ArgumentError('Unsupported hash algorithm: $hashAlg');
     }
   }
+
+  Uint8List _encodeEcPrivateKey() {
+    final privateKey = _privateKey;
+    if (privateKey == null) {
+      throw StateError('Private key is required for serialization');
+    }
+    final curveOid = curveOidFromName(curveName);
+    if (curveOid == null) {
+      throw UnsupportedError('Unknown curve OID for $curveName');
+    }
+    final coordLength = getPointByteSize(_domain);
+    final privateScalar =
+        numberToByteArray(privateKey.d!, howManyBytes: coordLength);
+    final pointBytes = _encodeEcPoint();
+    final sequence = <Uint8List>[
+      derEncodeInteger(BigInt.one),
+      derEncodeOctetString(privateScalar),
+      derEncodeContextSpecific(0, derEncodeObjectIdentifier(curveOid)),
+      derEncodeContextSpecific(1, derEncodeBitString(pointBytes)),
+    ];
+    return derEncodeSequence(sequence);
+  }
+
+  Uint8List _encodeSpki() {
+    final curveOid = curveOidFromName(curveName);
+    if (curveOid == null) {
+      throw UnsupportedError('Unknown curve OID for $curveName');
+    }
+    final algorithmIdentifier = derEncodeSequence([
+      derEncodeObjectIdentifier(_ecPublicKeyOid),
+      derEncodeObjectIdentifier(curveOid),
+    ]);
+    final subjectPublicKey = derEncodeBitString(_encodeEcPoint());
+    return derEncodeSequence([algorithmIdentifier, subjectPublicKey]);
+  }
+
+  Uint8List _encodeEcPoint() {
+    final coordLength = getPointByteSize(_domain);
+    final xBytes = numberToByteArray(publicPointX, howManyBytes: coordLength);
+    final yBytes = numberToByteArray(publicPointY, howManyBytes: coordLength);
+    final encoded = Uint8List(1 + xBytes.length + yBytes.length);
+    encoded[0] = 0x04;
+    encoded.setRange(1, 1 + xBytes.length, xBytes);
+    encoded.setRange(1 + xBytes.length, encoded.length, yBytes);
+    return encoded;
+  }
 }
+
+const List<int> _ecPublicKeyOid = [1, 2, 840, 10045, 2, 1];

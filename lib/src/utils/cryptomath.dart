@@ -189,6 +189,42 @@ Uint8List HKDF_expand(Uint8List PRK, Uint8List info, int L, String algorithm) {
   return T.toBytes().sublist(0, L);
 }
 
+/// PBKDF2 key derivation using HMAC with the requested [hashAlgorithm].
+Uint8List pbkdf2(
+  Uint8List password,
+  Uint8List salt,
+  int iterations,
+  int derivedKeyLength,
+  String hashAlgorithm,
+) {
+  if (iterations <= 0) {
+    throw ArgumentError('iterations must be positive');
+  }
+  if (derivedKeyLength <= 0) {
+    throw ArgumentError('derivedKeyLength must be positive');
+  }
+  final hLen = _getDigestSize(hashAlgorithm);
+  final blocks = divceil(BigInt.from(derivedKeyLength), BigInt.from(hLen)).toInt();
+  final derived = BytesBuilder();
+  for (var blockIndex = 1; blockIndex <= blocks; blockIndex++) {
+    final counter = numberToByteArray(BigInt.from(blockIndex), howManyBytes: 4);
+    final initial = BytesBuilder()
+      ..add(salt)
+      ..add(counter);
+    var u = secureHMAC(password, initial.toBytes(), hashAlgorithm);
+    final block = Uint8List.fromList(u);
+    for (var i = 1; i < iterations; i++) {
+      u = secureHMAC(password, u, hashAlgorithm);
+      for (var j = 0; j < block.length; j++) {
+        block[j] ^= u[j];
+      }
+    }
+    derived.add(block);
+  }
+  final result = derived.toBytes();
+  return Uint8List.fromList(result.sublist(0, derivedKeyLength));
+}
+
 /// Função de derivação de chave TLS 1.3 (HKDF-Expand-Label).
 Uint8List HKDF_expand_label(Uint8List secret, Uint8List label,
     Uint8List hashValue, int length, String algorithm) {

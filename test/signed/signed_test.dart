@@ -1,6 +1,10 @@
+import 'dart:typed_data';
+
 import 'package:test/test.dart';
 
 import 'package:tlslite/src/signed.dart';
+import 'package:tlslite/src/utils/eddsakey.dart';
+import 'package:tlslite/src/utils/python_ecdsakey.dart';
 
 void main() {
   group('SignatureSettings.validate', () {
@@ -68,6 +72,58 @@ void main() {
             e
                 .toString()
                 .contains('Following signature algorithms are not allowed: sha128, sha129'))),
+      );
+    });
+  });
+
+  group('SignedObject.verifySignature', () {
+    test('verifies ecdsa-with-sha256 signature', () {
+      final signer = PythonECDSAKey(
+        curveName: 'secp256r1',
+        secretMultiplier: BigInt.from(42),
+      );
+      final payload = Uint8List.fromList('ecdsa payload'.codeUnits);
+      final signature = signer.hashAndSign(payload, hAlg: 'sha256');
+      final signed = SignedObject()
+        ..tbsData = payload
+        ..signature = signature
+        ..signatureAlgorithm = Uint8List.fromList(
+          [0x2a, 0x86, 0x48, 0xce, 0x3d, 0x04, 0x03, 0x02],
+        );
+
+      expect(signed.verifySignature(signer), isTrue);
+    });
+
+    test('verifies Ed25519 signature', () {
+      final seed = Uint8List.fromList(List<int>.generate(32, (i) => i));
+      final signer = PythonEdDSAKey.ed25519(privateKey: seed);
+      final payload = Uint8List.fromList('ed25519 payload'.codeUnits);
+      final signature = signer.hashAndSign(payload);
+      final signed = SignedObject()
+        ..tbsData = payload
+        ..signature = signature
+        ..signatureAlgorithm = Uint8List.fromList([0x2b, 0x65, 0x70]);
+
+      expect(signed.verifySignature(signer), isTrue);
+    });
+
+    test('throws when key type mismatches signature algorithm', () {
+      final payload = Uint8List.fromList([1, 2, 3]);
+      final signed = SignedObject()
+        ..tbsData = payload
+        ..signature = Uint8List.fromList([0])
+        ..signatureAlgorithm = Uint8List.fromList(
+          [0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0b],
+        );
+      final ecdsaKey = PythonECDSAKey(
+        curveName: 'secp256r1',
+        secretMultiplier: BigInt.from(7),
+      );
+
+      expect(
+        () => signed.verifySignature(ecdsaKey),
+        throwsA(isA<ArgumentError>()
+          .having((e) => e.message, 'message', contains('RSA signature requires an RSAKey'))),
       );
     });
   });

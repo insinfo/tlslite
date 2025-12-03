@@ -1,6 +1,9 @@
 import 'dart:typed_data';
 
 import '../ed25519_edwards/ed25519_edwards.dart' as ed;
+import 'der.dart';
+import 'pem.dart';
+import 'pkcs8.dart';
 
 part 'python_eddsakey.dart';
 
@@ -46,13 +49,18 @@ abstract class EdDSAKey {
   }
 }
 
-/// Placeholder for Ed448 public keys until full Ed448 support is ported.
+/// Placeholder for Ed448 keys until full Ed448 support is ported.
 class Ed448PublicKey extends EdDSAKey {
   Ed448PublicKey(Uint8List publicKeyBytes)
-      : publicKeyBytes = Uint8List.fromList(publicKeyBytes);
+      : _publicKeyBytes = Uint8List.fromList(publicKeyBytes) {
+    if (_publicKeyBytes.length != _ed448KeyLength) {
+      throw ArgumentError('Ed448 public key must be 57 bytes');
+    }
+  }
 
-  /// Raw Ed448 public key bytes (57 bytes).
-  final Uint8List publicKeyBytes;
+  final Uint8List _publicKeyBytes;
+
+  Uint8List get publicKeyBytes => Uint8List.fromList(_publicKeyBytes);
 
   @override
   int get bitLength => 456;
@@ -75,6 +83,54 @@ class Ed448PublicKey extends EdDSAKey {
 
   @override
   String write({String? password}) {
-    throw UnsupportedError('Ed448 serialization is not implemented yet');
+    if (password != null) {
+      throw StateError('Cannot encrypt public-only Ed448 key');
+    }
+    return pem(_encodeSpki(), 'PUBLIC KEY');
+  }
+
+  Uint8List _encodeSpki() {
+    final algorithmIdentifier = derEncodeSequence([
+      derEncodeObjectIdentifier(_ed448Oid),
+    ]);
+    final subjectPublicKey = derEncodeBitString(publicKeyBytes);
+    return derEncodeSequence([algorithmIdentifier, subjectPublicKey]);
   }
 }
+
+class Ed448PrivateKey extends Ed448PublicKey {
+  Ed448PrivateKey({
+    required Uint8List privateKeyBytes,
+    required Uint8List publicKeyBytes,
+  })  : _privateKeyBytes = Uint8List.fromList(privateKeyBytes),
+        super(publicKeyBytes) {
+    if (_privateKeyBytes.length != _ed448KeyLength) {
+      throw ArgumentError('Ed448 private key must be 57 bytes');
+    }
+  }
+
+  final Uint8List _privateKeyBytes;
+
+  @override
+  bool hasPrivateKey() => true;
+
+  @override
+  bool acceptsPassword() => true;
+
+  @override
+  String write({String? password}) {
+    final pkcs8 = encodePkcs8PrivateKey(
+      algorithmOid: _ed448Oid,
+      privateKeyDer: _privateKeyBytes,
+      publicKeyBytes: publicKeyBytes,
+    );
+    if (password != null) {
+      return encodeEncryptedPrivateKeyPem(pkcs8, password);
+    }
+    return pem(pkcs8, 'PRIVATE KEY');
+  }
+}
+
+const int _ed448KeyLength = 57;
+const List<int> _ed25519Oid = [1, 3, 101, 112];
+const List<int> _ed448Oid = [1, 3, 101, 113];

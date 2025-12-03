@@ -1,8 +1,10 @@
 import 'dart:typed_data';
 
 import 'package:test/test.dart';
-import 'package:tlslite/src/mathtls.dart';
 import 'package:tlslite/src/constants.dart';
+import 'package:tlslite/src/handshake_hashes.dart';
+import 'package:tlslite/src/mathtls.dart';
+import 'package:tlslite/src/utils/cryptomath.dart';
 
 void main() {
   group('PRF functions', () {
@@ -165,6 +167,112 @@ void main() {
       
       expect(result.length, equals(128));
       expect(result, isNot(equals(Uint8List(128))));
+    });
+
+    test('derives TLS 1.3 traffic secret with transcript hash', () {
+      final handshakeHashes = HandshakeHashes()
+        ..update(Uint8List.fromList(List<int>.generate(32, (i) => i)));
+      final baseSecret = Uint8List.fromList(List<int>.generate(32, (i) => i + 1));
+
+      final result = calcKey(
+        [3, 4],
+        baseSecret,
+        CipherSuite.TLS_AES_128_GCM_SHA256,
+        'c hs traffic'.codeUnits,
+        handshakeHashes: handshakeHashes,
+      );
+
+      final expected = derive_secret(
+        baseSecret,
+        Uint8List.fromList('c hs traffic'.codeUnits),
+        handshakeHashes,
+        'sha256',
+      );
+
+      expect(result, equals(expected));
+    });
+
+    test('throws when TLS 1.3 transcript labels miss handshake hashes', () {
+      final baseSecret = Uint8List.fromList(List<int>.generate(32, (i) => i + 5));
+
+      expect(
+        () => calcKey(
+          [3, 4],
+          baseSecret,
+          CipherSuite.TLS_AES_128_GCM_SHA256,
+          'c hs traffic'.codeUnits,
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('derives TLS 1.3 context-free secrets', () {
+      final baseSecret = Uint8List.fromList(List<int>.generate(32, (i) => i + 7));
+
+      final result = calcKey(
+        [3, 4],
+        baseSecret,
+        CipherSuite.TLS_AES_128_GCM_SHA256,
+        'derived'.codeUnits,
+      );
+
+      final expected = derive_secret(
+        baseSecret,
+        Uint8List.fromList('derived'.codeUnits),
+        null,
+        'sha256',
+      );
+
+      expect(result, equals(expected));
+    });
+
+    test('expands TLS 1.3 finished key and key material', () {
+      final baseSecret = Uint8List.fromList(List<int>.filled(32, 0xA5));
+
+      final finishedKey = calcKey(
+        [3, 4],
+        baseSecret,
+        CipherSuite.TLS_AES_128_GCM_SHA256,
+        'finished'.codeUnits,
+      );
+
+      final expectedFinished = HKDF_expand_label(
+        baseSecret,
+        Uint8List.fromList('finished'.codeUnits),
+        Uint8List(0),
+        32,
+        'sha256',
+      );
+
+      expect(finishedKey, equals(expectedFinished));
+
+      expect(
+        () => calcKey(
+          [3, 4],
+          baseSecret,
+          CipherSuite.TLS_AES_128_GCM_SHA256,
+          'key'.codeUnits,
+        ),
+        throwsArgumentError,
+      );
+
+      final trafficKey = calcKey(
+        [3, 4],
+        baseSecret,
+        CipherSuite.TLS_AES_128_GCM_SHA256,
+        'key'.codeUnits,
+        outputLength: 16,
+      );
+
+      final expectedKey = HKDF_expand_label(
+        baseSecret,
+        Uint8List.fromList('key'.codeUnits),
+        Uint8List(0),
+        16,
+        'sha256',
+      );
+
+      expect(trafficKey, equals(expectedKey));
     });
   });
 

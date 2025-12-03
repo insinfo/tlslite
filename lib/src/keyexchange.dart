@@ -2,12 +2,16 @@
 
 import 'dart:typed_data';
 
+import 'package:pointycastle/ecc/api.dart' show ECDomainParameters, ECPoint;
+
 import 'constants.dart';
 import 'errors.dart';
 import 'ffdhe_groups.dart';
+import 'handshake_settings.dart';
 import 'mathtls.dart';
 import 'messages.dart' as tlsmsg;
 import 'tls_protocol.dart';
+import 'utils/ecc.dart';
 import 'utils/cryptomath.dart';
 import 'utils/dsakey.dart';
 import 'utils/ecdsakey.dart';
@@ -27,7 +31,6 @@ abstract class KeyExchange {
     this.serverHello,
     this.privateKey,
   );
-
   final int cipherSuite;
   final dynamic clientHello;
   final dynamic serverHello;
@@ -568,10 +571,12 @@ class ADHKeyExchange extends KeyExchange {
     super.privateKey, {
     this.dhParams,
     this.dhGroups,
+    this.settings,
   });
 
   final (BigInt, BigInt)? dhParams;
   final List<int>? dhGroups;
+  final HandshakeSettings? settings;
 
   BigInt? dhXs;
   BigInt? dhYc;
@@ -611,9 +616,13 @@ class ADHKeyExchange extends KeyExchange {
     dynamic serverKeyExchange,
   ) {
     final dhP = serverKeyExchange.dhP as BigInt;
-    // TODO: make the minimum changeable
-    if (dhP < BigInt.from(2).pow(1023)) {
+    final keyBits = numBits(dhP);
+    final (minBits, maxBits) = _dhKeySizeBounds();
+    if (keyBits < minBits) {
       throw TLSInsufficientSecurity('DH prime too small');
+    }
+    if (keyBits > maxBits) {
+      throw TLSInsufficientSecurity('DH prime too large');
     }
     final dhG = serverKeyExchange.dhG as BigInt;
     final dhYs = serverKeyExchange.dhYs as BigInt;
@@ -633,6 +642,19 @@ class ADHKeyExchange extends KeyExchange {
       version: _serverVersion,
       dhYc: dhYc ?? BigInt.zero,
     );
+  }
+
+  (int, int) _dhKeySizeBounds() {
+    final cfg = settings;
+    if (cfg == null) {
+      return (1023, 8193);
+    }
+    final minBits = cfg.minKeySize;
+    final maxBits = cfg.maxKeySize;
+    if (minBits <= maxBits) {
+      return (minBits, maxBits);
+    }
+    return (maxBits, maxBits);
   }
 
   void _selectDhParameters() {
@@ -695,13 +717,21 @@ class ADHKeyExchange extends KeyExchange {
 
   List<int>? _clientSupportedFfdheGroups() {
     try {
+      final propGroups = clientHello.supportedGroups;
+      if (propGroups is List && propGroups.isNotEmpty) {
+        return propGroups.cast<int>().toList(growable: false);
+      }
+    } catch (_) {
+      // Ignore property lookup errors and fall back to extension parsing.
+    }
+    try {
       final ext = clientHello.getExtension(ExtensionType.supported_groups);
       if (ext == null) {
         return null;
       }
       final groups = ext.groups;
       if (groups is List<int>) {
-        return groups;
+        return List<int>.from(groups);
       }
       if (groups is List) {
         return groups.cast<int>();
@@ -722,7 +752,10 @@ class DHE_RSAKeyExchange extends ADHKeyExchange {
     super.privateKey, {
     this.dhParams,
     this.dhGroups,
-  });
+    HandshakeSettings? settings,
+  }) : super(
+          settings: settings,
+        );
 
   @override
   final (BigInt, BigInt)? dhParams;
@@ -771,21 +804,16 @@ class AECDHKeyExchange extends KeyExchange {
   @override
   @override
   tlsmsg.TlsServerKeyExchange makeServerKeyExchange({String? sigHash}) {
-    dynamic clientCurvesExt;
-    try {
-      clientCurvesExt = clientHello.getExtension(ExtensionType.supported_groups);
-    } catch (_) {}
+    final advertisedGroups = _extractSupportedGroups(clientHello);
     List<int> clientCurves;
 
-    if (clientCurvesExt == null) {
+    if (advertisedGroups == null) {
       // In case there is no extension, we can pick any curve
       clientCurves = [defaultCurve];
+    } else if (advertisedGroups.isEmpty) {
+      throw TLSInternalError("Can't do ECDHE with no client curves");
     } else {
-      final groups = clientCurvesExt.groups;
-      if (groups == null || groups.isEmpty) {
-        throw TLSInternalError("Can't do ECDHE with no client curves");
-      }
-      clientCurves = groups.cast<int>();
+      clientCurves = advertisedGroups;
     }
 
     // Pick first client preferred group we support
@@ -797,9 +825,7 @@ class AECDHKeyExchange extends KeyExchange {
     final kex = ECDHKeyExchange(groupId!, _serverVersionTuple);
     ecdhXs = kex.getRandomPrivateKey();
 
-    var extNegotiated = 'uncompressed';
-    // TODO: Handle EC point formats extension negotiation
-
+    final extNegotiated = _negotiateEcPointFormat();
     final ecdhYs = kex.calcPublicValue(ecdhXs, extNegotiated);
 
     return tlsmsg.TlsServerKeyExchange(
@@ -820,10 +846,13 @@ class AECDHKeyExchange extends KeyExchange {
     }
 
     final kex = ECDHKeyExchange(groupId!, _serverVersionTuple);
-    final extSupported = {'uncompressed'};
-    // TODO: Handle EC point formats extension negotiation
+    final extSupported = _supportedEcPointFormats();
 
-    return kex.calcSharedKey(ecdhXs, Uint8List.fromList(ecdhYc), extSupported);
+    return kex.calcSharedKey(
+      ecdhXs,
+      Uint8List.fromList(ecdhYc),
+      extSupported,
+    );
   }
 
   @override
@@ -845,12 +874,15 @@ class AECDHKeyExchange extends KeyExchange {
 
     final kex = ECDHKeyExchange(namedCurve!, _serverVersionTuple);
     final ecdhXc = kex.getRandomPrivateKey();
-    final extNegotiated = 'uncompressed';
-    final extSupported = {'uncompressed'};
-    // TODO: Handle EC point formats extension negotiation
+    final extNegotiated = _negotiateEcPointFormat();
+    final extSupported = _supportedEcPointFormats();
 
     ecdhYc = kex.calcPublicValue(ecdhXc, extNegotiated);
-    return kex.calcSharedKey(ecdhXc, Uint8List.fromList(ecdhYs), extSupported);
+    return kex.calcSharedKey(
+      ecdhXc,
+      Uint8List.fromList(ecdhYs),
+      extSupported,
+    );
   }
 
   @override
@@ -872,6 +904,97 @@ class AECDHKeyExchange extends KeyExchange {
       if (server.contains(c)) return c;
     }
     return null;
+  }
+
+  String _negotiateEcPointFormat() {
+    final shared = _sharedEcPointFormats();
+    if (shared == null) {
+      return 'uncompressed';
+    }
+    return _formatCodeToLabel(shared.first);
+  }
+
+  Set<String> _supportedEcPointFormats() {
+    final shared = _sharedEcPointFormats();
+    final formats = shared ?? const [ECPointFormat.uncompressed];
+    return formats.map(_formatCodeToLabel).toSet();
+  }
+
+  List<int>? _sharedEcPointFormats() {
+    final clientFormats = _extractPointFormats(clientHello);
+    final serverFormats = _extractPointFormats(serverHello);
+    if (clientFormats == null || serverFormats == null) {
+      return null;
+    }
+    final shared = <int>[];
+    for (final format in clientFormats) {
+      if (serverFormats.contains(format) &&
+          format == ECPointFormat.uncompressed) {
+        shared.add(format);
+      }
+    }
+    if (shared.isEmpty) {
+      throw TLSIllegalParameterException('No common EC point format');
+    }
+    return shared;
+  }
+
+  List<int>? _extractPointFormats(dynamic hello) {
+    if (hello == null) return null;
+    try {
+      final formatsProp = hello.ecPointFormats;
+      if (formatsProp is List<int> && formatsProp.isNotEmpty) {
+        return List<int>.from(formatsProp);
+      }
+      if (formatsProp is List && formatsProp.isNotEmpty) {
+        return formatsProp.cast<int>();
+      }
+    } catch (_) {}
+    try {
+      final ext = hello.getExtension(ExtensionType.ec_point_formats);
+      if (ext == null) {
+        return null;
+      }
+      final formats = ext.formats;
+      if (formats is List<int>) {
+        return List<int>.from(formats);
+      }
+      if (formats is List) {
+        return formats.cast<int>();
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  List<int>? _extractSupportedGroups(dynamic hello) {
+    if (hello == null) return null;
+    try {
+      final groupsProp = hello.supportedGroups;
+      if (groupsProp is List<int> && groupsProp.isNotEmpty) {
+        return List<int>.from(groupsProp);
+      }
+      if (groupsProp is List && groupsProp.isNotEmpty) {
+        return groupsProp.cast<int>();
+      }
+    } catch (_) {}
+    try {
+      final ext = hello.getExtension(ExtensionType.supported_groups);
+      if (ext == null) {
+        return null;
+      }
+      final groups = ext.groups;
+      if (groups is List<int>) {
+        return List<int>.from(groups);
+      }
+      if (groups is List) {
+        return groups.cast<int>();
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  String _formatCodeToLabel(int format) {
+    return format == ECPointFormat.uncompressed ? 'uncompressed' : 'compressed';
   }
 }
 
@@ -981,14 +1104,17 @@ class SRPKeyExchange extends KeyExchange {
     final s = Uint8List.fromList(serverKeyExchange.srpS as List<int>);
     final b_ = serverKeyExchange.srpB as BigInt;
 
-    // TODO: Check if (g, N) are in goodGroupParameters
-    // TODO: Check minKeySize and maxKeySize from settings
-
-    if (numBits(n) < 1024) {
-      throw TLSInsufficientSecurity('N value is too small: ${numBits(n)}');
+    if (!_isKnownSrpGroup(g, n)) {
+      throw TLSInsufficientSecurity('Unknown group parameters');
     }
-    if (numBits(n) > 8192) {
-      throw TLSInsufficientSecurity('N value is too large: ${numBits(n)}');
+
+    final keyBits = numBits(n);
+    final (minBits, maxBits) = _srpKeySizeBounds();
+    if (keyBits < minBits) {
+      throw TLSInsufficientSecurity('N value is too small: $keyBits');
+    }
+    if (keyBits > maxBits) {
+      throw TLSInsufficientSecurity('N value is too large: $keyBits');
     }
     if (b_ % n == BigInt.zero) {
       throw TLSIllegalParameterException('Suspicious B value');
@@ -1009,6 +1135,46 @@ class SRPKeyExchange extends KeyExchange {
     final k = makeK(n, g);
     final premaster = powMod((b_ - (k * v_)) % n, a + (u * x), n);
     return numberToByteArray(premaster);
+  }
+
+  bool _isKnownSrpGroup(BigInt generator, BigInt prime) {
+    for (final group in goodGroupParameters) {
+      if (group.generator == generator && group.prime == prime) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  (int, int) _srpKeySizeBounds() {
+    const defaults = (1023, 8193);
+    final cfg = settings;
+    if (cfg == null) {
+      return defaults;
+    }
+
+    var minBits = defaults.$1;
+    var maxBits = defaults.$2;
+
+    try {
+      final value = cfg.minKeySize;
+      if (value is int && value > 0) {
+        minBits = value;
+      }
+    } catch (_) {}
+
+    try {
+      final value = cfg.maxKeySize;
+      if (value is int && value > 0) {
+        maxBits = value;
+      }
+    } catch (_) {}
+
+    if (minBits > maxBits) {
+      minBits = maxBits;
+    }
+
+    return (minBits, maxBits);
   }
 
   @override
@@ -1173,23 +1339,41 @@ class ECDHKeyExchange extends RawDHKeyExchange {
           ? X25519_ORDER_SIZE
           : X448_ORDER_SIZE;
       return getRandomBytes(size);
-    } else {
-      // ECDSA curve - need ecdsa library
-      throw UnimplementedError('ECDSA curves not yet supported');
+    }
+
+    final params = _domainParameters();
+    final order = params.n;
+    final bytesNeeded = (order.bitLength + 7) ~/ 8;
+    while (true) {
+      final candidate = bytesToNumber(getRandomBytes(bytesNeeded)) % order;
+      if (candidate != BigInt.zero) {
+        return candidate;
+      }
     }
   }
 
   @override
   Uint8List calcPublicValue(dynamic privateKey, [String? pointFormat]) {
-    if (!_xGroups.contains(groupName)) {
-      throw UnimplementedError('ECDSA curves not yet supported');
+    if (_xGroups.contains(groupName)) {
+      final scalar = _coerceMontgomeryScalar(privateKey);
+      if (groupName == GroupName.x25519) {
+        return x25519(scalar, X25519_G);
+      }
+      return x448(scalar, X448_G);
     }
 
-    final scalar = _coerceScalar(privateKey);
-    if (groupName == GroupName.x25519) {
-      return x25519(scalar, X25519_G);
+    final params = _domainParameters();
+    final scalar = _coerceClassicScalar(privateKey, params);
+    final format = pointFormat ?? 'uncompressed';
+    if (format != 'uncompressed') {
+      throw TLSIllegalParameterException(
+          'Unsupported EC point format: $format');
     }
-    return x448(scalar, X448_G);
+    final point = params.G * scalar;
+    if (point == null || point.isInfinity) {
+      throw TLSIllegalParameterException('Invalid EC scalar');
+    }
+    return _encodeClassicPoint(point, params);
   }
 
   @override
@@ -1198,27 +1382,61 @@ class ECDHKeyExchange extends RawDHKeyExchange {
     Uint8List peerShare, [
     Set<String>? validPointFormats,
   ]) {
-    if (!_xGroups.contains(groupName)) {
-      // ECDH with NIST curves
-      throw UnimplementedError('ECDSA curves not yet supported');
+    if (_xGroups.contains(groupName)) {
+      final expectedLen = groupName == GroupName.x25519
+          ? X25519_ORDER_SIZE
+          : X448_ORDER_SIZE;
+      if (peerShare.length != expectedLen) {
+        throw TLSIllegalParameterException('Invalid key share');
+      }
+
+      final scalar = _coerceMontgomeryScalar(privateKey);
+      final secret = groupName == GroupName.x25519
+          ? x25519(scalar, peerShare)
+          : x448(scalar, peerShare);
+      _nonZeroCheck(secret);
+      return secret;
     }
 
-    final expectedLen = groupName == GroupName.x25519
-        ? X25519_ORDER_SIZE
-        : X448_ORDER_SIZE;
-    if (peerShare.length != expectedLen) {
-      throw TLSIllegalParameterException('Invalid key share');
+    final params = _domainParameters();
+    final acceptedFormats = validPointFormats ?? const {'uncompressed'};
+    if (acceptedFormats.isEmpty) {
+      throw TLSDecodeError('Empty EC point formats extension');
+    }
+    if (!acceptedFormats.contains('uncompressed')) {
+      throw TLSIllegalParameterException('Unsupported EC point encoding');
     }
 
-    final scalar = _coerceScalar(privateKey);
-    final secret = groupName == GroupName.x25519
-        ? x25519(scalar, peerShare)
-        : x448(scalar, peerShare);
-    _nonZeroCheck(secret);
-    return secret;
+    ECPoint point;
+    try {
+      final decoded = params.curve.decodePoint(peerShare);
+      if (decoded == null) {
+        throw TLSIllegalParameterException('Invalid EC point');
+      }
+      point = decoded;
+    } on ArgumentError {
+      throw TLSIllegalParameterException('Invalid EC point');
+    } on StateError {
+      throw TLSIllegalParameterException('Invalid EC point');
+    }
+    if (point.isInfinity) {
+      throw TLSIllegalParameterException('Invalid EC point');
+    }
+
+    final scalar = _coerceClassicScalar(privateKey, params);
+    final shared = point * scalar;
+    if (shared == null || shared.isInfinity) {
+      throw TLSIllegalParameterException('Invalid peer key share');
+    }
+    final xCoord = shared.x?.toBigInteger();
+    if (xCoord == null) {
+      throw TLSIllegalParameterException('Invalid shared secret point');
+    }
+    final coordSize = getPointByteSize(params);
+    return numberToByteArray(xCoord, howManyBytes: coordSize);
   }
 
-  Uint8List _coerceScalar(dynamic value) {
+  Uint8List _coerceMontgomeryScalar(dynamic value) {
     final expectedLen = groupName == GroupName.x25519
         ? X25519_ORDER_SIZE
         : X448_ORDER_SIZE;
@@ -1237,6 +1455,50 @@ class ECDHKeyExchange extends RawDHKeyExchange {
       return bytes;
     }
     throw TLSInternalError('Unsupported private key representation');
+  }
+
+  BigInt _coerceClassicScalar(dynamic value, ECDomainParameters params) {
+    if (value is BigInt) {
+      final reduced = value % params.n;
+      if (reduced == BigInt.zero) {
+        throw TLSIllegalParameterException('Invalid EC private key');
+      }
+      return reduced;
+    }
+    if (value is Uint8List) {
+      return _coerceClassicScalar(bytesToNumber(value), params);
+    }
+    if (value is List<int>) {
+      return _coerceClassicScalar(
+        bytesToNumber(Uint8List.fromList(value)),
+        params,
+      );
+    }
+    throw TLSInternalError('Unsupported EC private key representation');
+  }
+
+  ECDomainParameters _domainParameters() {
+    final curveName = GroupName.toStr(groupName);
+    if (curveName.isEmpty) {
+      throw TLSInternalError('Unknown ECDH group: $groupName');
+    }
+    return getCurveByName(curveName);
+  }
+
+  Uint8List _encodeClassicPoint(ECPoint point, ECDomainParameters params) {
+    final coordSize = getPointByteSize(params);
+    final x = point.x?.toBigInteger();
+    final y = point.y?.toBigInteger();
+    if (x == null || y == null) {
+      throw TLSInternalError('Failed to encode EC point');
+    }
+    final xBytes = numberToByteArray(x, howManyBytes: coordSize);
+    final yBytes = numberToByteArray(y, howManyBytes: coordSize);
+    final encoded = Uint8List(1 + xBytes.length + yBytes.length);
+    encoded[0] = 0x04;
+    encoded.setRange(1, 1 + xBytes.length, xBytes);
+    encoded.setRange(1 + xBytes.length, encoded.length, yBytes);
+    return encoded;
   }
 }
 

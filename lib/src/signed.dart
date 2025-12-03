@@ -1,6 +1,9 @@
 import 'dart:typed_data';
 
 import 'utils/cryptomath.dart';
+import 'utils/dsakey.dart';
+import 'utils/ecdsakey.dart';
+import 'utils/eddsakey.dart';
 import 'utils/rsakey.dart';
 
 const List<String> RSA_SIGNATURE_HASHES = [
@@ -22,10 +25,8 @@ const List<String> RSA_SCHEMES = [
 ];
 
 // TODO(port): Missing functionality from Python signed.py:
-// - ECDSA signature verification (currently only RSA is implemented)
-// - EdDSA signature verification (Ed25519/Ed448)
-// - DSA signature verification
-// - Integration with TLS 1.3 signature schemes
+// - Ed448 signature verification once Ed448 math lands
+// - Integration with TLS 1.3 signature schemes (RSA-PSS parameters)
 
 /// Key-related constraints applied when verifying signatures.
 class SignatureSettings {
@@ -100,18 +101,50 @@ class SignedObject {
   Uint8List? signature;
   Uint8List? signatureAlgorithm;
 
-  static final Map<String, String> _hashAlgsOids = {
-    _oidKey([0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x04]): 'md5',
-    _oidKey([0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x05]): 'sha1',
-    _oidKey([0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0e]): 'sha224',
-    _oidKey([0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0c]): 'sha384',
-    _oidKey([0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0b]): 'sha256',
-    _oidKey([0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0d]): 'sha512',
+  static final Map<String, _SignatureAlgorithm> _signatureAlgorithms = {
+  // PKCS#1 v1.5 RSA
+  _oidKey([0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x04]):
+    _SignatureAlgorithm.rsa('md5'),
+  _oidKey([0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x05]):
+    _SignatureAlgorithm.rsa('sha1'),
+  _oidKey([0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0e]):
+    _SignatureAlgorithm.rsa('sha224'),
+  _oidKey([0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0b]):
+    _SignatureAlgorithm.rsa('sha256'),
+  _oidKey([0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0c]):
+    _SignatureAlgorithm.rsa('sha384'),
+  _oidKey([0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0d]):
+    _SignatureAlgorithm.rsa('sha512'),
+  // ECDSA (RFC 5758)
+  _oidKey([0x2a, 0x86, 0x48, 0xce, 0x3d, 0x04, 0x01]):
+    _SignatureAlgorithm.ecdsa('sha1'),
+  _oidKey([0x2a, 0x86, 0x48, 0xce, 0x3d, 0x04, 0x03, 0x01]):
+    _SignatureAlgorithm.ecdsa('sha224'),
+  _oidKey([0x2a, 0x86, 0x48, 0xce, 0x3d, 0x04, 0x03, 0x02]):
+    _SignatureAlgorithm.ecdsa('sha256'),
+  _oidKey([0x2a, 0x86, 0x48, 0xce, 0x3d, 0x04, 0x03, 0x03]):
+    _SignatureAlgorithm.ecdsa('sha384'),
+  _oidKey([0x2a, 0x86, 0x48, 0xce, 0x3d, 0x04, 0x03, 0x04]):
+    _SignatureAlgorithm.ecdsa('sha512'),
+  // DSA (FIPS 186-4)
+  _oidKey([0x2a, 0x86, 0x48, 0xce, 0x38, 0x04, 0x03]):
+    _SignatureAlgorithm.dsa('sha1'),
+  _oidKey([0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x03, 0x01]):
+    _SignatureAlgorithm.dsa('sha224'),
+  _oidKey([0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x03, 0x02]):
+    _SignatureAlgorithm.dsa('sha256'),
+  _oidKey([0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x03, 0x03]):
+    _SignatureAlgorithm.dsa('sha384'),
+  _oidKey([0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x03, 0x04]):
+    _SignatureAlgorithm.dsa('sha512'),
+  // EdDSA (RFC 8410)
+  _oidKey([0x2b, 0x65, 0x70]): _SignatureAlgorithm.eddsa('ed25519'),
+  _oidKey([0x2b, 0x65, 0x71]): _SignatureAlgorithm.eddsa('ed448'),
   };
 
   bool verifySignature(
-    RSAKey publicKey, {
-    SignatureSettings? settings,
+  Object publicKey, {
+  SignatureSettings? settings,
   }) {
     final sig = signature;
     final alg = signatureAlgorithm;
@@ -126,32 +159,73 @@ class SignedObject {
       throw StateError('Signed payload not set');
     }
 
-    final resolvedSettings = (settings ?? SignatureSettings()).validate();
-
-    var offset = 0;
-    if (sig[0] == 0 && numBytes(publicKey.n) + 1 == sig.length) {
-      offset = 1;
-    }
-
-    final algName = _hashAlgsOids[_oidKey(alg)];
-    if (algName == null) {
+    final descriptor = _signatureAlgorithms[_oidKey(alg)];
+    if (descriptor == null) {
       throw ArgumentError(
         'Unknown signature algorithm OID: ${_formatOid(alg)}',
       );
     }
-    if (!resolvedSettings.rsaSigHashes.contains(algName)) {
-      throw ArgumentError('Invalid signature algorithm: $algName');
-    }
 
-    final verified = publicKey.hashAndVerify(
-      sig.sublist(offset),
-      data,
-      hAlg: algName,
-    );
-    if (!verified) {
-      throw StateError('Signature could not be verified for $algName');
+    switch (descriptor.keyType) {
+      case _SignatureKeyType.rsa:
+        if (publicKey is! RSAKey) {
+          throw ArgumentError('RSA signature requires an RSAKey');
+        }
+        final resolvedSettings = (settings ?? SignatureSettings()).validate();
+        final hashName = descriptor.hashName;
+        if (hashName == null) {
+          throw ArgumentError('RSA signature missing hash algorithm');
+        }
+        if (!resolvedSettings.rsaSigHashes.contains(hashName)) {
+          throw ArgumentError('Invalid signature algorithm: $hashName');
+        }
+        final scheme = descriptor.scheme;
+        if (scheme != null &&
+            !resolvedSettings.rsaSchemes.contains(scheme.toLowerCase())) {
+          throw ArgumentError('RSA scheme $scheme not allowed');
+        }
+        final normalized = _normalizeRsaSignature(sig, publicKey);
+        final verified = publicKey.hashAndVerify(
+          normalized,
+          data,
+          rsaScheme: (scheme ?? 'pkcs1').toUpperCase(),
+          hAlg: hashName,
+        );
+        if (!verified) {
+          throw StateError('Signature could not be verified for $hashName');
+        }
+        return true;
+      case _SignatureKeyType.ecdsa:
+        if (publicKey is! ECDSAKey) {
+          throw ArgumentError('ECDSA signature requires an ECDSAKey');
+        }
+        final hashName = descriptor.hashName ?? 'sha256';
+        final verified = publicKey.hashAndVerify(sig, data, hAlg: hashName);
+        if (!verified) {
+          throw StateError('Signature could not be verified for $hashName');
+        }
+        return true;
+      case _SignatureKeyType.dsa:
+        if (publicKey is! DSAKey) {
+          throw ArgumentError('DSA signature requires a DSAKey');
+        }
+        final hashName = descriptor.hashName ?? 'sha1';
+        final verified = publicKey.hashAndVerify(sig, data, hashName);
+        if (!verified) {
+          throw StateError('Signature could not be verified for $hashName');
+        }
+        return true;
+      case _SignatureKeyType.eddsa:
+        if (publicKey is! EdDSAKey) {
+          throw ArgumentError('EdDSA signature requires an EdDSAKey');
+        }
+        final curve = descriptor.hashName ?? 'ed25519';
+        final verified = publicKey.hashAndVerify(sig, data);
+        if (!verified) {
+          throw StateError('Signature could not be verified for $curve');
+        }
+        return true;
     }
-    return true;
   }
 
   static String _oidKey(List<int> oidBytes) =>
@@ -159,4 +233,40 @@ class SignedObject {
 
   static String _formatOid(List<int> oidBytes) =>
       oidBytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join(':');
+}
+
+enum _SignatureKeyType { rsa, ecdsa, dsa, eddsa }
+
+class _SignatureAlgorithm {
+  const _SignatureAlgorithm._(this.keyType, this.hashName, this.scheme);
+
+  factory _SignatureAlgorithm.rsa(String hashName) =>
+      _SignatureAlgorithm._(_SignatureKeyType.rsa, hashName, 'pkcs1');
+
+  factory _SignatureAlgorithm.ecdsa(String hashName) =>
+      _SignatureAlgorithm._(_SignatureKeyType.ecdsa, hashName, null);
+
+  factory _SignatureAlgorithm.dsa(String hashName) =>
+      _SignatureAlgorithm._(_SignatureKeyType.dsa, hashName, null);
+
+  factory _SignatureAlgorithm.eddsa(String curveName) =>
+      _SignatureAlgorithm._(_SignatureKeyType.eddsa, curveName, null);
+
+  final _SignatureKeyType keyType;
+  final String? hashName;
+  final String? scheme;
+}
+
+Uint8List _normalizeRsaSignature(Uint8List signature, RSAKey key) {
+  if (signature.isEmpty) {
+    return signature;
+  }
+  final modulusBytes = numBytes(key.n);
+  if (signature.length == modulusBytes) {
+    return signature;
+  }
+  if (signature.length == modulusBytes + 1 && signature[0] == 0) {
+    return Uint8List.fromList(signature.sublist(1));
+  }
+  return signature;
 }

@@ -5,7 +5,6 @@ import 'signed.dart';
 import 'x509.dart';
 import 'utils/asn1parser.dart';
 import 'utils/cryptomath.dart';
-import 'utils/rsakey.dart';
 
 class OCSPRespStatus {
   static const int successful = 0;
@@ -168,7 +167,7 @@ class OCSPResponse extends SignedObject {
     }
   }
 
-  bool verifySignature(RSAKey publicKey, {SignatureSettings? settings}) {
+  bool verifySignature(Object publicKey, {SignatureSettings? settings}) {
     return super.verifySignature(publicKey, settings: settings);
   }
 }

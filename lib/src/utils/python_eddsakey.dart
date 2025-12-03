@@ -10,9 +10,11 @@ class PythonEdDSAKey extends EdDSAKey {
         _privateKey = privateKey,
         _bitLength = curveName == 'Ed25519' ? 256 : 456;
 
-  factory PythonEdDSAKey.ed25519({Uint8List? publicKey, Uint8List? privateKey}) {
+  factory PythonEdDSAKey.ed25519(
+      {Uint8List? publicKey, Uint8List? privateKey}) {
     if (publicKey == null && privateKey == null) {
-      throw ArgumentError('At least one of publicKey or privateKey must be provided');
+      throw ArgumentError(
+          'At least one of publicKey or privateKey must be provided');
     }
     ed.PrivateKey? privObj;
     ed.PublicKey? pubObj;
@@ -49,11 +51,21 @@ class PythonEdDSAKey extends EdDSAKey {
   bool hasPrivateKey() => _privateKey != null;
 
   @override
-  bool acceptsPassword() => false;
+  bool acceptsPassword() => hasPrivateKey();
 
   @override
   String write({String? password}) {
-    throw UnimplementedError('EdDSA PEM serialization not implemented');
+    _ensureSupportedCurve();
+    if (password != null) {
+      if (!hasPrivateKey()) {
+        throw StateError('Cannot encrypt public-only EdDSA key');
+      }
+      final pkcs8 = _encodePkcs8();
+      return encodeEncryptedPrivateKeyPem(pkcs8, password);
+    }
+    final derBytes = hasPrivateKey() ? _encodePkcs8() : _encodeSpki();
+    final label = hasPrivateKey() ? 'PRIVATE KEY' : 'PUBLIC KEY';
+    return pem(derBytes, label);
   }
 
   @override
@@ -73,10 +85,7 @@ class PythonEdDSAKey extends EdDSAKey {
     }
     _ensureSupportedCurve();
     try {
-      return ed.verify(
-          _publicKey,
-          data,
-          signature);
+      return ed.verify(_publicKey, data, signature);
     } on ArgumentError {
       return false;
     }
@@ -103,4 +112,25 @@ class PythonEdDSAKey extends EdDSAKey {
   String get curveName => _curveName;
 
   Uint8List get publicKeyBytes => Uint8List.fromList(_publicKey.bytes);
+
+  Uint8List _encodePkcs8() {
+    final priv = _privateKey;
+    if (priv == null) {
+      throw StateError('Private key required for serialization');
+    }
+    final seed = Uint8List.fromList(priv.bytes.sublist(0, ed.SeedSize));
+    return encodePkcs8PrivateKey(
+      algorithmOid: _ed25519Oid,
+      privateKeyDer: seed,
+    );
+  }
+
+  Uint8List _encodeSpki() {
+    final algorithmIdentifier = derEncodeSequence([
+      derEncodeObjectIdentifier(_ed25519Oid),
+    ]);
+    final subjectPublicKey = derEncodeBitString(publicKeyBytes);
+    return derEncodeSequence([algorithmIdentifier, subjectPublicKey]);
+  }
 }
+
