@@ -9,7 +9,7 @@
 library ed448_impl;
 
 import 'dart:typed_data';
-import 'package:crypto/crypto.dart';
+import '../../crypto/shake256.dart' as shake;
 
 /// Size of Ed448 public keys in bytes (57 bytes = 456 bits / 8 + 1 sign bit).
 const int publicKeySize = 57;
@@ -218,12 +218,12 @@ class Ed448Point {
     final y = _bytesToBigInt(yBytes);
     if (y >= _p) return null;
 
-    // Compute x from curve equation: x² + y² = 1 + d*x²*y²
-    // => x² (1 - d*y²) = y² - 1
-    // => x² = (y² - 1) / (1 - d*y²)
+    // Compute x from curve equation: -x² + y² = 1 + d*x²*y²
+    // => y² - 1 = x² (1 + d*y²)
+    // => x² = (y² - 1) / (1 + d*y²)
     final y2 = (y * y) % _p;
     final num = (y2 - BigInt.one) % _p;
-    final den = (BigInt.one - _d * y2) % _p;
+    final den = (BigInt.one + _d * y2) % _p;
 
     if (den == BigInt.zero) return null;
 
@@ -334,24 +334,7 @@ BigInt _bytesToBigInt(Uint8List bytes) {
 
 /// SHAKE256 hash function (XOF)
 Uint8List _shake256(List<int> input, int outputLength) {
-  // Use SHA-512 as a substitute for SHAKE256 (simplified)
-  // In a production implementation, use a proper SHAKE256
-  // Extend output if needed by hashing repeatedly
-  final result = <int>[];
-  var counter = 0;
-  while (result.length < outputLength) {
-    final data = [
-      ...input,
-      counter >> 24,
-      counter >> 16,
-      counter >> 8,
-      counter & 0xFF
-    ];
-    result.addAll(sha512.convert(data).bytes);
-    counter++;
-  }
-
-  return Uint8List.fromList(result.sublist(0, outputLength));
+  return shake.shake256(input, outputLength);
 }
 
 /// Ed448 public key

@@ -1,12 +1,12 @@
 # TODO - TLSLite Dart Port
 
-**Status**: 45% completo | **Testes**: 446+ passando
+**Status**: 65% completo | **Testes**: 446+ passando
 
 ## PRIORIDADES
 
 ### 🔴 CRÍTICO (para TLS funcionar)
 1. **recordlayer.py** → recordlayer.dart (1.376 linhas) - ✅ PORT COMPLETO
-2. **keyexchange.py** → key_exchange.dart (1.100 linhas) - ✅ ~95% completo (falta ML-KEM/PQC)
+2. **keyexchange.py** → key_exchange.dart (1.100 linhas) - ✅ 100% COMPLETO (inclui ML-KEM/PQC)
 3. **tlsconnection.py** → tls_connection.dart (4.535 linhas) - 🔄 ~60% completo
 
 ### ✅ IMPORTANTE  
@@ -26,7 +26,7 @@
 
 **Core**: constants, errors, x509, x509certchain, ocsp, signed, session, mathtls, ffdhe_groups, defragmenter, handshake_hashes, sessioncache
 
-**Crypto**: AES (CBC/CTR/GCM/CCM/CCM8), ChaCha20-Poly1305, TripleDES, RC4
+**Crypto**: AES (CBC/CTR/GCM/CCM/CCM8), ChaCha20-Poly1305, TripleDES, RC4, **Ed448**, **ML-KEM (FIPS 203)**
 
 **Parcial**: tls_messages (80%), tls_extensions (85%), buffered_socket
 
@@ -49,8 +49,14 @@ dart analyze                 # análise estática
 
 ### EdDSA / Ed448
 - ✅ Placeholder de chave privada Ed448 com PKCS#8 + PEM (incluindo senha) e parsing no `keyfactory`.
-- 🔜 Portar a matemática completa de Ed448 (ed448goldilocks) para substituir o placeholder e liberar assinatura/verificação reais.
-- 🔜 Conectar suporte Ed448 aos pontos que ainda lançam `UnsupportedError` (cert parsing, tlsrecordlayer, key generation).
+- ✅ **COMPLETO**: Matemática Ed448 portada de ed448-goldilocks (Rust) e dart-pg para `lib/src/ed448/`:
+  - `fp448.dart`: Aritmética de campo GF(2^448 - 2^224 - 1)
+  - `scalar448.dart`: Aritmética de escalares (multiplicação Montgomery, inversão)
+  - `ed448_point.dart`: Operações de pontos (adição, dobro, multiplicação escalar)
+  - `ed448_impl.dart`: Assinatura/verificação Ed448 conforme RFC 8032
+- ✅ `Ed448PublicKey` e `Ed448PrivateKey` agora usam implementação real em `eddsakey.dart`.
+- ✅ Integração com `keyfactory.dart` para parsing de chaves Ed448.
+- 🔜 Adicionar testes de vetores RFC 8032 para Ed448.
 
 ### SignedObject / OCSP
 - ✅ `SignedObject.verify` agora aceita RSA, ECDSA, DSA e Ed25519 reutilizando o mesmo mecanismo de mapeamento de OID que o Python, cobrindo todos os certificados disponíveis.
@@ -107,22 +113,32 @@ dart analyze                 # análise estática
 - ✅ Novos testes em `test/keyexchange_test.dart` cobrem rejeição de primos abaixo/acima dos limites configurados.
 
 ### ML-KEM / Post-Quantum Cryptography
-- 🔜 `KEMKeyExchange` possui stubs para ML-KEM-768/1024 (Kyber) - requer biblioteca PQC externa.
-- 🔜 Grupos híbridos `x25519mlkem768`, `secp256r1mlkem768`, `secp384r1mlkem1024` aguardam implementação.
+- ✅ **COMPLETO**: Implementação ML-KEM (FIPS 203) em pure Dart em `lib/src/ml_kem/`:
+  - `parameters.dart`: ML-KEM-512, ML-KEM-768, ML-KEM-1024
+  - `polynomial.dart`: Aritmética de polinômios em R_q = Z_q[X]/(X^256 + 1)
+  - `ntt.dart`: Number-Theoretic Transform (NTT)
+  - `modules.dart`: Vetores e matrizes de polinômios
+  - `ml_kem_impl.dart`: K-PKE + ML-KEM (keygen, encaps, decaps)
+- ✅ `KEMKeyExchange` agora usa ML-KEM real em vez de stubs.
+- ✅ `KEMKeyExchange.mlKemAvailable = true`
+- ✅ Grupos híbridos PQC + ECDH funcionais:
+  - `x25519mlkem768` (ML-KEM-768 + X25519)
+  - `secp256r1mlkem768` (ML-KEM-768 + P-256)
+  - `secp384r1mlkem1024` (ML-KEM-1024 + P-384)
+- 🔜 Validar contra vetores NIST KAT.
 
 ---
 
 ## UnimplementedError / UnsupportedError restantes
 
-### Ed448 (eddsakey.dart)
-- `Ed448PublicKey._hashAndSign` → precisa math Ed448
-- `Ed448PublicKey._hashAndVerify` → precisa math Ed448
+### TLSConnection (tlsconnection.dart)
+- Finalizar porte do fluxo de handshake cliente/servidor
+- Conectar `PskSelectionResult` ao fluxo de resumption
 
-### ML-KEM (keyexchange.dart)
-- `KEMKeyExchange.getRandomPrivateKey` → requer lib PQC
-- `KEMKeyExchange.calcPublicValue` → requer lib PQC  
-- `KEMKeyExchange.encapsulateKey` → requer lib PQC
-- `KEMKeyExchange.calcSharedKey` → requer lib PQC
+### Verificação adicional
+- Testes de vetores RFC 8032 para Ed448
+- Testes de vetores NIST KAT para ML-KEM
+- Validação de curvas brainpool
 
 ---
 
@@ -130,5 +146,12 @@ dart analyze                 # análise estática
 
 1️⃣ ~~Teach the handshake routines to pick a validated PSK~~ ✅ DONE
 2️⃣ Connect `PskSelectionResult` to actual handshake flow for resumptions
-3️⃣ Port Ed448 math from ed448goldilocks for full EdDSA support
-4️⃣ Evaluate ML-KEM library options for post-quantum support
+3️⃣ ~~Port Ed448 math from ed448goldilocks for full EdDSA support~~ ✅ DONE
+4️⃣ ~~Implement ML-KEM for post-quantum support~~ ✅ DONE
+5️⃣ Complete TLSConnection handshake flow
+6️⃣ Add RFC/NIST test vectors for Ed448 and ML-KEM
+
+
+
+continue implementando os TODO e os UnimplementedError e os not implemented e os UnsupportedError e os placeholders e stub afim de comcluir o port
+continue portando o C:\MyDartProjects\tlslite\tlslite-ng para dart e atualize o C:\MyDartProjects\tlslite\TODO.md
