@@ -400,6 +400,25 @@ class TlsClientHello extends TlsHandshakeMessage {
 
   TlsExtension? getExtension(int type) => extensions?.byType(type);
 
+  Uint8List pskTruncate() {
+    final block = extensions;
+    if (block == null || block.isEmpty) {
+      throw StateError('ClientHello is missing extensions for PSK truncation');
+    }
+    final lastExt = block.last;
+    if (lastExt is! TlsPreSharedKeyExtension) {
+      throw StateError('Last extension must be pre_shared_key');
+    }
+    final full = serialize();
+    final truncatedLength = full.length - lastExt.encodedBindersLength;
+    if (truncatedLength < 0) {
+      throw StateError('PSK binders exceed ClientHello length');
+    }
+    return Uint8List.fromList(full.sublist(0, truncatedLength));
+  }
+
+  Uint8List psk_truncate() => pskTruncate();
+
   static TlsClientHello parseBody(Uint8List body) {
     final parser = Parser(body);
     final version = TlsProtocolVersion.parse(parser);

@@ -23,6 +23,8 @@ class Session {
   Uint8List appProto = Uint8List(0);
   Uint8List clAppSecret = Uint8List(0);
   Uint8List srAppSecret = Uint8List(0);
+  Uint8List clHandshakeSecret = Uint8List(0);
+  Uint8List srHandshakeSecret = Uint8List(0);
   Uint8List exporterMasterSecret = Uint8List(0);
   Uint8List resumptionMasterSecret = Uint8List(0);
   List<Ticket>? tickets;
@@ -47,6 +49,8 @@ class Session {
     List<int>? appProto,
     List<int>? clAppSecret,
     List<int>? srAppSecret,
+    List<int>? clHandshakeSecret,
+    List<int>? srHandshakeSecret,
     List<int>? exporterMasterSecret,
     List<int>? resumptionMasterSecret,
     List<Ticket>? tickets,
@@ -69,6 +73,8 @@ class Session {
     this.appProto = _bytes(appProto);
     this.clAppSecret = _bytes(clAppSecret);
     this.srAppSecret = _bytes(srAppSecret);
+    this.clHandshakeSecret = _bytes(clHandshakeSecret);
+    this.srHandshakeSecret = _bytes(srHandshakeSecret);
     this.exporterMasterSecret = _bytes(exporterMasterSecret);
     this.resumptionMasterSecret = _bytes(resumptionMasterSecret);
     this.tickets = tickets;
@@ -100,6 +106,8 @@ class Session {
     other.appProto = appProto;
     other.clAppSecret = clAppSecret;
     other.srAppSecret = srAppSecret;
+    other.clHandshakeSecret = clHandshakeSecret;
+    other.srHandshakeSecret = srHandshakeSecret;
     other.exporterMasterSecret = exporterMasterSecret;
     other.resumptionMasterSecret = resumptionMasterSecret;
     other.tickets = tickets;
@@ -116,7 +124,8 @@ class Session {
       (tickets?.isNotEmpty ?? false) ||
       (tls10Tickets?.isNotEmpty ?? false) ||
       tls13Tickets.isNotEmpty;
-    return resumable && (hasId || hasTickets);
+    final hasTls13ResSecret = resumptionMasterSecret.isNotEmpty;
+    return resumable && (hasId || hasTickets || hasTls13ResSecret);
   }
 
   /// Update resumable flag; disallow true when there is no session ID.

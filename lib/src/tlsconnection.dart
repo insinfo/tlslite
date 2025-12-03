@@ -6,10 +6,14 @@ import 'constants.dart';
 import 'defragmenter.dart';
 import 'errors.dart';
 import 'handshake_hashes.dart';
+import 'handshake_helpers.dart';
+import 'handshake_settings.dart';
+import 'keyexchange.dart';
 import 'messages.dart';
 import 'messagesocket.dart';
 import 'net/security/pure_dart_with_ffi_socket/dart_tls_types.dart'
-  show PureDartTlsMode;
+    show PureDartTlsMode;
+import 'net/security/pure_dart_with_ffi_socket/tls_extensions.dart';
 import 'net/security/pure_dart_with_ffi_socket/tls_handshake_state.dart';
 import 'recordlayer.dart';
 import 'session.dart';
@@ -17,6 +21,7 @@ import 'sessioncache.dart';
 import 'tls_protocol.dart';
 import 'utils/codec.dart';
 import 'utils/cryptomath.dart';
+import 'mathtls.dart';
 
 /// TODO Partial port of tlslite-ng's TLSConnection focused on message handling,
 /// session caching, and SSLv2/SSLv3 record interoperability.
@@ -43,12 +48,23 @@ class TlsConnection extends MessageSocket {
   final HandshakeHashes handshakeHashes = HandshakeHashes();
   final List<TlsNewSessionTicket> tls13Tickets = <TlsNewSessionTicket>[];
   PureDartTlsHandshakeStateMachine? _handshakeStateMachine;
+  HandshakeSettings handshakeSettings = HandshakeSettings();
   bool heartbeatSupported = false;
   bool heartbeatCanReceive = false;
   bool heartbeatCanSend = false;
   void Function(TlsHeartbeat message)? heartbeatResponseCallback;
   bool renegotiationAllowed = false;
   bool handshakeEstablished = false;
+  HandshakeHashes? _preClientHelloHandshakeHash;
+  int? _negotiatedClientHelloPskIndex;
+  PskConfig? _negotiatedExternalPsk;
+  Uint8List? _negotiatedClientHelloPskIdentity;
+
+  /// Replace the active handshake settings after validation.
+  void configureHandshakeSettings(HandshakeSettings settings) {
+    settings.validate();
+    handshakeSettings = settings;
+  }
 
   SessionCache? get sessionCache => _sessionCache;
   set sessionCache(SessionCache? value) => _sessionCache = value;
@@ -64,6 +80,9 @@ class TlsConnection extends MessageSocket {
       return false;
     }
     session = cached;
+    tls13Tickets
+      ..clear()
+      ..addAll(session.tls13Tickets);
     return true;
   }
 
@@ -150,6 +169,7 @@ class TlsConnection extends MessageSocket {
   /// Queue a handshake message without flushing so multiple messages can share
   /// the same record.
   Future<void> queueHandshakeMessage(TlsHandshakeMessage message) {
+    _prepareHandshakeForSend(message);
     final wire = Message(ContentType.handshake, message.serialize());
     return queueMessageBlocking(wire);
   }
@@ -230,6 +250,10 @@ class TlsConnection extends MessageSocket {
         await _advanceHandshakeState(message);
         if (await _handlePostHandshakeMessage(message)) {
           continue;
+        }
+        if (message is TlsClientHello) {
+          _preClientHelloHandshakeHash = handshakeHashes.copy();
+          await _maybeHandleInboundClientHelloPsk(message);
         }
         _updateHandshakeTranscript(message);
         _handshakeQueue.addLast(message);
@@ -408,6 +432,275 @@ class TlsConnection extends MessageSocket {
   }
 
   bool _isTls13Plus() => version > const TlsProtocolVersion(3, 3);
+
+  void _prepareHandshakeForSend(TlsHandshakeMessage message) {
+    if (message is TlsClientHello) {
+      _prepareClientHelloForSend(message);
+    }
+  }
+
+  void _prepareClientHelloForSend(TlsClientHello clientHello) {
+    if (!client) {
+      return;
+    }
+    final extensions = clientHello.extensions;
+    if (extensions == null) {
+      return;
+    }
+    final preSharedKeyExt = extensions.last;
+    if (preSharedKeyExt is! TlsPreSharedKeyExtension) {
+      return;
+    }
+
+    final orderedConfigs = _orderedClientHelloPskConfigs(preSharedKeyExt);
+    final hasExternalPsk = orderedConfigs.isNotEmpty;
+    final tls13Tickets = session.tls13Tickets;
+    final resSecret = session.resumptionMasterSecret;
+    final hasResumptionPsk =
+        tls13Tickets.isNotEmpty && resSecret.isNotEmpty;
+
+    if (!hasExternalPsk && !hasResumptionPsk) {
+      return;
+    }
+
+    updateClientHelloPskBinders(
+      clientHello: clientHello,
+      pskConfigs: orderedConfigs,
+      tickets: hasResumptionPsk ? tls13Tickets : null,
+      resumptionMasterSecret: hasResumptionPsk ? resSecret : null,
+    );
+  }
+
+  List<PskConfig> _orderedClientHelloPskConfigs(
+      TlsPreSharedKeyExtension extension) {
+    final configs = handshakeSettings.pskConfigs;
+    if (configs.isEmpty) {
+      return const <PskConfig>[];
+    }
+    final tickets = session.tls13Tickets;
+    final ordered = <PskConfig>[];
+    for (final identity in extension.identities) {
+      if (_isTicketIdentity(identity.identity, tickets)) {
+        continue;
+      }
+      final match = _findPskConfig(identity.identity);
+      if (match == null) {
+        throw TLSInternalError(
+          'Missing PSK secret for ClientHello identity',
+        );
+      }
+      ordered.add(match);
+    }
+    return ordered;
+  }
+
+  PskConfig? _findPskConfig(Uint8List identity) {
+    for (final config in handshakeSettings.pskConfigs) {
+      if (_bytesEqual(config.identity, identity)) {
+        return config;
+      }
+    }
+    return null;
+  }
+
+  bool _isTicketIdentity(
+      Uint8List identity, List<TlsNewSessionTicket> tickets) {
+    for (final ticket in tickets) {
+      if (_bytesEqual(identity, ticket.ticket)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool _bytesEqual(Uint8List a, Uint8List b) {
+    if (identical(a, b)) {
+      return true;
+    }
+    if (a.lengthInBytes != b.lengthInBytes) {
+      return false;
+    }
+    for (var i = 0; i < a.lengthInBytes; i++) {
+      if (a[i] != b[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// Compute Finished.verify_data mirroring tlslite-ng for TLS 1.2 and 1.3.
+  Uint8List buildFinishedVerifyData({required bool forClient}) {
+    if (_isTls13Plus()) {
+      return _buildTls13FinishedVerifyData(forClient: forClient);
+    }
+    final activeSession = session;
+    if (activeSession.masterSecret.isEmpty) {
+      throw TLSInternalError('Master secret unavailable for Finished');
+    }
+    if (activeSession.cipherSuite == 0) {
+      throw TLSInternalError('Cipher suite undefined for Finished');
+    }
+    final versionTuple = [version.major, version.minor];
+    return calcFinished(
+      versionTuple,
+      activeSession.masterSecret,
+      activeSession.cipherSuite,
+      handshakeHashes,
+      forClient,
+    );
+  }
+
+  Uint8List _buildTls13FinishedVerifyData({required bool forClient}) {
+    final activeSession = session;
+    final secret =
+        forClient ? activeSession.clHandshakeSecret : activeSession.srHandshakeSecret;
+    if (secret.isEmpty) {
+      throw TLSInternalError('Handshake traffic secret missing for TLS 1.3');
+    }
+    final hashName = _prfHashName();
+    final digestLength = hashName == 'sha384' ? 48 : 32;
+    final finishedKey = HKDF_expand_label(
+      secret,
+      Uint8List.fromList('finished'.codeUnits),
+      Uint8List(0),
+      digestLength,
+      hashName,
+    );
+    final transcript = handshakeHashes.digest(hashName);
+    return secureHMAC(finishedKey, transcript, hashName);
+  }
+
+  String _prfHashName() {
+    return CipherSuite.sha384PrfSuites.contains(session.cipherSuite)
+        ? 'sha384'
+        : 'sha256';
+  }
+
+  /// Build the byte sequence that must be signed inside CertificateVerify.
+  Uint8List buildCertificateVerifyBytes({
+    required int signatureScheme,
+    String peerTag = 'client',
+    String keyType = 'rsa',
+    Uint8List? premasterSecret,
+    Uint8List? clientRandom,
+    Uint8List? serverRandom,
+  }) {
+    final prfName = _prfHashName();
+    return KeyExchange.calcVerifyBytes(
+      version,
+      handshakeHashes,
+      signatureScheme,
+      premasterSecret: premasterSecret,
+      clientRandom: clientRandom,
+      serverRandom: serverRandom,
+      prfName: prfName,
+      peerTag: peerTag,
+      keyType: keyType,
+    );
+  }
+
+  /// Snapshot current transcript for upcoming ClientHello binder verification.
+  void snapshotPreClientHelloHash() {
+    _preClientHelloHandshakeHash = handshakeHashes.copy();
+  }
+
+  /// Update the binders inside the ClientHello's pre_shared_key extension.
+  void updateClientHelloPskBinders({
+    required TlsClientHello clientHello,
+    required List<PskConfig> pskConfigs,
+    List<TlsNewSessionTicket>? tickets,
+    Uint8List? resumptionMasterSecret,
+  }) {
+    if (pskConfigs.isEmpty &&
+        (tickets == null || tickets.isEmpty) &&
+        (resumptionMasterSecret == null ||
+            resumptionMasterSecret.isEmpty)) {
+      return;
+    }
+    HandshakeHelpers.updateBinders(
+      clientHello,
+      handshakeHashes,
+      pskConfigs,
+      tickets: tickets ?? session.tls13Tickets,
+      resMasterSecret:
+          resumptionMasterSecret ?? session.resumptionMasterSecret,
+    );
+  }
+
+  /// Validate a PSK binder emitted by the peer.
+  void verifyClientHelloPskBinder({
+    required TlsClientHello clientHello,
+    required int binderIndex,
+    required Uint8List secret,
+    required String hashName,
+    bool external = true,
+  }) {
+    final base = _preClientHelloHandshakeHash ?? handshakeHashes;
+    HandshakeHelpers.verifyBinder(
+      clientHello,
+      base,
+      binderIndex,
+      secret,
+      hashName,
+      external: external,
+    );
+    _preClientHelloHandshakeHash = null;
+  }
+
+  int? get negotiatedClientHelloPskIndex => _negotiatedClientHelloPskIndex;
+
+  PskConfig? get negotiatedExternalPsk => _negotiatedExternalPsk;
+
+  Uint8List? get negotiatedClientHelloPskIdentity {
+    final identity = _negotiatedClientHelloPskIdentity;
+    if (identity == null) {
+      return null;
+    }
+    return Uint8List.fromList(identity);
+  }
+
+  Future<void> _maybeHandleInboundClientHelloPsk(
+      TlsClientHello clientHello) async {
+    if (client) {
+      return;
+    }
+    _negotiatedClientHelloPskIndex = null;
+    _negotiatedExternalPsk = null;
+    _negotiatedClientHelloPskIdentity = null;
+
+    if (handshakeSettings.pskConfigs.isEmpty) {
+      return;
+    }
+    final extensions = clientHello.extensions;
+    final preSharedKeyExt = extensions?.last;
+    if (preSharedKeyExt is! TlsPreSharedKeyExtension) {
+      return;
+    }
+
+    for (var i = 0; i < preSharedKeyExt.identities.length; i++) {
+      final identity = preSharedKeyExt.identities[i];
+      final config = _findPskConfig(identity.identity);
+      if (config == null) {
+        continue;
+      }
+      try {
+        verifyClientHelloPskBinder(
+          clientHello: clientHello,
+          binderIndex: i,
+          secret: config.secret,
+          hashName: config.hash,
+        );
+      } on TLSIllegalParameterException {
+        await _sendAlert(AlertLevel.fatal, AlertDescription.illegal_parameter);
+        rethrow;
+      }
+      _negotiatedClientHelloPskIndex = i;
+      _negotiatedExternalPsk = config;
+      _negotiatedClientHelloPskIdentity =
+          Uint8List.fromList(identity.identity);
+      return;
+    }
+  }
 
   Future<bool> _handlePostHandshakeMessage(
       TlsHandshakeMessage message) async {

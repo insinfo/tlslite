@@ -7,6 +7,7 @@ import 'package:pointycastle/ecc/api.dart' show ECDomainParameters, ECPoint;
 import 'constants.dart';
 import 'errors.dart';
 import 'ffdhe_groups.dart';
+import 'handshake_hashes.dart';
 import 'handshake_settings.dart';
 import 'mathtls.dart';
 import 'messages.dart' as tlsmsg;
@@ -35,6 +36,134 @@ abstract class KeyExchange {
   final dynamic clientHello;
   final dynamic serverHello;
   final dynamic privateKey;
+
+  /// Calculate the byte string that must be signed in CertificateVerify.
+  static Uint8List calcVerifyBytes(
+    TlsProtocolVersion version,
+    HandshakeHashes handshakeHashes,
+    int signatureScheme, {
+    Uint8List? premasterSecret,
+    Uint8List? clientRandom,
+    Uint8List? serverRandom,
+    String? prfName,
+    String peerTag = 'client',
+    String keyType = 'rsa',
+  }) {
+    final versionTuple = (version.major, version.minor);
+
+    if (versionTuple == (3, 0)) {
+      if (premasterSecret == null || clientRandom == null || serverRandom == null) {
+        throw TLSInternalError('SSL 3.0 verify bytes require premaster and randoms');
+      }
+      final masterSecret = calcKey(
+        [version.major, version.minor],
+        premasterSecret,
+        0,
+        'master secret'.codeUnits,
+        clientRandom: clientRandom,
+        serverRandom: serverRandom,
+        outputLength: 48,
+      );
+      return handshakeHashes.digestSSL(masterSecret, Uint8List(0));
+    }
+
+    if (versionTuple == (3, 1) || versionTuple == (3, 2)) {
+      if (keyType != 'ecdsa') {
+        return handshakeHashes.digest();
+      }
+      return handshakeHashes.digest('sha1');
+    }
+
+    if (versionTuple == (3, 3)) {
+      return _calcTls12VerifyBytes(handshakeHashes, signatureScheme);
+    }
+
+    if (versionTuple == (3, 4)) {
+      return _calcTls13VerifyBytes(
+        handshakeHashes,
+        signatureScheme,
+        prfName ?? 'sha256',
+        peerTag,
+      );
+    }
+
+    throw TLSInternalError(
+      'Unsupported TLS version for CertificateVerify: $versionTuple',
+    );
+  }
+
+  static Uint8List _calcTls12VerifyBytes(
+    HandshakeHashes handshakeHashes,
+    int signatureScheme,
+  ) {
+    final schemeName = SignatureScheme.toRepr(signatureScheme);
+    final hashId = (signatureScheme >> 8) & 0xff;
+    final sigId = signatureScheme & 0xff;
+
+    String hashName;
+    String? padding;
+
+    final ed25519Value = SignatureScheme.valueOf('ed25519');
+    final ed448Value = SignatureScheme.valueOf('ed448');
+    if ((ed25519Value != null && signatureScheme == ed25519Value) ||
+      (ed448Value != null && signatureScheme == ed448Value)) {
+      hashName = 'intrinsic';
+      padding = null;
+    } else if (sigId == SignatureAlgorithm.dsa) {
+      hashName = HashAlgorithm.toRepr(hashId) ??
+          (throw TLSIllegalParameterException('Unknown hash id $hashId'));
+      padding = null;
+    } else if (sigId != SignatureAlgorithm.ecdsa) {
+      if (schemeName == null) {
+        hashName = HashAlgorithm.toRepr(hashId) ??
+            (throw TLSIllegalParameterException('Unknown hash id $hashId'));
+        padding = 'pkcs1';
+      } else {
+        hashName = SignatureScheme.getHash(schemeName);
+        padding = SignatureScheme.getPadding(schemeName);
+        if (padding.isEmpty) {
+          padding = null;
+        }
+      }
+    } else {
+      padding = null;
+      hashName = HashAlgorithm.toRepr(hashId) ??
+          (throw TLSIllegalParameterException('Unknown hash id $hashId'));
+    }
+
+    final digest = handshakeHashes.digest(hashName);
+    if (padding == 'pkcs1') {
+      return RSAKey.addPKCS1Prefix(digest, hashName);
+    }
+    return digest;
+  }
+
+  static Uint8List _calcTls13VerifyBytes(
+    HandshakeHashes handshakeHashes,
+    int signatureScheme,
+    String prfName,
+    String peerTag,
+  ) {
+    final schemeName = SignatureScheme.toRepr(signatureScheme);
+    final hashName = schemeName != null
+        ? SignatureScheme.getHash(schemeName)
+        : HashAlgorithm.toRepr((signatureScheme >> 8) & 0xff) ?? 'sha256';
+
+    final prefix = Uint8List(64)..fillRange(0, 64, 0x20);
+    final context = Uint8List.fromList([
+      ...prefix,
+      ...'TLS 1.3, '.codeUnits,
+      ...peerTag.codeUnits,
+      ...' CertificateVerify'.codeUnits,
+      0x00,
+    ]);
+    final transcript = handshakeHashes.digest(prfName);
+    final payload = Uint8List.fromList([...context, ...transcript]);
+    if (hashName == 'intrinsic') {
+      return payload;
+    }
+    return secureHash(payload, hashName);
+  }
 
   List<int>? _clientVersionCache;
   List<int>? _serverVersionCache;

@@ -2,6 +2,8 @@
 
 /// Class for setting handshake parameters
 
+import 'dart:typed_data';
+
 import 'constants.dart';
 import 'x509.dart';
 
@@ -28,6 +30,27 @@ const allCipherNames = [
 
 const _macNames = ['sha', 'sha256', 'sha384', 'aead'];
 const allMacNames = [..._macNames, 'md5'];
+
+const _pskHashAlgorithms = {'sha256', 'sha384'};
+
+/// PSK material advertised in TLS 1.3 ClientHello binders.
+class PskConfig {
+  PskConfig({
+    required List<int> identity,
+    required List<int> secret,
+    String hash = 'sha256',
+  })  : identity = Uint8List.fromList(identity),
+        secret = Uint8List.fromList(secret),
+        hash = hash {
+    if (!_pskHashAlgorithms.contains(hash)) {
+      throw ArgumentError('Unsupported PSK hash: $hash');
+    }
+  }
+
+  final Uint8List identity;
+  final Uint8List secret;
+  final String hash;
+}
 
 const keyExchangeNames = [
   'ecdhe_ecdsa',
@@ -222,6 +245,7 @@ class HandshakeSettings {
     this.defaultCurve = 'secp256r1',
     this.keyShares = const ['secp256r1', 'x25519'],
     this.ticketCipher = 'aes128gcm',
+    List<PskConfig>? pskConfigs,
     List<String>? pskModes,
     this.ticketKeys = const [],
     this.ticketLifetime = 3600 * 24,
@@ -248,7 +272,9 @@ class HandshakeSettings {
         dhGroups = dhGroups ?? allDhGroupNames,
         supportedVersions = supportedVersions ?? knownVersions,
         pskModes = pskModes ?? _pskModes,
-        ecPointFormats = ecPointFormats ?? _ecPointFormats;
+        ecPointFormats = ecPointFormats ?? _ecPointFormats,
+        pskConfigs = List<PskConfig>.unmodifiable(
+          pskConfigs ?? const <PskConfig>[]);
 
   /// The minimum bit length for asymmetric keys (default: 1023)
   final int minKeySize;
@@ -319,6 +345,9 @@ class HandshakeSettings {
   /// Cipher to use for session tickets
   final String ticketCipher;
 
+  /// Static PSK identities advertised in TLS 1.3 ClientHello
+  final List<PskConfig> pskConfigs;
+
   /// PSK modes for TLS 1.3
   final List<String> pskModes;
 
@@ -386,6 +415,7 @@ class HandshakeSettings {
     String? defaultCurve,
     List<String>? keyShares,
     String? ticketCipher,
+    List<PskConfig>? pskConfigs,
     List<String>? pskModes,
     List<dynamic>? ticketKeys,
     int? ticketLifetime,
@@ -428,6 +458,7 @@ class HandshakeSettings {
       defaultCurve: defaultCurve ?? this.defaultCurve,
       keyShares: keyShares ?? this.keyShares,
       ticketCipher: ticketCipher ?? this.ticketCipher,
+      pskConfigs: pskConfigs ?? this.pskConfigs,
       pskModes: pskModes ?? this.pskModes,
       ticketKeys: ticketKeys ?? this.ticketKeys,
       ticketLifetime: ticketLifetime ?? this.ticketLifetime,

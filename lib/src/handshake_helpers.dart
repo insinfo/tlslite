@@ -6,6 +6,9 @@ import 'dart:typed_data';
 
 import 'constants.dart';
 import 'errors.dart';
+import 'handshake_settings.dart';
+import 'messages.dart';
+import 'net/security/pure_dart_with_ffi_socket/tls_extensions.dart';
 import 'utils/codec.dart';
 import 'utils/constanttime.dart';
 import 'utils/cryptomath.dart';
@@ -73,16 +76,20 @@ class HandshakeHelpers {
   static Uint8List calcResBinderPsk(
     dynamic iden,
     Uint8List resMasterSecret,
-    List<dynamic> tickets,
+    List<TlsNewSessionTicket> tickets,
   ) {
-    final ticket = tickets.firstWhere((i) => i.ticket == iden.identity);
+    final ticket = tickets.firstWhere(
+      (candidate) => _bytesEqual(candidate.ticket, iden.identity),
+      orElse: () =>
+          throw ArgumentError('Ticket identity missing from TLS 1.3 cache'),
+    );
 
     final ticketHash = resMasterSecret.length == 32 ? 'sha256' : 'sha384';
 
     final psk = HKDF_expand_label(
       resMasterSecret,
       Uint8List.fromList('resumption'.codeUnits),
-      ticket.ticket_nonce,
+      ticket.ticketNonce,
       resMasterSecret.length,
       ticketHash,
     );
@@ -97,12 +104,12 @@ class HandshakeHelpers {
   static void updateBinders(
     dynamic clientHello,
     dynamic handshakeHashes,
-    List<dynamic> pskConfigs, {
-    List<dynamic>? tickets,
+    List<PskConfig> pskConfigs, {
+    List<TlsNewSessionTicket>? tickets,
     Uint8List? resMasterSecret,
   }) {
     final ext = clientHello.extensions.last;
-    if (ext.runtimeType.toString() != 'PreSharedKeyExtension') {
+    if (ext is! TlsPreSharedKeyExtension) {
       throw ArgumentError(
         'Last extension in client_hello must be PreSharedKeyExtension',
       );
@@ -116,7 +123,8 @@ class HandshakeHelpers {
     hh.update(clientHello.psk_truncate());
 
     final configsIter = pskConfigs.iterator;
-    final ticketIdens = tickets?.map((i) => i.ticket).toList() ?? [];
+    final hasTickets = tickets != null && tickets.isNotEmpty;
+    final ticketList = tickets ?? const <TlsNewSessionTicket>[];
 
     for (var i = 0; i < ext.identities.length; i++) {
       final iden = ext.identities[i];
@@ -126,16 +134,21 @@ class HandshakeHelpers {
       bool external;
 
       // Identities that are tickets don't carry PSK directly
-      if (ticketIdens.contains(iden.identity)) {
+      final identityMatchesTicket =
+          hasTickets && _matchesTicketIdentity(iden.identity, ticketList);
+      if (identityMatchesTicket) {
         binderHash = resMasterSecret!.length == 32 ? 'sha256' : 'sha384';
-        psk = calcResBinderPsk(iden, resMasterSecret, tickets!);
+        psk = calcResBinderPsk(iden, resMasterSecret, ticketList);
         external = false;
       } else {
         // Find matching config
-        dynamic config;
+        PskConfig? config;
         while (configsIter.moveNext()) {
-          config = configsIter.current;
-          if (config[0] == iden.identity) break;
+          final candidate = configsIter.current;
+          if (_bytesEqual(candidate.identity, iden.identity)) {
+            config = candidate;
+            break;
+          }
         }
 
         if (config == null) {
@@ -144,8 +157,8 @@ class HandshakeHelpers {
           );
         }
 
-        binderHash = config.length > 2 ? config[2] : 'sha256';
-        psk = config[1];
+        binderHash = config.hash;
+        psk = config.secret;
         external = true;
       }
 
@@ -166,7 +179,7 @@ class HandshakeHelpers {
     bool external = true,
   }) {
     final ext = clientHello.extensions.last;
-    if (ext.runtimeType.toString() != 'PreSharedKeyExtension') {
+    if (ext is! TlsPreSharedKeyExtension) {
       throw TLSIllegalParameterException(
         'Last extension in client_hello must be PreSharedKeyExtension',
       );
@@ -181,6 +194,31 @@ class HandshakeHelpers {
       throw TLSIllegalParameterException('Binder does not verify');
     }
 
+    return true;
+  }
+
+    static bool _matchesTicketIdentity(
+      Uint8List identity, List<TlsNewSessionTicket> tickets) {
+    for (final ticket in tickets) {
+      if (_bytesEqual(identity, ticket.ticket)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static bool _bytesEqual(Uint8List a, Uint8List b) {
+    if (identical(a, b)) {
+      return true;
+    }
+    if (a.lengthInBytes != b.lengthInBytes) {
+      return false;
+    }
+    for (var i = 0; i < a.lengthInBytes; i++) {
+      if (a[i] != b[i]) {
+        return false;
+      }
+    }
     return true;
   }
 }

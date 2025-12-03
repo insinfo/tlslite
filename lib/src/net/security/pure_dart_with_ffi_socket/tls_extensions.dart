@@ -51,6 +51,7 @@ class TlsExtensionRegistry {
     tls_constants.ExtensionType.signature_algorithms_cert:
         _parseSignatureAlgorithmsCert,
     tls_constants.ExtensionType.key_share: _parseKeyShare,
+    tls_constants.ExtensionType.pre_shared_key: _parsePreSharedKey,
   };
 
   static TlsExtension parse(
@@ -209,6 +210,49 @@ class TlsExtensionRegistry {
       requestExtensions: requestExtensions,
     );
   }
+  
+  static TlsExtension _parsePreSharedKey(
+    Uint8List body,
+    TlsExtensionContext context,
+  ) {
+    final parser = Parser(body);
+    if (context == TlsExtensionContext.serverHello) {
+      if (parser.getRemainingLength() != 2) {
+        throw DecodeError('Servidor deve enviar índice PSK de 2 bytes');
+      }
+      final selected = parser.get(2);
+      return TlsServerPreSharedKeyExtension(selectedIdentity: selected);
+    }
+    if (parser.getRemainingLength() < 4) {
+      throw DecodeError('Extensão pre_shared_key truncada');
+    }
+    final identitiesLength = parser.get(2);
+    if (identitiesLength > parser.getRemainingLength()) {
+      throw DecodeError('Lista de identidades PSK truncada');
+    }
+    final identitiesParser = Parser(parser.getFixBytes(identitiesLength));
+    final identities = <TlsPskIdentity>[];
+    while (!identitiesParser.isDone) {
+      identities.add(TlsPskIdentity.parse(identitiesParser));
+    }
+    final bindersLength = parser.get(2);
+    if (bindersLength > parser.getRemainingLength()) {
+      throw DecodeError('Lista de binders PSK truncada');
+    }
+    final bindersParser = Parser(parser.getFixBytes(bindersLength));
+    final binders = <Uint8List>[];
+    while (!bindersParser.isDone) {
+      final entryLength = bindersParser.get(1);
+      binders.add(bindersParser.getFixBytes(entryLength));
+    }
+    if (!parser.isDone) {
+      throw DecodeError('Dados extras após binders PSK');
+    }
+    return TlsPreSharedKeyExtension(
+      identities: identities,
+      binders: binders,
+    );
+  }
 
   static TlsExtension _parseSignatureAlgorithmsCert(
     Uint8List body,
@@ -321,6 +365,13 @@ class TlsExtensionBlock {
       }
     }
     return null;
+  }
+
+  TlsExtension? get last {
+    if (_extensions.isEmpty) {
+      return null;
+    }
+    return _extensions.last;
   }
 
   T? first<T extends TlsExtension>() {
@@ -522,6 +573,86 @@ class TlsStatusRequestExtension extends TlsExtension {
     writer.addBytes(responderWriter.bytes);
     writer.add(requestExtensions.length, 2);
     writer.addBytes(requestExtensions);
+    return writer.bytes;
+  }
+}
+
+class TlsPskIdentity {
+  TlsPskIdentity({
+    required List<int> identity,
+    required this.obfuscatedTicketAge,
+  }) : identity = Uint8List.fromList(identity);
+
+  factory TlsPskIdentity.parse(Parser parser) {
+    final identity = parser.getVarBytes(2);
+    final age = parser.get(4);
+    return TlsPskIdentity(identity: identity, obfuscatedTicketAge: age);
+  }
+
+  final Uint8List identity;
+  final int obfuscatedTicketAge;
+
+  Uint8List serialize() {
+    final writer = Writer();
+    writer.add(identity.length, 2);
+    writer.addBytes(identity);
+    writer.add(obfuscatedTicketAge, 4);
+    return writer.bytes;
+  }
+}
+
+class TlsPreSharedKeyExtension extends TlsExtension {
+  TlsPreSharedKeyExtension({
+    required List<TlsPskIdentity> identities,
+    required List<Uint8List> binders,
+  })  : identities = List<TlsPskIdentity>.from(identities, growable: false),
+        binders = List<Uint8List>.from(
+          binders.map(Uint8List.fromList),
+          growable: true,
+        ),
+        super(tls_constants.ExtensionType.pre_shared_key);
+
+  final List<TlsPskIdentity> identities;
+  final List<Uint8List> binders;
+
+  int get encodedBindersLength {
+    var total = 2;
+    for (final binder in binders) {
+      total += 1 + binder.length;
+    }
+    return total;
+  }
+
+  @override
+  Uint8List serializeBody() {
+    final identitiesWriter = Writer();
+    for (final identity in identities) {
+      identitiesWriter.addBytes(identity.serialize());
+    }
+    final bindersWriter = Writer();
+    for (final binder in binders) {
+      bindersWriter.add(binder.length, 1);
+      bindersWriter.addBytes(binder);
+    }
+    final writer = Writer();
+    writer.add(identitiesWriter.length, 2);
+    writer.addBytes(identitiesWriter.bytes);
+    writer.add(bindersWriter.length, 2);
+    writer.addBytes(bindersWriter.bytes);
+    return writer.bytes;
+  }
+}
+
+class TlsServerPreSharedKeyExtension extends TlsExtension {
+  TlsServerPreSharedKeyExtension({required this.selectedIdentity})
+      : super(tls_constants.ExtensionType.pre_shared_key);
+
+  final int selectedIdentity;
+
+  @override
+  Uint8List serializeBody() {
+    final writer = Writer();
+    writer.add(selectedIdentity, 2);
     return writer.bytes;
   }
 }

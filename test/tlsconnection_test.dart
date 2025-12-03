@@ -7,13 +7,19 @@ import 'package:test/test.dart';
 import 'package:tlslite/src/constants.dart';
 import 'package:tlslite/src/defragmenter.dart';
 import 'package:tlslite/src/errors.dart';
+import 'package:tlslite/src/handshake_helpers.dart';
+import 'package:tlslite/src/handshake_settings.dart';
+import 'package:tlslite/src/keyexchange.dart';
 import 'package:tlslite/src/messages.dart';
+import 'package:tlslite/src/mathtls.dart';
+import 'package:tlslite/src/net/security/pure_dart_with_ffi_socket/tls_extensions.dart';
 import 'package:tlslite/src/recordlayer.dart';
 import 'package:tlslite/src/session.dart';
 import 'package:tlslite/src/sessioncache.dart';
 import 'package:tlslite/src/tls_protocol.dart';
 import 'package:tlslite/src/tlsconnection.dart';
 import 'package:tlslite/src/utils/codec.dart';
+import 'package:tlslite/src/utils/cryptomath.dart';
 
 void main() {
   group('TlsConnection handshake draining', () {
@@ -64,6 +70,357 @@ void main() {
 
       final fetched = cache.getOrNull(newSession.sessionID);
       expect(fetched, same(newSession));
+    });
+  });
+
+  group('TlsConnection handshake crypto helpers', () {
+    test('buildFinishedVerifyData matches calcFinished for TLS 1.2', () async {
+      final harness = await _TlsConnectionHarness.create();
+      addTearDown(() async => harness.dispose());
+
+      final conn = harness.connection;
+      conn.version = TlsProtocolVersion.tls12;
+
+      final message = _rawHandshakeMessage(
+        TlsHandshakeType.serverHelloDone,
+        Uint8List.fromList([0xA5, 0x5A]),
+      );
+      _queueHandshakeMessage(conn, message,
+          version: TlsProtocolVersion.tls12);
+      await conn.recvHandshakeMessage();
+
+      final session = Session()
+        ..sessionID = Uint8List.fromList([0x10])
+        ..cipherSuite = 0x0035
+        ..masterSecret = Uint8List.fromList(
+            List<int>.generate(48, (index) => index + 1))
+        ..resumable = true;
+      conn.session = session;
+
+      final verifyData = conn.buildFinishedVerifyData(forClient: true);
+      final expected = calcFinished(
+        [TlsProtocolVersion.tls12.major, TlsProtocolVersion.tls12.minor],
+        session.masterSecret,
+        session.cipherSuite,
+        conn.handshakeHashes,
+        true,
+      );
+      expect(verifyData, equals(expected));
+    });
+
+    test('buildFinishedVerifyData handles TLS 1.3 traffic secrets', () async {
+      final harness = await _TlsConnectionHarness.create();
+      addTearDown(() async => harness.dispose());
+
+      final conn = harness.connection;
+      conn.version = TlsProtocolVersion.tls13;
+      conn.handshakeEstablished = true;
+
+      conn.handshakeHashes.update(
+        _handshakeFragment(
+          List<int>.filled(12, 0x22),
+          handshakeType: TlsHandshakeType.helloRequest.code,
+        ),
+      );
+
+      final clientHs = Uint8List.fromList(List<int>.filled(32, 0x11));
+      final serverHs = Uint8List.fromList(List<int>.filled(32, 0x22));
+
+      final session = Session()
+        ..sessionID = Uint8List.fromList([0x20])
+        ..cipherSuite = 0x1301
+        ..clHandshakeSecret = clientHs
+        ..srHandshakeSecret = serverHs
+        ..resumable = true;
+      conn.session = session;
+
+      final verifyData = conn.buildFinishedVerifyData(forClient: true);
+      final finishedKey = HKDF_expand_label(
+        clientHs,
+        Uint8List.fromList('finished'.codeUnits),
+        Uint8List(0),
+        32,
+        'sha256',
+      );
+      final expected = secureHMAC(
+        finishedKey,
+        conn.handshakeHashes.digest('sha256'),
+        'sha256',
+      );
+      expect(verifyData, equals(expected));
+    });
+
+    test('buildCertificateVerifyBytes mirrors KeyExchange helper', () async {
+      final harness = await _TlsConnectionHarness.create();
+      addTearDown(() async => harness.dispose());
+
+      final conn = harness.connection;
+      conn.version = TlsProtocolVersion.tls13;
+
+      conn.handshakeHashes.update(
+        _handshakeFragment(
+          List<int>.filled(4, 0xA5),
+          handshakeType: TlsHandshakeType.helloRequest.code,
+        ),
+      );
+
+      final scheme = SignatureScheme.valueOf('ed25519')!;
+      final bytes = conn.buildCertificateVerifyBytes(
+        signatureScheme: scheme,
+        peerTag: 'server',
+      );
+      final expected = KeyExchange.calcVerifyBytes(
+        TlsProtocolVersion.tls13,
+        conn.handshakeHashes,
+        scheme,
+        prfName: 'sha256',
+        peerTag: 'server',
+      );
+      expect(bytes, equals(expected));
+    });
+  });
+
+  group('TlsClientHello PSK helpers', () {
+    test('pskTruncate strips encoded binder vector', () {
+      final clientHello = _clientHelloWithSinglePsk();
+        final pskExt =
+          clientHello.extensions!.last as TlsPreSharedKeyExtension;
+
+      final truncated = clientHello.pskTruncate();
+      final full = clientHello.serialize();
+
+      expect(truncated.length,
+          full.length - pskExt.encodedBindersLength);
+    });
+  });
+
+  group('TlsConnection PSK binder helpers', () {
+    test('updateClientHelloPskBinders fills binders deterministically',
+        () async {
+      final harness = await _TlsConnectionHarness.create();
+      addTearDown(() async => harness.dispose());
+
+      final conn = harness.connection;
+      conn.version = TlsProtocolVersion.tls13;
+      final clientHello = _clientHelloWithSinglePsk();
+        final identity =
+          (clientHello.extensions!.last as TlsPreSharedKeyExtension)
+              .identities
+              .single
+              .identity;
+      final config = PskConfig(
+        identity: identity,
+        secret: List<int>.filled(32, 0x42),
+        hash: 'sha256',
+      );
+
+      conn.updateClientHelloPskBinders(
+        clientHello: clientHello,
+        pskConfigs: [config],
+      );
+
+        final updatedExt =
+          clientHello.extensions!.last as TlsPreSharedKeyExtension;
+      expect(updatedExt.binders.single.contains(0), isFalse);
+
+      final hh = conn.handshakeHashes.copy();
+      hh.update(clientHello.pskTruncate());
+      final expected = HandshakeHelpers.calcBinder(
+        'sha256',
+        config.secret,
+        hh,
+      );
+      expect(updatedExt.binders.single, equals(expected));
+    });
+
+    test('verifyClientHelloPskBinder succeeds and rejects mismatches',
+        () async {
+      final harness = await _TlsConnectionHarness.create();
+      addTearDown(() async => harness.dispose());
+
+      final conn = harness.connection;
+      conn.version = TlsProtocolVersion.tls13;
+      final clientHello = _clientHelloWithSinglePsk();
+        final pskExt =
+          clientHello.extensions!.last as TlsPreSharedKeyExtension;
+      final identity = pskExt.identities.single.identity;
+      final config = PskConfig(
+        identity: identity,
+        secret: List<int>.filled(32, 0x24),
+        hash: 'sha256',
+      );
+      conn.updateClientHelloPskBinders(
+        clientHello: clientHello,
+        pskConfigs: [config],
+      );
+
+      conn.snapshotPreClientHelloHash();
+      expect(
+        () =>
+            conn.verifyClientHelloPskBinder(
+              clientHello: clientHello,
+              binderIndex: 0,
+              secret: config.secret,
+              hashName: 'sha256',
+            ),
+        returnsNormally,
+      );
+
+      // Tamper with the binder to trigger verification failure.
+      pskExt.binders[0][0] ^= 0xff;
+      conn.snapshotPreClientHelloHash();
+      expect(
+        () => conn.verifyClientHelloPskBinder(
+          clientHello: clientHello,
+          binderIndex: 0,
+          secret: config.secret,
+          hashName: 'sha256',
+        ),
+        throwsA(isA<TLSIllegalParameterException>()),
+      );
+    });
+  });
+
+  group('TlsConnection PSK handshake integration', () {
+    test('client auto-populates binders for static PSKs', () async {
+      final harness = await _TlsConnectionHarness.create();
+      addTearDown(() async => harness.dispose());
+
+      final conn = harness.connection;
+      conn.version = TlsProtocolVersion.tls13;
+
+      final clientHello = _clientHelloWithSinglePsk();
+      final pskExt =
+          clientHello.extensions!.last as TlsPreSharedKeyExtension;
+      final identity = pskExt.identities.single.identity;
+      final config = PskConfig(
+        identity: identity,
+        secret: List<int>.filled(32, 0x42),
+        hash: 'sha256',
+      );
+      conn.configureHandshakeSettings(
+        HandshakeSettings(pskConfigs: [config]),
+      );
+
+      final hh = conn.handshakeHashes.copy();
+      hh.update(clientHello.pskTruncate());
+      final expected = HandshakeHelpers.calcBinder(
+        'sha256',
+        config.secret,
+        hh,
+      );
+
+      await conn.sendHandshakeMessage(clientHello);
+
+      expect(pskExt.binders.single, equals(expected));
+    });
+
+    test('client reuses cached TLS 1.3 tickets for binders', () async {
+      final harness = await _TlsConnectionHarness.create();
+      addTearDown(() async => harness.dispose());
+
+      final conn = harness.connection;
+      conn.version = TlsProtocolVersion.tls13;
+
+      final ticket = _newSessionTicket();
+      conn.session.resumptionMasterSecret =
+          Uint8List.fromList(List<int>.filled(32, 0x33));
+      conn.session.tls13Tickets = [ticket];
+
+      final clientHello = _clientHelloWithSinglePsk(
+        identityBytes: ticket.ticket,
+      );
+      final pskExt =
+          clientHello.extensions!.last as TlsPreSharedKeyExtension;
+      final hh = conn.handshakeHashes.copy();
+      hh.update(clientHello.pskTruncate());
+
+      final psk = HandshakeHelpers.calcResBinderPsk(
+        pskExt.identities.single,
+        conn.session.resumptionMasterSecret,
+        [ticket],
+      );
+      final expected = HandshakeHelpers.calcBinder(
+        'sha256',
+        psk,
+        hh,
+        external: false,
+      );
+
+      await conn.sendHandshakeMessage(clientHello);
+
+      expect(pskExt.binders.single, equals(expected));
+    });
+
+    test('server validates inbound binders and records negotiation', () async {
+      final harness = await _TlsConnectionHarness.create();
+      addTearDown(() async => harness.dispose());
+
+      final conn = harness.connection;
+      conn.version = TlsProtocolVersion.tls13;
+      conn.client = false;
+
+      final clientHello = _clientHelloWithSinglePsk();
+      final pskExt =
+          clientHello.extensions!.last as TlsPreSharedKeyExtension;
+      final identity = pskExt.identities.single.identity;
+      final config = PskConfig(
+        identity: identity,
+        secret: List<int>.filled(32, 0x21),
+        hash: 'sha256',
+      );
+      conn.configureHandshakeSettings(
+        HandshakeSettings(pskConfigs: [config]),
+      );
+
+      final hh = conn.handshakeHashes.copy();
+      HandshakeHelpers.updateBinders(clientHello, hh, [config]);
+
+      _queueHandshakeMessage(conn, clientHello,
+          version: TlsProtocolVersion.tls13);
+
+      final msg = await conn.recvHandshakeMessage();
+      expect(msg, isA<TlsClientHello>());
+      expect(conn.negotiatedClientHelloPskIndex, equals(0));
+      expect(conn.negotiatedExternalPsk, same(config));
+      expect(conn.negotiatedClientHelloPskIdentity, equals(identity));
+    });
+
+    test('server rejects mismatched binders with alerts', () async {
+      final harness = await _TlsConnectionHarness.create();
+      addTearDown(() async => harness.dispose());
+
+      final conn = harness.connection;
+      conn.version = TlsProtocolVersion.tls13;
+      conn.client = false;
+
+      final clientHello = _clientHelloWithSinglePsk();
+      final pskExt =
+          clientHello.extensions!.last as TlsPreSharedKeyExtension;
+      final identity = pskExt.identities.single.identity;
+      final config = PskConfig(
+        identity: identity,
+        secret: List<int>.filled(32, 0x99),
+        hash: 'sha256',
+      );
+      conn.configureHandshakeSettings(
+        HandshakeSettings(pskConfigs: [config]),
+      );
+
+      final hh = conn.handshakeHashes.copy();
+      HandshakeHelpers.updateBinders(clientHello, hh, [config]);
+      pskExt.binders.single[0] ^= 0xff;
+
+      _queueHandshakeMessage(conn, clientHello,
+          version: TlsProtocolVersion.tls13);
+
+      await expectLater(
+        () => conn.recvHandshakeMessage(),
+        throwsA(isA<TLSIllegalParameterException>()),
+      );
+        final alertRecord = conn.sentRecords
+          .firstWhere((msg) => msg.contentType == ContentType.alert);
+        expect(alertRecord.data.length, equals(2));
     });
   });
 
@@ -489,6 +846,82 @@ void main() {
           ])));
     });
   });
+
+  group('TlsConnection TLS 1.3 resumption', () {
+    test('reuses cached tickets and handles post-handshake updates', () async {
+      final cache = SessionCache(maxEntries: 4, maxAgeSeconds: 3600);
+      final firstHarness = await _TlsConnectionHarness.create(cache: cache);
+      addTearDown(() async => firstHarness.dispose());
+
+      final firstConn = firstHarness.connection;
+      firstConn.version = TlsProtocolVersion.tls13;
+      firstConn.handshakeEstablished = true;
+      final initialSession = Session()
+        ..sessionID = Uint8List.fromList([0x33])
+        ..cipherSuite = 0x1301
+        ..resumable = true
+        ..clAppSecret = Uint8List.fromList(List<int>.filled(32, 0x01))
+        ..srAppSecret = Uint8List.fromList(List<int>.filled(32, 0x02))
+        ..clHandshakeSecret = Uint8List.fromList(List<int>.filled(32, 0x03))
+        ..srHandshakeSecret = Uint8List.fromList(List<int>.filled(32, 0x04))
+        ..resumptionMasterSecret =
+            Uint8List.fromList(List<int>.filled(32, 0x05));
+      firstConn.session = initialSession;
+
+      final ticket = _newSessionTicket();
+      _queueHandshakeMessage(firstConn, ticket,
+          version: TlsProtocolVersion.tls13);
+      final finished = TlsFinished(
+        verifyData: Uint8List.fromList(List<int>.filled(12, 0x66)),
+      );
+      _queueHandshakeMessage(firstConn, finished,
+          version: TlsProtocolVersion.tls13);
+      await firstConn.recvHandshakeMessage();
+      firstConn.cacheCurrentSession();
+
+      final secondHarness = await _TlsConnectionHarness.create(cache: cache);
+      addTearDown(() async => secondHarness.dispose());
+      final resumedConn = secondHarness.connection;
+      resumedConn.version = TlsProtocolVersion.tls13;
+      final resumed = resumedConn.tryResumeSession(initialSession.sessionID);
+      expect(resumed, isTrue);
+      resumedConn.handshakeEstablished = true;
+      resumedConn.session.clAppSecret =
+          Uint8List.fromList(List<int>.filled(32, 0x10));
+      resumedConn.session.srAppSecret =
+          Uint8List.fromList(List<int>.filled(32, 0x11));
+
+      final keyUpdate = TlsKeyUpdate(updateRequested: true);
+      final newTicket = _newSessionTicket();
+      _queueHandshakeMessage(resumedConn, keyUpdate,
+          version: TlsProtocolVersion.tls13);
+      _queueHandshakeMessage(resumedConn, newTicket,
+          version: TlsProtocolVersion.tls13);
+      final finalFinished = TlsFinished(
+        verifyData: Uint8List.fromList(List<int>.filled(12, 0x55)),
+      );
+      _queueHandshakeMessage(resumedConn, finalFinished,
+          version: TlsProtocolVersion.tls13);
+
+      await resumedConn.recvHandshakeMessage();
+
+      expect(resumedConn.session.tls13Tickets, hasLength(2));
+      final ackRecord = resumedConn.sentRecords
+          .where((msg) => msg.contentType == ContentType.handshake)
+          .last;
+      final ackMessages = TlsHandshakeMessage.parseFragment(
+        ackRecord.data,
+        recordVersion: TlsProtocolVersion.tls13,
+      );
+      expect(ackMessages.single, isA<TlsKeyUpdate>());
+      expect((ackMessages.single as TlsKeyUpdate).updateRequested, isFalse);
+
+      resumedConn.cacheCurrentSession();
+      final cached = cache.getOrNull(resumedConn.session.sessionID);
+      expect(cached, isNotNull);
+      expect(cached!.tls13Tickets, hasLength(2));
+    });
+  });
 }
 
 class _TlsConnectionHarness {
@@ -561,6 +994,32 @@ Uint8List _handshakeFragment(List<int> body, {int handshakeType = 1}) {
 RawTlsHandshakeMessage _rawHandshakeMessage(
     TlsHandshakeType type, Uint8List body) {
   return RawTlsHandshakeMessage(type: type, body: body);
+}
+
+TlsClientHello _clientHelloWithSinglePsk({
+  int binderLength = 32,
+  List<int>? identityBytes,
+}) {
+  final identity = TlsPskIdentity(
+    identity: identityBytes ?? const <int>[0xAA, 0xBB],
+    obfuscatedTicketAge: 0,
+  );
+  final preSharedKey = TlsPreSharedKeyExtension(
+    identities: [identity],
+    binders: [Uint8List(binderLength)],
+  );
+  final extensions = TlsExtensionBlock(extensions: <TlsExtension>[
+    TlsSupportedVersionsExtension.client([TlsProtocolVersion.tls13]),
+    preSharedKey,
+  ]);
+  return TlsClientHello(
+    clientVersion: TlsProtocolVersion.tls13,
+    random: Uint8List.fromList(List<int>.filled(32, 0x11)),
+    sessionId: Uint8List.fromList(List<int>.filled(32, 0x22)),
+    cipherSuites: const <int>[0x1301],
+    compressionMethods: const <int>[0],
+    extensions: extensions,
+  );
 }
 
 void _queueHandshakeMessage(_FakeTlsConnection connection,

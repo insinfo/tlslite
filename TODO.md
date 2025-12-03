@@ -71,7 +71,12 @@ dart analyze                 # análise estática
 - ✅ `_bufferHandshakeMessages` atualiza `HandshakeHashes`, processa KeyUpdate/NewSessionTicket pós-handshake (com ACK automático e armazenamento de tickets TLS 1.3) e expõe os novos testes em `test/tlsconnection_test.dart`.
 - ✅ Os flights agora passam pelo `PureDartTlsHandshakeStateMachine`, o que marca `handshakeEstablished` automaticamente e impede sequências inválidas sem quebrar os testes existentes.
 - ✅ Tickets TLS 1.3 recém-recebidos são persistidos no `Session` e propagados para o `SessionCache`, liberando testes de resumption (`tlsconnection_test.dart`).
-- 🔜 Conectar `TlsConnection` aos `HandshakeHelpers`/`HandshakeSettings`, gerar Finished/CertificateVerify reais e exercitar resumption (session cache + TLS 1.3 tickets) em testes integrados.
+- ✅ `TlsConnection` agora expõe `configureHandshakeSettings`, `buildFinishedVerifyData` e `buildCertificateVerifyBytes`, reaproveitando `HandshakeHelpers`/`HandshakeSettings` para gerar Finished/CertificateVerify com o mesmo fluxo do tlslite-ng.
+- ✅ Novo teste integra resumption TLS 1.3 end-to-end usando tickets do cache ao mesmo tempo em que exercita KeyUpdate/NewSessionTicket (`test/tlsconnection_test.dart`).
+- ✅ Fluxo de binders PSK TLS 1.3 portado: `TlsClientHello` agora expõe `pskTruncate/psk_truncate`, `TlsExtensionBlock`/`TlsPreSharedKeyExtension` foram adicionados e `TlsConnection` ganhou helpers para assinar/verificar binders com `HandshakeHelpers`, cobertos em `test/tlsconnection_test.dart`.
+- ✅ O envio de ClientHello agora recalcula automaticamente os binders PSK com base nos `HandshakeSettings` e tickets TLS 1.3 persistidos no `SessionCache`, garantindo que `queueHandshakeMessage`/`sendHandshakeMessage` emitam extensões válidas mesmo quando os binders vierem como placeholders.
+- ✅ No modo servidor, `TlsConnection` passa a validar binders recebidos em ClientHello, disparando `illegal_parameter` quando o valor não confere e expondo `negotiatedClientHelloPsk*` para que as rotas de handshake escolham PSK externos posteriormente; novos testes em `test/tlsconnection_test.dart` cobrem sucesso/falha.
+- 🔜 Selecionar automaticamente o PSK anunciado (incluindo TLS 1.3 tickets) durante o handshake real, enviando `pre_shared_key` no ServerHello e ligando o fluxo ao gerenciador de tickets/resumption Store.
 
 ### Session cache
 - ✅ `SessionCache` foi portada para `lib/src/sessioncache.dart`, preservando a ordem circular e as políticas de expiração/evicção usadas no Python.
@@ -97,3 +102,7 @@ dart analyze                 # análise estática
 
 continue implementando os TODO e os UnimplementedError e os not implemented e os UnsupportedError e os placeholders  e stub afim de comcluir o port
 continue portando o C:\MyDartProjects\tlslite\tlslite-ng para dart e atualize o C:\MyDartProjects\tlslite\TODO.md    
+
+Next Steps
+
+1️⃣ Teach the handshake routines to pick a validated PSK (external or TLS 1.3 ticket), emit the pre_shared_key selection in ServerHello, and hook into the ticket database/session cache so resumptions actually skip the full handshake.
