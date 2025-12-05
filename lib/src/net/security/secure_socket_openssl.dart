@@ -4,11 +4,11 @@
 
 import 'dart:async';
 import 'dart:ffi' as ffi;
-import 'dart:io' show Platform;
 import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
-import '../../openssl/openssl_ffi.dart';
-import '../../openssl/openssl_ssl_extension.dart';
+
+import '../../openssl/generated/ffi.dart';
+import '../../openssl/openssl_loader.dart';
 import 'secure_transport.dart';
 import '../socket/native_buffer_utils.dart';
 import '../socket/socket_native_ffi.dart';
@@ -21,7 +21,7 @@ const int _sslErrorZeroReturn = 6;
 
 class SecureSocketOpenSSL implements SecureTransport {
   final RawTransport _transport;
-  late final OpenSSL _openSsl;
+  late final OpenSsl _openSsl;
   ffi.Pointer<ssl_ctx_st>? _ctx; // typedef SSL_CTX = ssl_ctx_st
   ffi.Pointer<ssl_st>? _ssl; // typedef SSL = ssl_st
   ffi.Pointer<BIO>? _networkReadBio;
@@ -104,12 +104,7 @@ class SecureSocketOpenSSL implements SecureTransport {
   bool get isHandshakeComplete => _sslInitialized;
 
   void _initOpenSsl() {
-    final dynamicLibrary = Platform.isWindows
-        ? ffi.DynamicLibrary.open('libssl-3-x64.dll')
-        : Platform.isMacOS
-            ? ffi.DynamicLibrary.open('libssl.dylib')
-            : ffi.DynamicLibrary.open('libssl.so');
-    _openSsl = OpenSSL(dynamicLibrary);
+    _openSsl = loadLibSsl(null);
   }
 
   void _initializeSSL({String? certFile, String? keyFile}) {
@@ -550,7 +545,7 @@ class SecureSocketOpenSSLAsync {
   final CiphertextReader _readCiphertext;
   final String? _certFile;
   final String? _keyFile;
-  late final OpenSSL _openSsl;
+  late final OpenSsl _openSsl;
   ffi.Pointer<ssl_ctx_st>? _ctx;
   ffi.Pointer<ssl_st>? _ssl;
   ffi.Pointer<BIO>? _networkReadBio;
@@ -759,12 +754,7 @@ class SecureSocketOpenSSLAsync {
   }
 
   void _initOpenSsl() {
-    final dynamicLibrary = Platform.isWindows
-        ? ffi.DynamicLibrary.open('libssl-3-x64.dll')
-        : Platform.isMacOS
-            ? ffi.DynamicLibrary.open('libssl.dylib')
-            : ffi.DynamicLibrary.open('libssl.so');
-    _openSsl = OpenSSL(dynamicLibrary);
+    _openSsl = loadLibSsl(null);
   }
 
   void _initializeSSL({String? certFile, String? keyFile}) {

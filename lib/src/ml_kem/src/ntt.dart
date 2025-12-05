@@ -7,12 +7,6 @@ import 'polynomial.dart';
 /// Precomputed zetas for NTT (powers of root of unity 17)
 final List<int> _nttZetas = _computeZetas();
 
-/// Montgomery factor R = 2^16 mod q
-const int _montR = 1 << 16;
-
-/// Montgomery factor for reduction
-const int _qinv = 62209;  // -q^(-1) mod 2^16
-
 /// Compute zetas in bit-reversed order
 List<int> _computeZetas() {
   const root = 17;  // primitive 512th root of unity mod q
@@ -46,14 +40,6 @@ int _modPow(int base, int exp, int mod) {
     base = (base * base) % mod;
   }
   return result;
-}
-
-/// Montgomery reduction: compute a * R^(-1) mod q
-int _montgomeryReduce(int a) {
-  final t = ((a & 0xFFFF) * _qinv) & 0xFFFF;
-  var r = (a - t * q) >> 16;
-  if (r < 0) r += q;
-  return r;
 }
 
 /// Barrett reduction: compute a mod q

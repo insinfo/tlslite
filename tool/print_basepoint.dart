@@ -1,7 +1,8 @@
 import 'dart:typed_data';
 
 import 'package:tlslite/src/ed448/ed448.dart' as ed448;
-import 'package:tlslite/src/ed448/src/ed448_impl.dart' as impl;
+import 'package:tlslite/src/ed448/src/ed448_point.dart' as curve;
+import 'package:tlslite/src/ed448/src/fp448.dart' as fp;
 
 Uint8List _hexToBytes(String hex) {
   final cleaned = hex.replaceAll(RegExp(r'\s'), '');
@@ -18,10 +19,19 @@ void main() {
       '8edf124769b46c7061bd6783df1e50f6cd1fa1abeafe8256180';
   final pk = ed448.Ed448PublicKeyImpl(_hexToBytes(baseHex));
   print('decoded ok? ${pk.bytes.length}');
-  final point = impl.Ed448Point.decode(pk.bytes);
+  final point = curve.Ed448Point.decompress(pk.bytes);
   if (point != null) {
-    final normalized = point.normalize();
-    print('x: \\n${normalized.x.toRadixString(16)}');
-    print('y: \\n${normalized.y.toRadixString(16)}');
+    final (x, y) = point.toAffine();
+    print('x: \n${_fieldToHex(x)}');
+    print('y: \n${_fieldToHex(y)}');
   }
+}
+
+String _fieldToHex(Uint32List value) {
+  final little = fp.Fp448.encode(value);
+  final buffer = StringBuffer();
+  for (var i = 55; i >= 0; i--) {
+    buffer.write(little[i].toRadixString(16).padLeft(2, '0'));
+  }
+  return buffer.toString();
 }

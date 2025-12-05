@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 
-import 'package:tlslite/src/ed448/src/ed448_impl.dart' as big;
 import 'package:tlslite/src/ed448/src/ed448_point.dart' as curve;
 import 'package:tlslite/src/ed448/src/fp448.dart' as fp;
 import 'package:tlslite/src/ed448/src/scalar448.dart' as scalars;
@@ -118,7 +117,6 @@ void main() {
   final xb = _modSqrt(x2b, _p);
   print('sqrt exists B? ${xb != null}');
 
-  print('big decode: ${big.Ed448Point.decode(bytes) != null}');
   print('curve decode: ${curve.Ed448Point.decompress(bytes) != null}');
 
   final identityBytes = Uint8List(57);
@@ -170,16 +168,6 @@ void main() {
     print('doubledLE x: ${fieldToHex(dxLE)}');
     print('doubledLE y: ${fieldToHex(dyLE)}');
 
-    final oldBig = big.Ed448Point(
-      BigInt.parse(oldX, radix: 16),
-      BigInt.parse(oldY, radix: 16),
-    );
-    final newBig = big.Ed448Point(
-      BigInt.parse(newX, radix: 16),
-      BigInt.parse(newY, radix: 16),
-    );
-    final bigDoubled = oldBig.double_().double_();
-    print('big old->new equals? ${bigDoubled == newBig}');
     final mulFour = oldBase.scalarMul(scalars.Scalar448.fromInt(4));
     print('scalarMul(4) equals new base? ${mulFour == newBase}');
 

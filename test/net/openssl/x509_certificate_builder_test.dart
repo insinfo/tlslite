@@ -1,5 +1,5 @@
 import 'package:test/test.dart';
-import 'package:tlslite/src/openssl/openssl_loader.dart';
+import 'package:tlslite/src/dtls_openssl/src/openssl_load_exception.dart';
 import 'package:tlslite/src/openssl/x509_certificate_builder.dart';
 
 void main() {
@@ -39,7 +39,7 @@ class _BuilderResult {
         builder: X509CertificateBuilder.withSystemLibraries(),
       );
     } on OpenSslLoadException catch (error) {
-      return _BuilderResult(skipReason: error.message);
+      return _BuilderResult(skipReason: error.toString());
     } catch (error) {
       return _BuilderResult(skipReason: 'Failed to load OpenSSL: $error');
     }

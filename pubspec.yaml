@@ -18,6 +18,7 @@ dependencies:
 dev_dependencies:  
   test: any
   hex: any  
-  ffigen: ^12.0.0
+  #ffigen: ^12.0.0
   benchmark_harness: any
+  ffigen: ^19.0.0
  

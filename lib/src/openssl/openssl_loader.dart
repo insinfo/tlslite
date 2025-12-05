@@ -1,19 +1,8 @@
 import 'dart:ffi' as ffi;
 import 'dart:io';
 
-import 'libcrypto_ffi.dart';
-import 'openssl_ffi.dart';
-
-/// Thrown when OpenSSL shared libraries cannot be discovered or do not
-/// implement the required symbols.
-class OpenSslLoadException implements Exception {
-  OpenSslLoadException(this.message);
-
-  final String message;
-
-  @override
-  String toString() => 'OpenSslLoadException: $message';
-}
+import '../dtls_openssl/src/openssl_load_exception.dart';
+import 'generated/ffi.dart';
 
 /// Encapsulates the libssl/libcrypto bindings that higher level code consumes.
 class OpenSslBindings {
@@ -27,8 +16,8 @@ class OpenSslBindings {
 
   final ffi.DynamicLibrary cryptoLibrary;
   final ffi.DynamicLibrary sslLibrary;
-  final OpenSslCrypto crypto;
-  final OpenSSL ssl;
+  final OpenSsl crypto;
+  final OpenSsl ssl;
   final bool supportsFromDataKeygen;
 
   /// Attempts to load libssl/libcrypto using the provided overrides and
@@ -38,46 +27,45 @@ class OpenSslBindings {
     String? sslPath,
     bool requireKeyGeneration = false,
   }) {
-    final cryptoLib = _loadLibrary(
+    final cryptoLib = _loadDynamicLibrary(
       description: 'libcrypto',
       explicitPath: cryptoPath ?? Platform.environment['OPENSSL_LIBCRYPTO_PATH'],
       candidates: _cryptoCandidates(),
     );
 
-    final sslLib = _loadLibrary(
+    final sslLib = _loadDynamicLibrary(
       description: 'libssl',
       explicitPath: sslPath ?? Platform.environment['OPENSSL_LIBSSL_PATH'],
       candidates: _sslCandidates(),
     );
 
-    final crypto = OpenSslCrypto(cryptoLib);
-    final ssl = OpenSSL(sslLib);
-    final supportsFromData = _supportsFromDataKeygen(crypto);
+    final supportsFromData = _supportsFromDataKeygen(cryptoLib);
     if (requireKeyGeneration && !supportsFromData) {
       throw OpenSslLoadException(
         'Loaded OpenSSL build does not expose EVP_PKEY_fromdata symbols.\n'
         'Provide OpenSSL 3.x DLLs or pass explicit paths via OPENSSL_LIBCRYPTO_PATH/OPENSSL_LIBSSL_PATH.',
       );
     }
+
     return OpenSslBindings._(
       cryptoLib,
       sslLib,
-      crypto,
-      ssl,
+      OpenSsl(cryptoLib),
+      OpenSsl(sslLib),
       supportsFromData,
     );
   }
 
-  static bool _supportsFromDataKeygen(OpenSslCrypto crypto) {
-    final lookup = crypto.getLookup();
+  static bool _supportsFromDataKeygen(ffi.DynamicLibrary cryptoLib) {
     const symbols = [
-      'EVP_PKEY_FROMDATA_CTX_new_id',
+      'EVP_PKEY_CTX_new_from_name',
+      'EVP_PKEY_CTX_free',
       'EVP_PKEY_fromdata_init',
       'EVP_PKEY_fromdata',
     ];
     for (final symbol in symbols) {
       try {
-        lookup<ffi.NativeFunction<ffi.Void Function()>>(symbol);
+        cryptoLib.lookup<ffi.NativeFunction<ffi.Void Function()>>(symbol);
       } on ArgumentError {
         return false;
       }
@@ -86,7 +74,44 @@ class OpenSslBindings {
   }
 }
 
-ffi.DynamicLibrary _loadLibrary({
+final OpenSsl _defaultLibSsl = _createDefaultBinding(
+  description: 'libssl',
+  envVar: 'OPENSSL_LIBSSL_PATH',
+  candidates: _sslCandidates(),
+);
+
+final OpenSsl _defaultLibCrypto = _createDefaultBinding(
+  description: 'libcrypto',
+  envVar: 'OPENSSL_LIBCRYPTO_PATH',
+  candidates: _cryptoCandidates(),
+);
+
+/// Tries to load libcrypto from a [dynamicLibrary].
+///
+/// If that fails, the function tries to load libcrypto from a default location.
+OpenSsl loadLibCrypto(ffi.DynamicLibrary? dynamicLibrary) =>
+    dynamicLibrary != null ? OpenSsl(dynamicLibrary) : _defaultLibCrypto;
+
+/// Tries to load libssl from a [dynamicLibrary].
+///
+/// If that fails, the function tries to load libssl from a default location.
+OpenSsl loadLibSsl(ffi.DynamicLibrary? dynamicLibrary) =>
+    dynamicLibrary != null ? OpenSsl(dynamicLibrary) : _defaultLibSsl;
+
+OpenSsl _createDefaultBinding({
+  required String description,
+  required String envVar,
+  required List<String> candidates,
+}) {
+  final lib = _loadDynamicLibrary(
+    description: description,
+    explicitPath: Platform.environment[envVar],
+    candidates: candidates,
+  );
+  return OpenSsl(lib);
+}
+
+ffi.DynamicLibrary _loadDynamicLibrary({
   required String description,
   String? explicitPath,
   required List<String> candidates,
