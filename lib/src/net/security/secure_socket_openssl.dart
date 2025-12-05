@@ -53,11 +53,11 @@ class SecureSocketOpenSSL implements SecureTransport {
       }
     } else if (_isServer && (certFile == null || keyFile == null)) {
       throw SocketException(
-          'Certificado e chave são necessários para o listener TLS');
+          'Certificate and private key are required for the TLS listener.');
     }
   }
 
-  /// Construtor para modo cliente com um socket próprio.
+  /// Client-mode constructor that owns its underlying socket.
   factory SecureSocketOpenSSL(int family, int type, int protocol) =>
       SecureSocketOpenSSL._(
         transport: SocketNative(family, type, protocol),
@@ -65,7 +65,7 @@ class SecureSocketOpenSSL implements SecureTransport {
         ownsDataPath: true,
       );
 
-  /// Cria um listener TLS em modo servidor; cada accept() gera uma conexão TLS.
+  /// Creates a TLS listener in server mode; each accept() yields a TLS session.
   factory SecureSocketOpenSSL.server(
           int family, int type, int protocol, String certFile, String keyFile) =>
       SecureSocketOpenSSL._(
@@ -76,7 +76,7 @@ class SecureSocketOpenSSL implements SecureTransport {
         keyFile: keyFile,
       );
 
-  /// Envolve um transporte já existente em modo cliente.
+  /// Wraps an already-established transport in client mode.
   factory SecureSocketOpenSSL.fromTransport(RawTransport transport) =>
       SecureSocketOpenSSL._(
         transport: transport,
@@ -84,7 +84,7 @@ class SecureSocketOpenSSL implements SecureTransport {
         ownsDataPath: true,
       );
 
-  /// Envolve um transporte aceito pelo listener em modo servidor.
+  /// Wraps a transport accepted by the listener in server mode.
   factory SecureSocketOpenSSL.fromServerTransport(
           RawTransport transport, String certFile, String keyFile,
           {bool eagerHandshake = true}) =>
@@ -117,12 +117,12 @@ class SecureSocketOpenSSL implements SecureTransport {
         _isServer ? _openSsl.TLS_server_method() : _openSsl.TLS_client_method();
     _ctx = _openSsl.SSL_CTX_new(method);
     if (_ctx == ffi.nullptr || _ctx == null) {
-      throw SocketException('Falha ao criar o contexto SSL');
+      throw SocketException('Failed to create the SSL context.');
     }
     if (_isServer) {
       if (certFile == null || keyFile == null) {
         throw SocketException(
-            'Certificado e chave são necessários para o modo servidor');
+            'Certificate and private key are required in server mode.');
       }
       final certFilePtr = certFile.toNativeUtf8();
       final keyFilePtr = keyFile.toNativeUtf8();
@@ -134,10 +134,10 @@ class SecureSocketOpenSSL implements SecureTransport {
       calloc.free(certFilePtr);
       calloc.free(keyFilePtr);
       if (certResult != 1) {
-        throw SocketException('Falha ao carregar o certificado');
+        throw SocketException('Failed to load the certificate file.');
       }
       if (keyResult != 1) {
-        throw SocketException('Falha ao carregar a chave privada');
+        throw SocketException('Failed to load the private key file.');
       }
     }
   }
@@ -146,12 +146,12 @@ class SecureSocketOpenSSL implements SecureTransport {
     final ctxPtr = _ctxPtr;
     _ssl = _openSsl.SSL_new(ctxPtr);
     if (_ssl == ffi.nullptr || _ssl == null) {
-      throw SocketException('Falha ao criar o objeto SSL');
+      throw SocketException('Failed to create the SSL instance.');
     }
     _networkReadBio = _openSsl.BIO_new(_openSsl.BIO_s_mem());
     _networkWriteBio = _openSsl.BIO_new(_openSsl.BIO_s_mem());
     if (_networkReadBio == ffi.nullptr || _networkWriteBio == ffi.nullptr) {
-      throw SocketException('Falha ao criar os BIOs de transporte TLS');
+      throw SocketException('Failed to create the TLS transport BIOs.');
     }
     _openSsl.SSL_set_bio(_sslPtr, _networkReadBioPtr, _networkWriteBioPtr);
     if (_isServer) {
@@ -178,7 +178,7 @@ class SecureSocketOpenSSL implements SecureTransport {
         final filled = _fillReadBioFromTransport();
         if (!filled) {
           throw SocketException(
-              'Handshake TLS interrompido: o transporte não forneceu mais dados');
+              'TLS handshake aborted: the underlying transport stopped providing data.');
         }
         continue;
       }
@@ -186,21 +186,21 @@ class SecureSocketOpenSSL implements SecureTransport {
         continue;
       }
       throw SocketException(
-          'Handshake TLS falhou (código OpenSSL $error, modo ${_isServer ? 'servidor' : 'cliente'})');
+          'TLS handshake failed (OpenSSL code $error, mode ${_isServer ? 'server' : 'client'}).');
     }
   }
 
   void _assertOwnsDataPath() {
     if (!_ownsDataPath) {
       throw SocketException(
-          'Esta instância representa apenas o listener TLS; utilize accept() para obter conexões.');
+          'This instance only represents the TLS listener; call accept() to obtain connections.');
     }
   }
 
   ffi.Pointer<ssl_ctx_st> get _ctxPtr {
     final ctx = _ctx;
     if (ctx == null || ctx == ffi.nullptr) {
-      throw SocketException('Contexto SSL indisponível');
+      throw SocketException('SSL context is unavailable.');
     }
     return ctx;
   }
@@ -208,7 +208,7 @@ class SecureSocketOpenSSL implements SecureTransport {
   ffi.Pointer<ssl_st> get _sslPtr {
     final ssl = _ssl;
     if (ssl == null || ssl == ffi.nullptr) {
-      throw SocketException('Objeto SSL indisponível');
+      throw SocketException('SSL object is unavailable.');
     }
     return ssl;
   }
@@ -295,14 +295,14 @@ class SecureSocketOpenSSL implements SecureTransport {
         if (error == _sslErrorWantRead) {
           final filled = _fillReadBioFromTransport();
           if (!filled) {
-            throw SocketException('Falha na escrita SSL: transporte encerrado');
+            throw SocketException('SSL write failed: transport closed unexpectedly.');
           }
           continue;
         }
         if (error == _sslErrorWantWrite) {
           continue;
         }
-        throw SocketException('Falha na escrita SSL (OpenSSL $error)');
+        throw SocketException('SSL write failed (OpenSSL code $error).');
       }
     } finally {
       buffer.release();
@@ -315,7 +315,7 @@ class SecureSocketOpenSSL implements SecureTransport {
     final sent = send(data);
     if (sent != data.length) {
       throw SocketException(
-          'Conexão fechada antes de enviar todos os bytes sobre TLS');
+          'Connection closed before all TLS bytes were transmitted.');
     }
   }
 
@@ -346,7 +346,7 @@ class SecureSocketOpenSSL implements SecureTransport {
         if (error == _sslErrorZeroReturn) {
           return Uint8List(0);
         }
-        throw SocketException('Falha na leitura SSL (OpenSSL $error)');
+        throw SocketException('SSL read failed (OpenSSL code $error).');
       }
     } finally {
       buffer.release();
@@ -355,18 +355,18 @@ class SecureSocketOpenSSL implements SecureTransport {
 
   @override
   (Uint8List, String, int) recvfrom(int bufferSize) {
-    throw SocketException('recvfrom não é suportado sobre TLS');
+    throw SocketException('recvfrom is not supported over TLS.');
   }
 
   @override
   int sendto(Uint8List data, String host, int port) {
-    throw SocketException('sendto não é suportado sobre TLS');
+    throw SocketException('sendto is not supported over TLS.');
   }
 
   bool _fillReadBioFromTransport({int? bufferSize}) {
     final bio = _networkReadBio;
     if (bio == null || bio == ffi.nullptr) {
-      throw SocketException('BIO de leitura TLS indisponível');
+      throw SocketException('TLS read BIO is unavailable.');
     }
     final chunkSize =
         (bufferSize == null || bufferSize <= 0) ? _defaultCiphertextChunk : bufferSize;
@@ -382,7 +382,7 @@ class SecureSocketOpenSSL implements SecureTransport {
       final written =
           _openSsl.BIO_write(bio, buffer.pointer.cast(), ciphertext.length);
       if (written <= 0) {
-        throw SocketException('Falha ao alimentar o BIO de leitura TLS');
+        throw SocketException('Failed to feed the TLS read BIO.');
       }
     } finally {
       buffer.release();
@@ -429,7 +429,7 @@ class SecureSocketOpenSSL implements SecureTransport {
   ffi.Pointer<BIO> get _networkReadBioPtr {
     final bio = _networkReadBio;
     if (bio == null || bio == ffi.nullptr) {
-      throw SocketException('BIO de leitura TLS indisponível');
+      throw SocketException('TLS read BIO is unavailable.');
     }
     return bio;
   }
@@ -437,7 +437,7 @@ class SecureSocketOpenSSL implements SecureTransport {
   ffi.Pointer<BIO> get _networkWriteBioPtr {
     final bio = _networkWriteBio;
     if (bio == null || bio == ffi.nullptr) {
-      throw SocketException('BIO de escrita TLS indisponível');
+      throw SocketException('TLS write BIO is unavailable.');
     }
     return bio;
   }
@@ -465,7 +465,7 @@ class SecureSocketOpenSSL implements SecureTransport {
     if (_ownsDataPath && _ssl != null && _ssl != ffi.nullptr && _sslInitialized) {
       final result = _openSsl.SSL_shutdown(_sslPtr);
       if (result == 0) {
-        // Tenta completar o close_notify bidirecional quando necessário.
+        // Try to complete the bidirectional close_notify when required.
         _drainWriteBioSync();
         _fillReadBioFromTransport();
         _openSsl.SSL_shutdown(_sslPtr);
@@ -574,16 +574,16 @@ class SecureSocketOpenSSLAsync {
       if (error == _sslErrorWantRead) {
         final filled = await _fillReadBioFromCallbacks();
         if (!filled) {
-          throw SocketException(
-              'Handshake TLS interrompido: canal criptografado sem dados');
+            throw SocketException(
+              'TLS handshake aborted: encrypted channel yielded no bytes.');
         }
         continue;
       }
       if (error == _sslErrorWantWrite) {
         continue;
       }
-      throw SocketException(
-          'Handshake TLS assíncrono falhou (código OpenSSL $error)');
+        throw SocketException(
+          'Asynchronous TLS handshake failed (OpenSSL code $error).');
     }
   }
 
@@ -612,7 +612,7 @@ class SecureSocketOpenSSLAsync {
           final filled = await _fillReadBioFromCallbacks();
           if (!filled) {
             throw SocketException(
-                'Canal criptografado foi fechado durante SSL_write');
+              'Encrypted channel closed while SSL_write was in progress.');
           }
           continue;
         }
@@ -620,7 +620,7 @@ class SecureSocketOpenSSLAsync {
           continue;
         }
         throw SocketException(
-            'Falha na escrita SSL assíncrona (código OpenSSL $error)');
+          'Asynchronous SSL write failed (OpenSSL code $error).');
       }
     } finally {
       buffer.release();
@@ -656,7 +656,7 @@ class SecureSocketOpenSSLAsync {
           return Uint8List(0);
         }
         throw SocketException(
-            'Falha na leitura SSL assíncrona (código OpenSSL $error)');
+            'Asynchronous SSL read failed (OpenSSL code $error).');
       }
     } finally {
       buffer.release();
@@ -696,7 +696,7 @@ class SecureSocketOpenSSLAsync {
   Future<bool> _fillReadBioFromCallbacks({int? preferredSize}) async {
     final bio = _networkReadBio;
     if (bio == null || bio == ffi.nullptr) {
-      throw SocketException('BIO de leitura TLS indisponível');
+      throw SocketException('TLS read BIO is unavailable.');
     }
     final chunkSize =
         (preferredSize == null || preferredSize <= 0)
@@ -714,7 +714,7 @@ class SecureSocketOpenSSLAsync {
       final written =
           _openSsl.BIO_write(bio, buffer.pointer.cast(), ciphertext.length);
       if (written <= 0) {
-        throw SocketException('Falha ao alimentar BIO TLS assíncrono');
+        throw SocketException('Failed to feed the asynchronous TLS read BIO.');
       }
     } finally {
       buffer.release();
@@ -772,12 +772,12 @@ class SecureSocketOpenSSLAsync {
         _isServer ? _openSsl.TLS_server_method() : _openSsl.TLS_client_method();
     _ctx = _openSsl.SSL_CTX_new(method);
     if (_ctx == ffi.nullptr || _ctx == null) {
-      throw SocketException('Falha ao criar o contexto SSL');
+      throw SocketException('Failed to create the SSL context.');
     }
     if (_isServer) {
       if (certFile == null || keyFile == null) {
         throw SocketException(
-            'Certificado e chave são necessários para o modo servidor');
+            'Certificate and private key are required in server mode.');
       }
       final certFilePtr = certFile.toNativeUtf8();
       final keyFilePtr = keyFile.toNativeUtf8();
@@ -789,10 +789,10 @@ class SecureSocketOpenSSLAsync {
       calloc.free(certFilePtr);
       calloc.free(keyFilePtr);
       if (certResult != 1) {
-        throw SocketException('Falha ao carregar o certificado');
+        throw SocketException('Failed to load the certificate file.');
       }
       if (keyResult != 1) {
-        throw SocketException('Falha ao carregar a chave privada');
+        throw SocketException('Failed to load the private key file.');
       }
     }
   }
@@ -801,12 +801,12 @@ class SecureSocketOpenSSLAsync {
     final ctxPtr = _ctxPtr;
     _ssl = _openSsl.SSL_new(ctxPtr);
     if (_ssl == ffi.nullptr || _ssl == null) {
-      throw SocketException('Falha ao criar o objeto SSL');
+      throw SocketException('Failed to create the SSL instance.');
     }
     _networkReadBio = _openSsl.BIO_new(_openSsl.BIO_s_mem());
     _networkWriteBio = _openSsl.BIO_new(_openSsl.BIO_s_mem());
     if (_networkReadBio == ffi.nullptr || _networkWriteBio == ffi.nullptr) {
-      throw SocketException('Falha ao criar os BIOs de transporte TLS');
+      throw SocketException('Failed to create the TLS transport BIOs.');
     }
     _openSsl.SSL_set_bio(_sslPtr, _networkReadBioPtr, _networkWriteBioPtr);
     if (_isServer) {
@@ -819,7 +819,7 @@ class SecureSocketOpenSSLAsync {
   ffi.Pointer<ssl_ctx_st> get _ctxPtr {
     final ctx = _ctx;
     if (ctx == null || ctx == ffi.nullptr) {
-      throw SocketException('Contexto SSL indisponível');
+      throw SocketException('SSL context is unavailable.');
     }
     return ctx;
   }
@@ -827,7 +827,7 @@ class SecureSocketOpenSSLAsync {
   ffi.Pointer<ssl_st> get _sslPtr {
     final ssl = _ssl;
     if (ssl == null || ssl == ffi.nullptr) {
-      throw SocketException('Objeto SSL indisponível');
+      throw SocketException('SSL object is unavailable.');
     }
     return ssl;
   }
@@ -835,7 +835,7 @@ class SecureSocketOpenSSLAsync {
   ffi.Pointer<BIO> get _networkReadBioPtr {
     final bio = _networkReadBio;
     if (bio == null || bio == ffi.nullptr) {
-      throw SocketException('BIO de leitura TLS indisponível');
+      throw SocketException('TLS read BIO is unavailable.');
     }
     return bio;
   }
@@ -843,7 +843,7 @@ class SecureSocketOpenSSLAsync {
   ffi.Pointer<BIO> get _networkWriteBioPtr {
     final bio = _networkWriteBio;
     if (bio == null || bio == ffi.nullptr) {
-      throw SocketException('BIO de escrita TLS indisponível');
+      throw SocketException('TLS write BIO is unavailable.');
     }
     return bio;
   }
