@@ -7,7 +7,15 @@
 ### 🔴 CRÍTICO (para TLS funcionar)
 1. **recordlayer.py** → recordlayer.dart (1.376 linhas) - ✅ PORT COMPLETO
 2. **keyexchange.py** → key_exchange.dart (1.100 linhas) - ✅ 100% COMPLETO (inclui ML-KEM/PQC)
-3. **tlsconnection.py** → tls_connection.dart (4.535 linhas) - 🔄 ~60% completo
+3. **tlsconnection.py** → tlsconnection.dart (4.535 linhas) - 🔄 ~70% completo
+   - ✅ `handshakeClient` entry point
+   - ✅ `_clientSendClientHello`
+   - ✅ `_clientHandleServerHello`
+   - ✅ `_clientHandshake13` (Full flow implemented, signature verification complete)
+   - ✅ `_clientHandshake12` (RSA Key Exchange implemented, DHE/ECDHE pending)
+   - ✅ `handshakeServer` entry point (Version negotiation implemented)
+   - ✅ `_serverHandshake13` (Basic implementation: RSA auth, X25519 key exchange)
+   - ⬜ `_serverHandshake12`
 
 ### ✅ IMPORTANTE  
 4. **handshakesettings.py** → handshake_settings.dart (716 linhas) - ✅ COMPLETO

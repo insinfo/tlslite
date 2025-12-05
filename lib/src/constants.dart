@@ -910,6 +910,11 @@ class GroupName {
     secp384r1mlkem1024: 'secp384r1mlkem1024',
   };
 
+  static final Map<String, int> _nameToIntMap = {
+    for (final entry in _intToNameMap.entries)
+      entry.value.toLowerCase(): entry.key,
+  };
+
   /// Converte o tipo numérico para representação de nome
   static String? toRepr(int value) =>
       _TLSEnumHelper.intToName(value, _intToNameMap);
@@ -917,6 +922,9 @@ class GroupName {
   /// Converte o tipo numérico para string legível por humanos, se possível
   static String toStr(int value) =>
       _TLSEnumHelper.intToString(value, _intToNameMap);
+
+  /// Resolve o identificador numérico a partir do nome textual do grupo.
+  static int? valueOf(String name) => _nameToIntMap[name.toLowerCase()];
 }
 
 // grupos proibidos pela RFC 8446 seção B.3.1.4

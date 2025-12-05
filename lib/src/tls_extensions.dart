@@ -48,10 +48,22 @@ class TlsExtensionRegistry {
     tls_constants.ExtensionType.supported_groups: _parseSupportedGroups,
     tls_constants.ExtensionType.ec_point_formats: _parseEcPointFormats,
     tls_constants.ExtensionType.status_request: _parseStatusRequest,
+      tls_constants.ExtensionType.signature_algorithms: _parseSignatureAlgorithms,
     tls_constants.ExtensionType.signature_algorithms_cert:
         _parseSignatureAlgorithmsCert,
     tls_constants.ExtensionType.key_share: _parseKeyShare,
     tls_constants.ExtensionType.pre_shared_key: _parsePreSharedKey,
+      tls_constants.ExtensionType.encrypt_then_mac: _parseEncryptThenMac,
+      tls_constants.ExtensionType.extended_master_secret:
+        _parseExtendedMasterSecret,
+      tls_constants.ExtensionType.heartbeat: _parseHeartbeat,
+      tls_constants.ExtensionType.psk_key_exchange_modes:
+        _parsePskKeyExchangeModes,
+      tls_constants.ExtensionType.record_size_limit: _parseRecordSizeLimit,
+      tls_constants.ExtensionType.session_ticket: _parseSessionTicket,
+      tls_constants.ExtensionType.compress_certificate:
+        _parseCompressedCertificate,
+      tls_constants.ExtensionType.post_handshake_auth: _parsePostHandshakeAuth,
   };
 
   static TlsExtension parse(
@@ -209,6 +221,126 @@ class TlsExtensionRegistry {
       responderIds: responders,
       requestExtensions: requestExtensions,
     );
+  }
+
+  static TlsExtension _parseSignatureAlgorithms(
+    Uint8List body,
+    TlsExtensionContext context,
+  ) {
+    final parser = Parser(body);
+    if (parser.getRemainingLength() < 2) {
+      throw DecodeError('signature_algorithms extension truncado');
+    }
+    final listLength = parser.get(2);
+    if (listLength % 2 != 0 || listLength > parser.getRemainingLength()) {
+      throw DecodeError('Lista de signature_algorithms inválida');
+    }
+    final schemes = <int>[];
+    for (var i = 0; i < listLength ~/ 2; i++) {
+      final hash = parser.get(1);
+      final sig = parser.get(1);
+      schemes.add((hash << 8) | sig);
+    }
+    return TlsSignatureAlgorithmsExtension(signatureSchemes: schemes);
+  }
+
+  static TlsExtension _parseEncryptThenMac(
+    Uint8List body,
+    TlsExtensionContext context,
+  ) {
+    if (body.isNotEmpty) {
+      throw DecodeError('encrypt_then_mac não deve ter payload');
+    }
+    return const TlsEncryptThenMacExtension();
+  }
+
+  static TlsExtension _parseExtendedMasterSecret(
+    Uint8List body,
+    TlsExtensionContext context,
+  ) {
+    if (body.isNotEmpty) {
+      throw DecodeError('extended_master_secret não deve ter payload');
+    }
+    return const TlsExtendedMasterSecretExtension();
+  }
+
+  static TlsExtension _parseHeartbeat(
+    Uint8List body,
+    TlsExtensionContext context,
+  ) {
+    final parser = Parser(body);
+    if (parser.getRemainingLength() != 1) {
+      throw DecodeError('heartbeat extension requer 1 byte');
+    }
+    final mode = parser.get(1);
+    return TlsHeartbeatExtension(mode: mode);
+  }
+
+  static TlsExtension _parsePskKeyExchangeModes(
+    Uint8List body,
+    TlsExtensionContext context,
+  ) {
+    final parser = Parser(body);
+    if (parser.getRemainingLength() < 1) {
+      throw DecodeError('psk_key_exchange_modes truncado');
+    }
+    final length = parser.get(1);
+    if (length > parser.getRemainingLength()) {
+      throw DecodeError('psk_key_exchange_modes com comprimento inválido');
+    }
+    final modes = <int>[];
+    for (var i = 0; i < length; i++) {
+      modes.add(parser.get(1));
+    }
+    return TlsPskKeyExchangeModesExtension(modes: modes);
+  }
+
+  static TlsExtension _parseRecordSizeLimit(
+    Uint8List body,
+    TlsExtensionContext context,
+  ) {
+    if (body.length != 2) {
+      throw DecodeError('record_size_limit deve conter 2 bytes');
+    }
+    final parser = Parser(body);
+    final limit = parser.get(2);
+    return TlsRecordSizeLimitExtension(recordSizeLimit: limit);
+  }
+
+  static TlsExtension _parseSessionTicket(
+    Uint8List body,
+    TlsExtensionContext context,
+  ) {
+    return TlsSessionTicketExtension(ticket: body);
+  }
+
+  static TlsExtension _parseCompressedCertificate(
+    Uint8List body,
+    TlsExtensionContext context,
+  ) {
+    final parser = Parser(body);
+    if (parser.getRemainingLength() < 1) {
+      throw DecodeError('compress_certificate truncado');
+    }
+    final length = parser.get(1);
+    if (length % 2 != 0 || length > parser.getRemainingLength()) {
+      throw DecodeError('Lista compress_certificate inválida');
+    }
+    final algorithms = <int>[];
+    for (var i = 0; i < length ~/ 2; i++) {
+      algorithms.add(parser.get(2));
+    }
+    return TlsCompressedCertificateExtension(algorithms: algorithms);
+  }
+
+  static TlsExtension _parsePostHandshakeAuth(
+    Uint8List body,
+    TlsExtensionContext context,
+  ) {
+    if (body.isNotEmpty) {
+      throw DecodeError('post_handshake_auth não deve ter payload');
+    }
+    return const TlsPostHandshakeAuthExtension();
   }
   
   static TlsExtension _parsePreSharedKey(
@@ -493,6 +625,26 @@ class TlsSignatureAlgorithmsCertExtension extends TlsExtension {
   }
 }
 
+class TlsSignatureAlgorithmsExtension extends TlsExtension {
+  TlsSignatureAlgorithmsExtension({List<int>? signatureSchemes})
+      : signatureSchemes =
+            List<int>.unmodifiable(signatureSchemes ?? const <int>[]),
+        super(tls_constants.ExtensionType.signature_algorithms);
+
+  final List<int> signatureSchemes;
+
+  @override
+  Uint8List serializeBody() {
+    final writer = Writer();
+    writer.add(signatureSchemes.length * 2, 2);
+    for (final scheme in signatureSchemes) {
+      writer.add((scheme >> 8) & 0xff, 1);
+      writer.add(scheme & 0xff, 1);
+    }
+    return writer.bytes;
+  }
+}
+
 class TlsEcPointFormatsExtension extends TlsExtension {
   TlsEcPointFormatsExtension({List<int>? formats})
       : formats = List<int>.unmodifiable(formats ?? const <int>[]),
@@ -736,5 +888,104 @@ class TlsKeyShareExtension extends TlsExtension {
         writer.add(selectedGroup ?? 0, 2);
         return writer.bytes;
     }
+  }
+}
+
+class TlsEncryptThenMacExtension extends TlsExtension {
+  const TlsEncryptThenMacExtension()
+      : super(tls_constants.ExtensionType.encrypt_then_mac);
+
+  @override
+  Uint8List serializeBody() => Uint8List(0);
+}
+
+class TlsExtendedMasterSecretExtension extends TlsExtension {
+  const TlsExtendedMasterSecretExtension()
+      : super(tls_constants.ExtensionType.extended_master_secret);
+
+  @override
+  Uint8List serializeBody() => Uint8List(0);
+}
+
+class TlsPostHandshakeAuthExtension extends TlsExtension {
+  const TlsPostHandshakeAuthExtension()
+      : super(tls_constants.ExtensionType.post_handshake_auth);
+
+  @override
+  Uint8List serializeBody() => Uint8List(0);
+}
+
+class TlsHeartbeatExtension extends TlsExtension {
+  TlsHeartbeatExtension({required this.mode})
+      : super(tls_constants.ExtensionType.heartbeat);
+
+  final int mode;
+
+  @override
+  Uint8List serializeBody() {
+    final writer = Writer();
+    writer.add(mode, 1);
+    return writer.bytes;
+  }
+}
+
+class TlsPskKeyExchangeModesExtension extends TlsExtension {
+  TlsPskKeyExchangeModesExtension({List<int>? modes})
+      : modes = List<int>.unmodifiable(modes ?? const <int>[]),
+        super(tls_constants.ExtensionType.psk_key_exchange_modes);
+
+  final List<int> modes;
+
+  @override
+  Uint8List serializeBody() {
+    final writer = Writer();
+    writer.add(modes.length, 1);
+    for (final mode in modes) {
+      writer.add(mode, 1);
+    }
+    return writer.bytes;
+  }
+}
+
+class TlsRecordSizeLimitExtension extends TlsExtension {
+  TlsRecordSizeLimitExtension({required this.recordSizeLimit})
+      : super(tls_constants.ExtensionType.record_size_limit);
+
+  final int recordSizeLimit;
+
+  @override
+  Uint8List serializeBody() {
+    final writer = Writer();
+    writer.add(recordSizeLimit, 2);
+    return writer.bytes;
+  }
+}
+
+class TlsSessionTicketExtension extends TlsExtension {
+  TlsSessionTicketExtension({List<int>? ticket})
+      : ticket = Uint8List.fromList(ticket ?? const <int>[]),
+        super(tls_constants.ExtensionType.session_ticket);
+
+  final Uint8List ticket;
+
+  @override
+  Uint8List serializeBody() => Uint8List.fromList(ticket);
+}
+
+class TlsCompressedCertificateExtension extends TlsExtension {
+  TlsCompressedCertificateExtension({List<int>? algorithms})
+      : algorithms = List<int>.unmodifiable(algorithms ?? const <int>[]),
+        super(tls_constants.ExtensionType.compress_certificate);
+
+  final List<int> algorithms;
+
+  @override
+  Uint8List serializeBody() {
+    final writer = Writer();
+    writer.add(algorithms.length * 2, 1);
+    for (final algorithm in algorithms) {
+      writer.add(algorithm, 2);
+    }
+    return writer.bytes;
   }
 }

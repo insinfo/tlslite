@@ -21,7 +21,10 @@ import 'sessioncache.dart';
 import 'tls_protocol.dart';
 import 'utils/codec.dart';
 import 'utils/cryptomath.dart';
+import 'utils/rsakey.dart';
 import 'mathtls.dart';
+import 'x509certchain.dart';
+import 'x509.dart';
 
 /// TODO Partial port of tlslite-ng's TLSConnection focused on message handling,
 /// session caching, and SSLv2/SSLv3 record interoperability.
@@ -59,6 +62,12 @@ class TlsConnection extends MessageSocket {
   int? _negotiatedClientHelloPskIndex;
   PskConfig? _negotiatedExternalPsk;
   Uint8List? _negotiatedClientHelloPskIdentity;
+  final Map<int, dynamic> _clientKeyShares = {};
+  Uint8List clientRandom = Uint8List(0);
+  Uint8List serverRandom = Uint8List(0);
+  Uint8List? _pendingSharedSecret;
+  TlsClientHello? _clientHelloMsg;
+  TlsServerHello? _serverHelloMsg;
 
   /// Replace the active handshake settings after validation.
   void configureHandshakeSettings(HandshakeSettings settings) {
@@ -453,6 +462,997 @@ class TlsConnection extends MessageSocket {
   }
 
   bool _isTls13Plus() => version > const TlsProtocolVersion(3, 3);
+
+  Future<void> handshakeClient({
+    HandshakeSettings? settings,
+    Session? session,
+    String srpUsername = '',
+    dynamic srpParams,
+    Keypair? certParams,
+    dynamic anonParams,
+    String serverName = '',
+    List<String> nextProtos = const [],
+    bool reqTack = false,
+    List<String> alpn = const [],
+  }) async {
+    client = true;
+    handshakeSettings = settings ?? HandshakeSettings();
+    this.session = session ?? Session();
+
+    await _clientSendClientHello(
+      handshakeSettings,
+      this.session,
+      srpUsername,
+      srpParams,
+      certParams,
+      anonParams,
+      serverName,
+      nextProtos,
+      reqTack,
+      alpn,
+    );
+
+    // Receive ServerHello
+    final message = await recvHandshakeMessage(
+        allowedTypes: [TlsHandshakeType.serverHello]);
+    
+    if (message is! TlsServerHello) {
+        await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+        throw TLSUnexpectedMessage('Expected ServerHello, got ${message.handshakeType.name}');
+    }
+
+    await _clientHandleServerHello(message);
+
+    if (_isTls13Plus()) {
+        await _clientHandshake13();
+    } else {
+        await _clientHandshake12();
+    }
+  }
+
+  Future<void> _clientHandleServerHello(TlsServerHello serverHello) async {
+    // Version Negotiation
+    var negotiatedVersion = serverHello.serverVersion;
+    
+    // Check Supported Versions (TLS 1.3)
+    final supportedVersions = serverHello.extensions?.byType(ExtensionType.supported_versions);
+    if (supportedVersions is TlsSupportedVersionsExtension) {
+       if (supportedVersions.selectedVersion != null) {
+           negotiatedVersion = supportedVersions.selectedVersion!;
+       }
+    }
+    
+    version = negotiatedVersion;
+    _serverHelloMsg = serverHello;
+    
+    // Update Session
+    session.cipherSuite = serverHello.cipherSuite;
+    serverRandom = serverHello.random;
+    session.sessionID = serverHello.sessionId;
+    
+    // Extensions
+    final extensions = serverHello.extensions;
+    if (extensions != null) {
+        // EMS
+        if (extensions.byType(ExtensionType.extended_master_secret) != null) {
+            session.extendedMasterSecret = true;
+        }
+        
+        // Encrypt-then-MAC
+        if (extensions.byType(ExtensionType.encrypt_then_mac) != null) {
+            session.encryptThenMAC = true;
+        }
+    }
+
+    // Key Share (TLS 1.3)
+    if (version >= const TlsProtocolVersion(3, 4)) {
+        final keyShareExt = serverHello.extensions?.byType(ExtensionType.key_share);
+        if (keyShareExt is TlsKeyShareExtension) {
+             final serverShare = keyShareExt.serverShare;
+             if (serverShare != null) {
+                 final group = serverShare.group;
+                 final privateKey = _clientKeyShares[group];
+                 if (privateKey == null) {
+                     throw TLSHandshakeFailure('Server selected unsupported group');
+                 }
+                 
+                 if (GroupName.allKEM.contains(group)) {
+                     final kem = KEMKeyExchange(group);
+                     _pendingSharedSecret = kem.calcSharedKey(privateKey, serverShare.keyExchange);
+                 } else {
+                     final kex = ECDHKeyExchange(group, (version.major, version.minor));
+                     _pendingSharedSecret = kex.calcSharedKey(privateKey, serverShare.keyExchange);
+                 }
+             }
+        }
+    }
+  }
+
+  Future<void> _clientHandshake12() async {
+      // Receive ServerCertificate (Optional)
+      // Receive ServerKeyExchange (Optional)
+      // Receive CertificateRequest (Optional)
+      // Receive ServerHelloDone
+      
+      while (true) {
+          final message = await recvHandshakeMessage();
+          if (message is TlsServerHelloDone) {
+              break;
+          } else if (message is TlsCertificate) {
+              // Parse Certificate Chain
+              final certs = <X509>[];
+              // TLS 1.2 Certificate message structure is different (chain of bytes)
+              // TlsCertificate handles parsing based on version if passed correctly
+              // But here message is already parsed.
+              // TlsCertificate.certificateChain is List<Uint8List> for TLS 1.2
+              for (final certBytes in message.certificateChain) {
+                  final x509 = X509();
+                  x509.parseBinary(certBytes);
+                  certs.add(x509);
+              }
+              session.serverCertChain = X509CertChain(certs);
+          } else if (message is TlsServerKeyExchange) {
+              // TODO: Handle ServerKeyExchange (DHE/ECDHE)
+          } else if (message is TlsCertificateRequest) {
+              // TODO: Handle CertificateRequest
+          } else {
+              await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+              throw TLSUnexpectedMessage('Unexpected message in TLS 1.2 handshake: ${message.handshakeType.name}');
+          }
+      }
+      
+      // Send ClientKeyExchange
+      // For now, we assume RSA key exchange if no ServerKeyExchange was received
+      // But we need to know the key exchange method from the cipher suite.
+      // TODO: Support DHE/ECDHE
+      
+      final kex = RSAKeyExchange(
+          session.cipherSuite,
+          _clientHelloMsg,
+          _serverHelloMsg,
+          null, // Private key not needed for client
+      );
+      
+      final pubKey = session.serverCertChain!.getEndEntityPublicKey();
+      final premasterSecret = kex.processServerKeyExchange(pubKey, null);
+      session.masterSecret = calcMasterSecret(
+          [version.major, version.minor],
+          session.cipherSuite,
+          premasterSecret,
+          clientRandom, 
+          serverRandom
+      );
+      
+      final clientKeyExchange = kex.makeClientKeyExchange();
+      
+      await sendHandshakeMessage(clientKeyExchange);
+      
+      // Send ChangeCipherSpec
+      await queueMessageBlocking(Message(ContentType.change_cipher_spec, Uint8List.fromList([1])));
+      
+      // Send Finished
+      final verifyData = buildFinishedVerifyData(forClient: true);
+      await sendHandshakeMessage(TlsFinished(verifyData: verifyData));
+      
+      // Switch to Application Keys (Write)
+      changeWriteState();
+      
+      // Receive ChangeCipherSpec
+      final (header, parser) = await recvMessageBlocking();
+      if (header.type != ContentType.change_cipher_spec) {
+           await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+           throw TLSUnexpectedMessage('Expected ChangeCipherSpec');
+      }
+      
+      // Switch to Application Keys (Read)
+      changeReadState();
+      
+      // Receive Finished
+      final finishedMsg = await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.finished]);
+      if (finishedMsg is! TlsFinished) {
+          await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+          throw TLSUnexpectedMessage('Expected Finished');
+      }
+      
+      // Verify Finished
+      final expectedVerifyData = buildFinishedVerifyData(forClient: false);
+      if (!_bytesEqual(finishedMsg.verifyData, expectedVerifyData)) {
+          await _sendAlert(AlertLevel.fatal, AlertDescription.decrypt_error);
+          throw TLSHandshakeFailure('Finished verification failed');
+      }
+      
+      handshakeEstablished = true;
+  }
+
+  Future<void> _clientHandshake13() async {
+      if (_pendingSharedSecret == null) {
+          throw TLSHandshakeFailure('Missing shared secret for TLS 1.3');
+      }
+      final sharedSecret = _pendingSharedSecret!;
+      _pendingSharedSecret = null;
+
+      // Determine Hash Algorithm
+      final hashName = _prfHashName();
+      final hashLen = hashName == 'sha384' ? 48 : 32;
+      
+      // Calculate Early Secret (assuming no PSK for now)
+      // TODO: Handle PSK
+      final salt = Uint8List(hashLen); // 0-filled
+      final earlySecret = secureHMAC(salt, Uint8List(hashLen), hashName); 
+      
+      // Derive Handshake Secret
+      final derivedSecret = derive_secret(
+          earlySecret, 
+          Uint8List.fromList('derived'.codeUnits), 
+          null, 
+          hashName
+      );
+      
+      final handshakeSecret = secureHMAC(derivedSecret, sharedSecret, hashName);
+      
+      // Calculate Client/Server Handshake Traffic Secrets
+      final helloHash = handshakeHashes.digest(hashName);
+      
+      final clientHandshakeTrafficSecret = HKDF_expand_label(
+          handshakeSecret,
+          Uint8List.fromList('c hs traffic'.codeUnits),
+          helloHash,
+          hashLen,
+          hashName
+      );
+      
+      final serverHandshakeTrafficSecret = HKDF_expand_label(
+          handshakeSecret,
+          Uint8List.fromList('s hs traffic'.codeUnits),
+          helloHash,
+          hashLen,
+          hashName
+      );
+      
+      // Store secrets in session
+      session.clHandshakeSecret = clientHandshakeTrafficSecret;
+      session.srHandshakeSecret = serverHandshakeTrafficSecret;
+      
+      // Switch to Handshake Keys
+      calcTLS1_3PendingState(
+          session.cipherSuite,
+          clientHandshakeTrafficSecret,
+          serverHandshakeTrafficSecret,
+          null
+      );
+      changeReadState();
+      changeWriteState();
+      
+      // Receive EncryptedExtensions
+      final encExtMsg = await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.encryptedExtensions]);
+      if (encExtMsg is TlsEncryptedExtensions) {
+          // TODO: Process ALPN, etc.
+      } else {
+          await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+          throw TLSUnexpectedMessage('Expected EncryptedExtensions, got ${encExtMsg.handshakeType.name}');
+      }
+
+      // Receive CertificateRequest (Optional) or Certificate
+      var message = await recvHandshakeMessage(allowedTypes: [
+          TlsHandshakeType.certificateRequest,
+          TlsHandshakeType.certificate
+      ]);
+
+      if (message is TlsCertificateRequest) {
+          // TODO: Handle CertificateRequest (Client Auth)
+          message = await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.certificate]);
+      }
+
+      if (message is! TlsCertificate) {
+          await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+          throw TLSUnexpectedMessage('Expected Certificate, got ${message.handshakeType.name}');
+      }
+      
+      // Parse Certificate Chain
+      final certs = <X509>[];
+      for (final entry in message.certificateEntries) {
+          final x509 = X509();
+          x509.parseBinary(entry.certificate);
+          certs.add(x509);
+      }
+      session.serverCertChain = X509CertChain(certs);
+      
+      // Receive CertificateVerify
+      final certVerifyMsg = await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.certificateVerify]);
+      if (certVerifyMsg is! TlsCertificateVerify) {
+          await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+          throw TLSUnexpectedMessage('Expected CertificateVerify, got ${certVerifyMsg.handshakeType.name}');
+      }
+      
+      final pubKey = session.serverCertChain!.getEndEntityPublicKey();
+      String keyType;
+      if (pubKey is RSAKey) {
+          keyType = 'rsa';
+      } else {
+          // TODO: Support ECDSA
+          throw UnimplementedError('Only RSA keys are supported for now');
+      }
+
+      // Verify Signature
+      final verifyBytes = buildCertificateVerifyBytes(
+          signatureScheme: certVerifyMsg.signatureScheme!,
+          peerTag: 'server',
+          keyType: keyType,
+      );
+      
+      final schemeName = SignatureScheme.toRepr(certVerifyMsg.signatureScheme!);
+      if (schemeName == null) {
+          throw TLSHandshakeFailure('Unknown signature scheme: ${certVerifyMsg.signatureScheme}');
+      }
+
+      String padding;
+      String hash;
+      int? saltLen;
+
+      if (schemeName.startsWith('rsa_pss')) {
+          padding = 'pss';
+          if (schemeName.endsWith('sha256')) {
+              hash = 'sha256';
+              saltLen = 32;
+          } else if (schemeName.endsWith('sha384')) {
+              hash = 'sha384';
+              saltLen = 48;
+          } else if (schemeName.endsWith('sha512')) {
+              hash = 'sha512';
+              saltLen = 64;
+          } else {
+              throw TLSHandshakeFailure('Unsupported hash for PSS: $schemeName');
+          }
+      } else if (schemeName.startsWith('rsa_pkcs1')) {
+          padding = 'pkcs1';
+          if (schemeName.endsWith('sha256')) hash = 'sha256';
+          else if (schemeName.endsWith('sha384')) hash = 'sha384';
+          else if (schemeName.endsWith('sha512')) hash = 'sha512';
+          else if (schemeName.endsWith('sha1')) hash = 'sha1';
+          else throw TLSHandshakeFailure('Unsupported hash for PKCS1: $schemeName');
+      } else {
+           throw TLSHandshakeFailure('Mismatch between key type (RSA) and signature scheme: $schemeName');
+      }
+
+      if (!pubKey.verify(certVerifyMsg.signature, verifyBytes, padding: padding, hashAlg: hash, saltLen: saltLen ?? 0)) {
+           await _sendAlert(AlertLevel.fatal, AlertDescription.decrypt_error);
+           throw TLSHandshakeFailure('Invalid signature');
+      }
+      
+      // Receive Finished
+      final finishedMsg = await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.finished]);
+      if (finishedMsg is! TlsFinished) {
+          await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+          throw TLSUnexpectedMessage('Expected Finished, got ${finishedMsg.handshakeType.name}');
+      }
+      
+      // Verify Finished
+      final expectedVerifyData = buildFinishedVerifyData(forClient: false);
+      if (!_bytesEqual(finishedMsg.verifyData, expectedVerifyData)) {
+          await _sendAlert(AlertLevel.fatal, AlertDescription.decrypt_error);
+          throw TLSHandshakeFailure('Finished verification failed');
+      }
+      
+      // Send Finished
+      final verifyData = buildFinishedVerifyData(forClient: true);
+      await sendHandshakeMessage(TlsFinished(verifyData: verifyData));
+      
+      // Derive Application Traffic Secrets
+      final derivedSecret2 = derive_secret(
+          handshakeSecret, 
+          Uint8List.fromList('derived'.codeUnits), 
+          null, 
+          hashName
+      );
+      
+      final masterSecret = secureHMAC(derivedSecret2, Uint8List(hashLen), hashName); // 0-filled
+      session.masterSecret = masterSecret;
+      
+      final handshakeHash = handshakeHashes.digest(hashName);
+      
+      final clientAppTrafficSecret = HKDF_expand_label(
+          masterSecret,
+          Uint8List.fromList('c ap traffic'.codeUnits),
+          handshakeHash,
+          hashLen,
+          hashName
+      );
+      
+      final serverAppTrafficSecret = HKDF_expand_label(
+          masterSecret,
+          Uint8List.fromList('s ap traffic'.codeUnits),
+          handshakeHash,
+          hashLen,
+          hashName
+      );
+      
+      session.clAppSecret = clientAppTrafficSecret;
+      session.srAppSecret = serverAppTrafficSecret;
+      
+      // Switch to Application Keys
+      calcTLS1_3PendingState(
+          session.cipherSuite,
+          clientAppTrafficSecret,
+          serverAppTrafficSecret,
+          null
+      );
+      changeReadState();
+      changeWriteState();
+      
+      handshakeEstablished = true;
+  }
+
+  Future<void> handshakeServer({
+    HandshakeSettings? settings,
+    Session? session,
+    dynamic verifierDB,
+    X509CertChain? certChain,
+    dynamic privateKey,
+    bool reqCert = false,
+    List<String>? nextProtos,
+    List<String>? alpn,
+  }) async {
+    client = false;
+    handshakeSettings = settings ?? HandshakeSettings();
+    this.session = session ?? Session();
+    
+    // Receive ClientHello
+    final message = await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.clientHello]);
+    if (message is! TlsClientHello) {
+        await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+        throw TLSUnexpectedMessage('Expected ClientHello, got ${message.handshakeType.name}');
+    }
+    
+    // Process ClientHello
+    // TODO: Select version, cipher suite, extensions
+    // For now, we just assume TLS 1.3 if supported, else TLS 1.2
+    
+    // Check for TLS 1.3 support
+    final supportedVersionsExt = message.extensions?.byType(ExtensionType.supported_versions);
+    TlsProtocolVersion? negotiatedVersion;
+    
+    if (supportedVersionsExt is TlsSupportedVersionsExtension) {
+        // TLS 1.3 negotiation
+        for (final v in supportedVersionsExt.supportedVersions) {
+            if (v == const TlsProtocolVersion(3, 4)) {
+                negotiatedVersion = v;
+                break;
+            }
+        }
+    }
+    
+    if (negotiatedVersion == null) {
+        // TLS 1.2 negotiation
+        if (message.clientVersion >= const TlsProtocolVersion(3, 3)) {
+            negotiatedVersion = const TlsProtocolVersion(3, 3);
+        } else {
+             // TODO: Handle older versions
+             negotiatedVersion = message.clientVersion;
+        }
+    }
+    
+    version = negotiatedVersion;
+    
+    if (_isTls13Plus()) {
+        await _serverHandshake13(message, certChain, privateKey);
+    } else {
+        await _serverHandshake12(message, certChain, privateKey);
+    }
+  }
+  
+  Future<void> _serverHandshake13(TlsClientHello clientHello, X509CertChain? certChain, dynamic privateKey) async {
+      if (certChain == null || privateKey == null) {
+          await _sendAlert(AlertLevel.fatal, AlertDescription.internal_error);
+          throw TLSHandshakeFailure('Server certificate and private key required');
+      }
+      session.serverCertChain = certChain;
+      
+      // 1. Select Cipher Suite
+      final supportedSuites = CipherSuite.getTLS13Suites(handshakeSettings);
+      int? selectedSuite;
+      for (final suite in clientHello.cipherSuites) {
+          if (supportedSuites.contains(suite)) {
+              selectedSuite = suite;
+              break;
+          }
+      }
+      if (selectedSuite == null) {
+          await _sendAlert(AlertLevel.fatal, AlertDescription.handshake_failure);
+          throw TLSHandshakeFailure('No shared cipher suites');
+      }
+      session.cipherSuite = selectedSuite;
+      
+      // 2. Process Key Share
+      final keyShareExt = clientHello.extensions?.byType(ExtensionType.key_share);
+      if (keyShareExt is! TlsKeyShareExtension) {
+           await _sendAlert(AlertLevel.fatal, AlertDescription.missing_extension);
+           throw TLSHandshakeFailure('Missing KeyShare extension');
+      }
+      
+      TlsKeyShareEntry? serverShare;
+      Uint8List? sharedSecret;
+      
+      // Try to find a match in client's shares
+      for (final share in keyShareExt.clientShares) {
+          if (share.group == GroupName.x25519) {
+               final kex = ECDHKeyExchange(GroupName.x25519, (3, 4));
+               final serverPrivateKey = kex.getRandomPrivateKey();
+               final pubKey = kex.calcPublicValue(serverPrivateKey);
+               serverShare = TlsKeyShareEntry(group: GroupName.x25519, keyExchange: pubKey);
+               sharedSecret = kex.calcSharedKey(serverPrivateKey, share.keyExchange);
+               break;
+          }
+      }
+      
+      if (serverShare == null) {
+           await _sendAlert(AlertLevel.fatal, AlertDescription.handshake_failure);
+           throw TLSHandshakeFailure('No supported key share (only X25519 supported for now)');
+      }
+      
+      serverRandom = getRandomBytes(32);
+      
+      // 3. Send ServerHello
+      final extensions = <TlsExtension>[];
+      extensions.add(TlsSupportedVersionsExtension.server(const TlsProtocolVersion(3, 4)));
+      extensions.add(TlsKeyShareExtension.server(serverShare));
+      
+      final serverHello = TlsServerHello(
+          serverVersion: const TlsProtocolVersion(3, 3),
+          random: serverRandom,
+          sessionId: clientHello.sessionId,
+          cipherSuite: selectedSuite,
+          compressionMethod: 0,
+          extensions: TlsExtensionBlock(extensions: extensions),
+      );
+      
+      await sendHandshakeMessage(serverHello);
+      
+      // 4. Key Derivation
+      final hashName = _prfHashName();
+      final hashLen = hashName == 'sha384' ? 48 : 32;
+      
+      final salt = Uint8List(hashLen); // 0-filled
+      final earlySecret = secureHMAC(salt, Uint8List(hashLen), hashName); 
+      
+      final derivedSecret = derive_secret(
+          earlySecret, 
+          Uint8List.fromList('derived'.codeUnits), 
+          null, 
+          hashName
+      );
+      
+      final handshakeSecret = secureHMAC(derivedSecret, sharedSecret!, hashName);
+      
+      final helloHash = handshakeHashes.digest(hashName);
+      
+      final clientHandshakeTrafficSecret = HKDF_expand_label(
+          handshakeSecret,
+          Uint8List.fromList('c hs traffic'.codeUnits),
+          helloHash,
+          hashLen,
+          hashName
+      );
+      
+      final serverHandshakeTrafficSecret = HKDF_expand_label(
+          handshakeSecret,
+          Uint8List.fromList('s hs traffic'.codeUnits),
+          helloHash,
+          hashLen,
+          hashName
+      );
+      
+      session.clHandshakeSecret = clientHandshakeTrafficSecret;
+      session.srHandshakeSecret = serverHandshakeTrafficSecret;
+      
+      // Switch to Handshake Keys
+      calcTLS1_3PendingState(
+          session.cipherSuite,
+          clientHandshakeTrafficSecret,
+          serverHandshakeTrafficSecret,
+          null
+      );
+      changeReadState();
+      changeWriteState();
+      
+      // 5. Send EncryptedExtensions
+      final encExtensions = <TlsExtension>[];
+      await sendHandshakeMessage(TlsEncryptedExtensions(extensions: TlsExtensionBlock(extensions: encExtensions)));
+      
+      // 6. Send Certificate
+      final certEntries = <TlsCertificateEntry>[];
+      for (final x509 in certChain.x509List) {
+          certEntries.add(TlsCertificateEntry(certificate: x509.bytes, extensions: null));
+      }
+      await sendHandshakeMessage(TlsCertificate.tls13(certificateEntries: certEntries, certificateRequestContext: Uint8List(0)));
+      
+      // 7. Send CertificateVerify
+      final sigAlgsExt = clientHello.extensions?.byType(ExtensionType.signature_algorithms);
+      int? selectedScheme;
+      if (sigAlgsExt is TlsSignatureAlgorithmsExtension) {
+          if (privateKey is RSAKey) {
+              if (sigAlgsExt.signatureSchemes.contains(SignatureScheme.rsa_pss_rsae_sha256.value)) {
+                  selectedScheme = SignatureScheme.rsa_pss_rsae_sha256.value;
+              } else if (sigAlgsExt.signatureSchemes.contains(SignatureScheme.rsa_pss_rsae_sha384.value)) {
+                  selectedScheme = SignatureScheme.rsa_pss_rsae_sha384.value;
+              } else if (sigAlgsExt.signatureSchemes.contains(SignatureScheme.rsa_pkcs1_sha256.value)) {
+                  selectedScheme = SignatureScheme.rsa_pkcs1_sha256.value;
+              }
+          }
+      }
+      
+      if (selectedScheme == null) {
+           if (privateKey is RSAKey) {
+               selectedScheme = SignatureScheme.rsa_pss_rsae_sha256.value;
+           } else {
+               throw UnimplementedError('Only RSA keys supported for now');
+           }
+      }
+      
+      final verifyBytes = buildCertificateVerifyBytes(
+          signatureScheme: selectedScheme,
+          peerTag: 'server',
+          keyType: 'rsa',
+      );
+      
+      Uint8List signature;
+      if (privateKey is RSAKey) {
+          final schemeName = SignatureScheme.toRepr(selectedScheme);
+          String padding = 'pss';
+          String hash = 'sha256';
+          int saltLen = 32;
+          
+          if (schemeName!.startsWith('rsa_pkcs1')) {
+              padding = 'pkcs1';
+              if (schemeName.endsWith('sha256')) hash = 'sha256';
+              else if (schemeName.endsWith('sha384')) hash = 'sha384';
+              else if (schemeName.endsWith('sha512')) hash = 'sha512';
+              else if (schemeName.endsWith('sha1')) hash = 'sha1';
+          } else if (schemeName.startsWith('rsa_pss')) {
+              padding = 'pss';
+              if (schemeName.endsWith('sha256')) { hash = 'sha256'; saltLen = 32; }
+              else if (schemeName.endsWith('sha384')) { hash = 'sha384'; saltLen = 48; }
+              else if (schemeName.endsWith('sha512')) { hash = 'sha512'; saltLen = 64; }
+          }
+          
+          signature = privateKey.sign(verifyBytes, padding: padding, hashAlg: hash, saltLen: saltLen);
+      } else {
+          throw UnimplementedError('Only RSA signing supported');
+      }
+      
+      await sendHandshakeMessage(TlsCertificateVerify(
+          version: const TlsProtocolVersion(3, 4),
+          signatureScheme: selectedScheme, 
+          signature: signature
+      ));
+      
+      // 8. Send Finished
+      final verifyData = buildFinishedVerifyData(forClient: false);
+      await sendHandshakeMessage(TlsFinished(verifyData: verifyData));
+      
+      // 9. Derive Application Keys
+      final derivedSecret2 = derive_secret(
+          handshakeSecret, 
+          Uint8List.fromList('derived'.codeUnits), 
+          null, 
+          hashName
+      );
+      
+      final masterSecret = secureHMAC(derivedSecret2, Uint8List(hashLen), hashName);
+      session.masterSecret = masterSecret;
+      
+      final handshakeHash = handshakeHashes.digest(hashName);
+      
+      final clientAppTrafficSecret = HKDF_expand_label(
+          masterSecret,
+          Uint8List.fromList('c ap traffic'.codeUnits),
+          handshakeHash,
+          hashLen,
+          hashName
+      );
+      
+      final serverAppTrafficSecret = HKDF_expand_label(
+          masterSecret,
+          Uint8List.fromList('s ap traffic'.codeUnits),
+          handshakeHash,
+          hashLen,
+          hashName
+      );
+      
+      session.clAppSecret = clientAppTrafficSecret;
+      session.srAppSecret = serverAppTrafficSecret;
+      
+      // Switch to Application Keys
+      calcTLS1_3PendingState(
+          session.cipherSuite,
+          clientAppTrafficSecret,
+          serverAppTrafficSecret,
+          null
+      );
+      changeReadState();
+      changeWriteState();
+      
+      // 10. Receive Finished
+      final finishedMsg = await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.finished]);
+      if (finishedMsg is! TlsFinished) {
+          await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+          throw TLSUnexpectedMessage('Expected Finished');
+      }
+      
+      final expectedVerifyData = buildFinishedVerifyData(forClient: true);
+      if (!_bytesEqual(finishedMsg.verifyData, expectedVerifyData)) {
+          await _sendAlert(AlertLevel.fatal, AlertDescription.decrypt_error);
+          throw TLSHandshakeFailure('Finished verification failed');
+      }
+      
+      handshakeEstablished = true;
+  }
+  
+  Future<void> _serverHandshake12(TlsClientHello clientHello, X509CertChain? certChain, dynamic privateKey) async {
+      // TODO: Implement TLS 1.2 server handshake
+      throw UnimplementedError('TLS 1.2 server handshake not implemented');
+  }
+
+  Future<void> _clientSendClientHello(
+    HandshakeSettings settings,
+    Session session,
+    String srpUsername,
+    dynamic srpParams,
+    Keypair? certParams,
+    dynamic anonParams,
+    String serverName,
+    List<String> nextProtos,
+    bool reqTack,
+    List<String> alpn,
+  ) async {
+    // Initialize acceptable ciphersuites
+    var cipherSuites = <int>[CipherSuite.TLS_EMPTY_RENEGOTIATION_INFO_SCSV];
+    if (srpParams != null) {
+      cipherSuites.addAll(CipherSuite.getSrpAllSuites(settings));
+    } else if (certParams != null) {
+      cipherSuites.addAll(CipherSuite.getTLS13Suites(settings));
+      cipherSuites.addAll(CipherSuite.getEcdsaSuites(settings));
+      cipherSuites.addAll(CipherSuite.getEcdheCertSuites(settings));
+      cipherSuites.addAll(CipherSuite.getDheCertSuites(settings));
+      cipherSuites.addAll(CipherSuite.getCertSuites(settings));
+      cipherSuites.addAll(CipherSuite.getDheDsaSuites(settings));
+    } else if (anonParams != null) {
+      cipherSuites.addAll(CipherSuite.getEcdhAnonSuites(settings));
+      cipherSuites.addAll(CipherSuite.getAnonSuites(settings));
+    } else {
+      throw ArgumentError('No authentication parameters provided');
+    }
+
+    if (settings.sendFallbackSCSV) {
+      cipherSuites.add(CipherSuite.TLS_FALLBACK_SCSV);
+    }
+
+    final extensions = <TlsExtension>[];
+
+    if (settings.useEncryptThenMAC) {
+      extensions.add(const TlsEncryptThenMacExtension());
+    }
+    if (settings.useExtendedMasterSecret) {
+      extensions.add(const TlsExtendedMasterSecretExtension());
+    }
+
+    bool isGreaterOrEqual((int, int) v1, (int, int) v2) =>
+        v1.$1 > v2.$1 || (v1.$1 == v2.$1 && v1.$2 >= v2.$2);
+    bool isLessOrEqual((int, int) v1, (int, int) v2) =>
+        v1.$1 < v2.$1 || (v1.$1 == v2.$1 && v1.$2 <= v2.$2);
+
+    // Signature Algorithms
+    if (isGreaterOrEqual(settings.maxVersion, (3, 3))) {
+      final sigList = <int>[];
+      if (isGreaterOrEqual(settings.maxVersion, (3, 4)) &&
+          isLessOrEqual(settings.minVersion, (3, 4))) {
+        sigList.addAll(_sigHashesToList(settings,
+            version: const TlsProtocolVersion(3, 4)));
+      }
+      if (isGreaterOrEqual(settings.maxVersion, (3, 3)) &&
+          isLessOrEqual(settings.minVersion, (3, 3))) {
+        final tls12List = _sigHashesToList(settings,
+            version: const TlsProtocolVersion(3, 3));
+        for (final sig in tls12List) {
+          if (!sigList.contains(sig)) {
+            sigList.add(sig);
+          }
+        }
+      }
+      if (sigList.isNotEmpty) {
+        extensions
+            .add(TlsSignatureAlgorithmsExtension(signatureSchemes: sigList));
+      }
+    }
+
+    if (alpn.isNotEmpty) {
+      extensions.add(TlsAlpnExtension(protocols: alpn));
+    }
+
+    var sessionId = Uint8List(0);
+    List<TlsKeyShareEntry>? shares;
+
+    // TLS 1.3 logic
+    if (settings.versions.any((v) => v.$1 == 3 && v.$2 == 4)) {
+      if (certParams != null) {
+        extensions.add(const TlsPostHandshakeAuthExtension());
+      }
+      sessionId = getRandomBytes(32); // Middlebox compat
+
+      final supportedVersions = settings.versions
+          .map((v) => TlsProtocolVersion(v.$1, v.$2))
+          .toList();
+      extensions.add(
+          TlsSupportedVersionsExtension.client(supportedVersions));
+
+      shares = <TlsKeyShareEntry>[];
+      for (final groupName in settings.keyShares) {
+        final groupId = GroupName.valueOf(groupName);
+        if (groupId != null) {
+          final share = _genKeyShareEntry(groupId);
+          shares.add(share);
+        }
+      }
+      extensions.add(TlsKeyShareExtension.client(shares));
+
+      final pskModes = <int>[];
+      for (final mode in settings.pskModes) {
+        if (mode == 'psk_ke') {
+          pskModes.add(PskKeyExchangeMode.psk_ke);
+        } else if (mode == 'psk_dhe_ke') {
+          pskModes.add(PskKeyExchangeMode.psk_dhe_ke);
+        }
+      }
+      extensions.add(TlsPskKeyExchangeModesExtension(modes: pskModes));
+    }
+
+    // Supported Groups
+    final groups = <int>[];
+    if (cipherSuites.any((c) =>
+        CipherSuite.ecdhAllSuites.contains(c) ||
+        CipherSuite.tls13Suites.contains(c))) {
+      groups.addAll(_curveNamesToList(settings));
+      if (settings.ecPointFormats.isNotEmpty) {
+        extensions.add(
+            TlsEcPointFormatsExtension(formats: settings.ecPointFormats));
+      }
+    }
+    if (cipherSuites.any((c) => CipherSuite.dhAllSuites.contains(c))) {
+      groups.addAll(_groupNamesToList(settings));
+    }
+    if (groups.isNotEmpty) {
+      if (shares != null) {
+        final shareIds = shares.map((s) => s.group).toSet();
+        final newGroups = shares.map((s) => s.group).toList();
+        for (final g in groups) {
+          if (!shareIds.contains(g)) {
+            newGroups.add(g);
+          }
+        }
+        extensions.add(TlsSupportedGroupsExtension(groups: newGroups));
+      } else {
+        extensions.add(TlsSupportedGroupsExtension(groups: groups));
+      }
+    }
+
+    if (settings.use_heartbeat_extension) {
+      extensions.add(
+          TlsHeartbeatExtension(mode: HeartbeatMode.PEER_ALLOWED_TO_SEND));
+      heartbeatCanReceive = true;
+    }
+
+    if (settings.record_size_limit > 0) {
+      extensions.add(TlsRecordSizeLimitExtension(
+          recordSizeLimit: settings.record_size_limit));
+    }
+
+    // Session Ticket (TLS 1.2)
+    if (session.tls10Tickets != null && session.tls10Tickets!.isNotEmpty) {
+      session.tls10Tickets =
+          session.tls10Tickets!.where((t) => t.valid()).toList();
+      for (final ticket in session.tls10Tickets!) {
+        extensions.add(TlsSessionTicketExtension(ticket: ticket.ticket));
+      }
+    } else {
+      extensions.add(TlsSessionTicketExtension(ticket: Uint8List(0)));
+    }
+
+    // PSK (TLS 1.3)
+    if (settings.pskConfigs.isNotEmpty || session.tls13Tickets.isNotEmpty) {
+      final identities = <TlsPskIdentity>[];
+      for (final config in settings.pskConfigs) {
+        identities.add(TlsPskIdentity(
+            identity: config.identity, obfuscatedTicketAge: 0));
+      }
+      for (final ticket in session.tls13Tickets) {
+        identities.add(
+            TlsPskIdentity(identity: ticket.ticket, obfuscatedTicketAge: 0));
+      }
+
+      final binders =
+          List<Uint8List>.filled(identities.length, Uint8List(32));
+      extensions.add(
+          TlsPreSharedKeyExtension(identities: identities, binders: binders));
+    }
+
+    final clientHello = TlsClientHello(
+      clientVersion: const TlsProtocolVersion(3, 3),
+      random: getRandomBytes(32),
+      sessionId: sessionId,
+      cipherSuites: cipherSuites,
+      compressionMethods: [0],
+      extensions: TlsExtensionBlock(extensions: extensions),
+    );
+    clientRandom = clientHello.random;
+    _clientHelloMsg = clientHello;
+
+    await sendHandshakeMessage(clientHello);
+  }
+
+  List<int> _sigHashesToList(HandshakeSettings settings,
+      {required TlsProtocolVersion version}) {
+    final schemes = <int>[];
+    if (version >= const TlsProtocolVersion(3, 4)) {
+      for (final schemeName in settings.moreSigSchemes) {
+        final val = SignatureScheme.valueOf(schemeName);
+        if (val != null) schemes.add(val);
+      }
+      for (final hashName in settings.ecdsaSigHashes) {
+        if (hashName == 'sha1' || hashName == 'sha224') continue;
+        if (hashName == 'sha256') {
+          schemes.add(SignatureScheme.ecdsa_secp256r1_sha256.value);
+        } else if (hashName == 'sha384') {
+          schemes.add(SignatureScheme.ecdsa_secp384r1_sha384.value);
+        } else if (hashName == 'sha512') {
+          schemes.add(SignatureScheme.ecdsa_secp521r1_sha512.value);
+        }
+      }
+      for (final hashName in settings.rsaSigHashes) {
+        if (hashName == 'sha1' || hashName == 'sha224') continue;
+        final schemeName = 'rsa_pss_rsae_$hashName';
+        final val = SignatureScheme.valueOf(schemeName);
+        if (val != null) schemes.add(val);
+      }
+    } else {
+      // TLS 1.2
+      // ... (Simplified for now)
+    }
+    return schemes;
+  }
+
+  List<int> _curveNamesToList(HandshakeSettings settings) {
+    final curves = <int>[];
+    for (final name in settings.eccCurves) {
+      final val = GroupName.valueOf(name);
+      if (val != null) curves.add(val);
+    }
+    return curves;
+  }
+
+  List<int> _groupNamesToList(HandshakeSettings settings) {
+    final groups = <int>[];
+    for (final name in settings.dhGroups) {
+      final val = GroupName.valueOf(name);
+      if (val != null) groups.add(val);
+    }
+    return groups;
+  }
+
+  TlsKeyShareEntry _genKeyShareEntry(int groupId) {
+    if (GroupName.allKEM.contains(groupId)) {
+      final kem = KEMKeyExchange(groupId);
+      final privateKey = kem.getRandomPrivateKey();
+      final publicKey = kem.calcPublicValue(privateKey);
+      _clientKeyShares[groupId] = privateKey;
+      return TlsKeyShareEntry(group: groupId, keyExchange: publicKey);
+    } else {
+      // ECDH
+      final kex = ECDHKeyExchange(groupId, (3, 4)); // Version 3.4 for TLS 1.3
+      final privateKey = kex.getRandomPrivateKey();
+      final publicKey = kex.calcPublicValue(privateKey);
+      _clientKeyShares[groupId] = privateKey;
+      return TlsKeyShareEntry(group: groupId, keyExchange: publicKey);
+    }
+  }
 
   void _prepareHandshakeForSend(TlsHandshakeMessage message) {
     if (message is TlsClientHello) {

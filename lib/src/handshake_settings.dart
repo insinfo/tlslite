@@ -52,7 +52,7 @@ class PskConfig {
   final String hash;
 }
 
-const keyExchangeNames = [
+const _keyExchangeNames = [
   'ecdhe_ecdsa',
   'rsa',
   'dhe_rsa',
@@ -62,6 +62,13 @@ const keyExchangeNames = [
   'ecdh_anon',
   'dh_anon',
   'dhe_dsa',
+];
+
+const _defaultProtocolVersions = <(int, int)>[
+  (3, 4),
+  (3, 3),
+  (3, 2),
+  (3, 1),
 ];
 
 const cipherImplementations = ['openssl', 'pycrypto', 'python'];
@@ -227,8 +234,9 @@ class HandshakeSettings {
     List<String>? cipherNames,
     List<String>? macNames,
     List<String>? certificateTypes,
-    this.minVersion = const (3, 1),
-    this.maxVersion = const (3, 3),
+    (int, int)? minVersion,
+    (int, int)? maxVersion,
+    List<(int, int)>? versions,
     this.useExperimentalTackExtension = false,
     this.sendFallbackSCSV = false,
     List<String>? rsaSigHashes,
@@ -253,6 +261,10 @@ class HandshakeSettings {
     this.alpnProtos = const [],
     this.dhParams,
     List<int>? ecPointFormats,
+    List<String>? keyExchangeNames,
+    bool usePaddingExtension = true,
+    List<String>? certificateCompressionSend,
+    List<String>? certificateCompressionReceive,
     this.padding_cb,
     this.record_size_limit = 2 << 13,
     this.use_heartbeat_extension = true,
@@ -260,7 +272,9 @@ class HandshakeSettings {
     this.max_early_data = 2 << 13,
     this.heartbeatCiphersuites = const [],
     this.useLegacySignatureSchemeIDCombination = false,
-  })  : cipherNames = cipherNames ?? _cipherNames,
+  })  : minVersion = minVersion ?? const (3, 1),
+        maxVersion = maxVersion ?? const (3, 4),
+        cipherNames = cipherNames ?? _cipherNames,
         macNames = macNames ?? _macNames,
         certificateTypes = certificateTypes ?? _certificateTypes,
         rsaSigHashes = rsaSigHashes ?? rsaSignatureHashes,
@@ -270,9 +284,21 @@ class HandshakeSettings {
         rsaSchemes = rsaSchemes ?? _rsaSchemes,
         eccCurves = eccCurves ?? curveNames,
         dhGroups = dhGroups ?? allDhGroupNames,
-        supportedVersions = supportedVersions ?? knownVersions,
+        supportedVersions = List<(int, int)>.unmodifiable(
+          supportedVersions ?? versions ?? _defaultProtocolVersions,
+        ),
+        versions = List<(int, int)>.unmodifiable(
+          versions ?? supportedVersions ?? _defaultProtocolVersions,
+        ),
         pskModes = pskModes ?? _pskModes,
         ecPointFormats = ecPointFormats ?? _ecPointFormats,
+        keyExchangeNames =
+            List<String>.unmodifiable(keyExchangeNames ?? _keyExchangeNames),
+        usePaddingExtension = usePaddingExtension,
+        certificateCompressionSend = List<String>.unmodifiable(
+            certificateCompressionSend ?? allCompressionAlgosSend),
+        certificateCompressionReceive = List<String>.unmodifiable(
+            certificateCompressionReceive ?? allCompressionAlgosReceive),
         pskConfigs = List<PskConfig>.unmodifiable(
           pskConfigs ?? const <PskConfig>[]);
 
@@ -294,7 +320,7 @@ class HandshakeSettings {
   /// The minimum allowed SSL/TLS version (default: TLS 1.0)
   final (int, int) minVersion;
 
-  /// The maximum allowed SSL/TLS version (default: TLS 1.2)
+  /// The maximum allowed SSL/TLS version (default: TLS 1.3)
   final (int, int) maxVersion;
 
   /// Whether to enable TACK support (experimental)
@@ -336,6 +362,9 @@ class HandshakeSettings {
   /// List of supported TLS versions
   final List<(int, int)> supportedVersions;
 
+  /// Preferred TLS versions order to offer in ClientHello
+  final List<(int, int)> versions;
+
   /// Default curve to use for ECDHE
   final String defaultCurve;
 
@@ -368,6 +397,18 @@ class HandshakeSettings {
 
   /// EC point formats to advertise
   final List<int> ecPointFormats;
+
+  /// Enabled key exchange flavors (rsa, ecdhe_rsa, ...)
+  final List<String> keyExchangeNames;
+
+  /// Whether to send padding extension to randomize ClientHello size
+  final bool usePaddingExtension;
+
+  /// Certificate compression algorithms enabled for outbound certs
+  final List<String> certificateCompressionSend;
+
+  /// Certificate compression algorithms accepted from peers
+  final List<String> certificateCompressionReceive;
 
   /// Callback for padding records
   final dynamic padding_cb;
@@ -412,6 +453,7 @@ class HandshakeSettings {
     bool? useExtendedMasterSecret,
     bool? requireExtendedMasterSecret,
     List<(int, int)>? supportedVersions,
+    List<(int, int)>? versions,
     String? defaultCurve,
     List<String>? keyShares,
     String? ticketCipher,
@@ -423,6 +465,10 @@ class HandshakeSettings {
     List<String>? alpnProtos,
     (int, int)? dhParams,
     List<int>? ecPointFormats,
+    List<String>? keyExchangeNames,
+    bool? usePaddingExtension,
+    List<String>? certificateCompressionSend,
+    List<String>? certificateCompressionReceive,
     dynamic padding_cb,
     int? record_size_limit,
     bool? use_heartbeat_extension,
@@ -455,6 +501,7 @@ class HandshakeSettings {
       requireExtendedMasterSecret:
           requireExtendedMasterSecret ?? this.requireExtendedMasterSecret,
       supportedVersions: supportedVersions ?? this.supportedVersions,
+        versions: versions ?? this.versions,
       defaultCurve: defaultCurve ?? this.defaultCurve,
       keyShares: keyShares ?? this.keyShares,
       ticketCipher: ticketCipher ?? this.ticketCipher,
@@ -467,6 +514,12 @@ class HandshakeSettings {
       alpnProtos: alpnProtos ?? this.alpnProtos,
       dhParams: dhParams ?? this.dhParams,
       ecPointFormats: ecPointFormats ?? this.ecPointFormats,
+        keyExchangeNames: keyExchangeNames ?? this.keyExchangeNames,
+        usePaddingExtension: usePaddingExtension ?? this.usePaddingExtension,
+        certificateCompressionSend:
+          certificateCompressionSend ?? this.certificateCompressionSend,
+        certificateCompressionReceive:
+          certificateCompressionReceive ?? this.certificateCompressionReceive,
       padding_cb: padding_cb ?? this.padding_cb,
       record_size_limit: record_size_limit ?? this.record_size_limit,
       use_heartbeat_extension:
@@ -507,6 +560,20 @@ class HandshakeSettings {
       throw ArgumentError('minVersion > maxVersion');
     }
 
+    if (versions.isEmpty) {
+      throw ArgumentError('versions list cannot be empty');
+    }
+    for (final version in versions) {
+      if (!knownVersions.contains(version)) {
+        throw ArgumentError('Unknown preferred version: $version');
+      }
+    }
+    for (final version in supportedVersions) {
+      if (!knownVersions.contains(version)) {
+        throw ArgumentError('Unknown supported version: $version');
+      }
+    }
+
     // Validate cipher names
     for (final cipher in cipherNames) {
       if (!allCipherNames.contains(cipher)) {
@@ -523,7 +590,7 @@ class HandshakeSettings {
 
     // Validate certificate types
     for (final certType in certificateTypes) {
-      if (!certificateTypes.contains(certType)) {
+      if (!_certificateTypes.contains(certType)) {
         throw ArgumentError('Unknown certificate type: $certType');
       }
     }
@@ -539,6 +606,25 @@ class HandshakeSettings {
     for (final group in dhGroups) {
       if (!allDhGroupNames.contains(group)) {
         throw ArgumentError('Unknown DH group: $group');
+      }
+    }
+
+    for (final kx in keyExchangeNames) {
+      if (!_keyExchangeNames.contains(kx)) {
+        throw ArgumentError('Unknown key exchange: $kx');
+      }
+    }
+
+    for (final algo in certificateCompressionSend) {
+      if (!allCompressionAlgosSend.contains(algo)) {
+        throw ArgumentError('Unknown certificate compression (send): $algo');
+      }
+    }
+
+    for (final algo in certificateCompressionReceive) {
+      if (!allCompressionAlgosReceive.contains(algo)) {
+        throw ArgumentError(
+            'Unknown certificate compression (receive): $algo');
       }
     }
   }
