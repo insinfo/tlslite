@@ -1,9 +1,9 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import '../../../constants.dart' as tls_constants;
-import '../../../utils/codec.dart';
-import '../../../tls_protocol.dart';
+import 'constants.dart' as tls_constants;
+import 'utils/codec.dart';
+import 'tls_protocol.dart';
 
 enum TlsExtensionContext {
   clientHello,

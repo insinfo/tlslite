@@ -12,7 +12,7 @@ import 'package:tlslite/src/handshake_settings.dart';
 import 'package:tlslite/src/keyexchange.dart';
 import 'package:tlslite/src/messages.dart';
 import 'package:tlslite/src/mathtls.dart';
-import 'package:tlslite/src/net/security/pure_dart_with_ffi_socket/tls_extensions.dart';
+import 'package:tlslite/src/tls_extensions.dart';
 import 'package:tlslite/src/recordlayer.dart';
 import 'package:tlslite/src/session.dart';
 import 'package:tlslite/src/sessioncache.dart';
@@ -452,6 +452,32 @@ void main() {
       final next = await harness.connection.recvHandshakeMessage();
       expect(next.handshakeType, equals(TlsHandshakeType.helloRequest));
       expect(next, isNot(same(msg)));
+    });
+
+    test('recvHandshakeMessage converts SSLv2 ClientHello to TLS message',
+        () async {
+      final harness = await _TlsConnectionHarness.create();
+      addTearDown(() async => harness.dispose());
+
+      final conn = harness.connection;
+      conn.client = false;
+
+      final challenge = List<int>.generate(16, (index) => index);
+      final ssl2Fragment = _ssl2ClientHelloFragment(
+        version: const TlsProtocolVersion(3, 1),
+        cipherSuites: const <int>[0x002f],
+        challenge: challenge,
+      );
+      final header = RecordHeader2().create(ssl2Fragment.length, 0);
+      conn.queueRecord(header, ssl2Fragment);
+
+      final message = await conn.recvHandshakeMessage();
+      expect(message, isA<TlsClientHello>());
+      final hello = message as TlsClientHello;
+      expect(hello.clientVersion, equals(const TlsProtocolVersion(3, 1)));
+      expect(hello.cipherSuites, equals(const <int>[0x002f]));
+      expect(hello.compressionMethods, equals(const <int>[0]));
+      expect(hello.random.sublist(16), equals(challenge));
     });
 
     test('recvHandshakeMessage surfaces pending alerts', () async {
@@ -989,6 +1015,32 @@ Uint8List _handshakeFragment(List<int> body, {int handshakeType = 1}) {
   builder.add([(length >> 16) & 0xff, (length >> 8) & 0xff, length & 0xff]);
   builder.add(body);
   return builder.toBytes();
+}
+
+Uint8List _ssl2ClientHelloFragment({
+  required TlsProtocolVersion version,
+  required List<int> cipherSuites,
+  required List<int> challenge,
+  List<int>? sessionId,
+}) {
+  final cipherWriter = BytesBuilder();
+  for (final suite in cipherSuites) {
+    cipherWriter.add(<int>[0x00, (suite >> 8) & 0xff, suite & 0xff]);
+  }
+  final cipherBytes = cipherWriter.toBytes();
+  final sessionBytes = Uint8List.fromList(sessionId ?? const <int>[]);
+  final challengeBytes = Uint8List.fromList(challenge);
+
+  final writer = BytesBuilder();
+  writer.add(<int>[TlsHandshakeType.clientHello.code]);
+  writer.add(<int>[version.major, version.minor]);
+  writer.add(<int>[(cipherBytes.length >> 8) & 0xff, cipherBytes.length & 0xff]);
+  writer.add(<int>[(sessionBytes.length >> 8) & 0xff, sessionBytes.length & 0xff]);
+  writer.add(<int>[(challengeBytes.length >> 8) & 0xff, challengeBytes.length & 0xff]);
+  writer.add(cipherBytes);
+  writer.add(sessionBytes);
+  writer.add(challengeBytes);
+  return writer.toBytes();
 }
 
 RawTlsHandshakeMessage _rawHandshakeMessage(

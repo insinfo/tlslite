@@ -11,10 +11,10 @@ import 'handshake_settings.dart';
 import 'keyexchange.dart';
 import 'messages.dart';
 import 'messagesocket.dart';
-import 'net/security/pure_dart_with_ffi_socket/dart_tls_types.dart'
+import 'tls_types.dart'
     show PureDartTlsMode;
-import 'net/security/pure_dart_with_ffi_socket/tls_extensions.dart';
-import 'net/security/pure_dart_with_ffi_socket/tls_handshake_state.dart';
+import 'tls_extensions.dart';
+import 'tls_handshake_state.dart';
 import 'recordlayer.dart';
 import 'session.dart';
 import 'sessioncache.dart';
@@ -237,8 +237,12 @@ class TlsConnection extends MessageSocket {
       if (fragment.isEmpty) {
         continue;
       }
-      final parsed = TlsHandshakeMessage.parseFragment(fragment,
-          recordVersion: recordVersion);
+        final parsed = header is RecordHeader2
+          ? _parseSsl2HandshakeFragment(fragment)
+          : TlsHandshakeMessage.parseFragment(
+            fragment,
+            recordVersion: recordVersion,
+          );
       if (parsed.isEmpty) {
         continue;
       }
@@ -266,9 +270,26 @@ class TlsConnection extends MessageSocket {
       return header.version;
     }
     if (header is RecordHeader2) {
-      throw TLSUnsupportedError('SSLv2 handshake parsing not implemented');
+      return header.version;
     }
     return version;
+  }
+
+  List<TlsHandshakeMessage> _parseSsl2HandshakeFragment(Uint8List fragment) {
+    if (fragment.isEmpty) {
+      throw TLSDecodeError('SSLv2 handshake fragment truncated');
+    }
+    final parser = Parser(fragment);
+    final typeByte = parser.get(1);
+    final handshakeType = TlsHandshakeType.fromByte(typeByte);
+    if (handshakeType != TlsHandshakeType.clientHello) {
+      throw TLSUnexpectedMessage(
+        'SSLv2 handshake ${handshakeType.name} is not supported',
+      );
+    }
+    final body = parser.getFixBytes(parser.getRemainingLength());
+    final clientHello = TlsClientHello.parseSsl2(body);
+    return <TlsHandshakeMessage>[clientHello];
   }
 
   Future<void> _processNonHandshakeRecord(dynamic header, Parser parser) async {

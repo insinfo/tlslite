@@ -1,18 +1,18 @@
 import 'dart:typed_data';
 
 import '../../socket/socket_native_ffi.dart';
-import 'dart_tls_engine.dart';
-import 'dart_tls_types.dart';
+import 'tls_engine_with_ffi_socket.dart';
+import '../../../tls_types.dart';
 import '../secure_transport.dart';
 
-/// Implementação inicial de um provider TLS totalmente em Dart.
+/// Implementação inicial de um provider TLS totalmente em Dart que usa o SocketNative com FFI
 ///
 /// // TODO(tlslite-ng): conectar esta classe às camadas portadas de
 /// `tlslite-ng` (record layer, mensagens e verificação de certificados).
-class SecureSocketPureDart
+class SecureSocketPureDartFFI
     with SecureTransportDelegates
     implements SecureTransport {
-  SecureSocketPureDart._({
+  SecureSocketPureDartFFI._({
     required RawTransport transport,
     required PureDartTlsMode mode,
     required bool ownsDataPath,
@@ -21,40 +21,40 @@ class SecureSocketPureDart
         _mode = mode,
         _ownsDataPath = ownsDataPath,
         _config = config,
-        _engine = PureDartTlsEngine(mode: mode, config: config);
+        _engine = PureDartTlsEngineFFI(mode: mode, config: config);
 
   final RawTransport _transport;
   final PureDartTlsMode _mode;
   final bool _ownsDataPath;
   final PureDartTlsConfig? _config;
-  final PureDartTlsEngine _engine;
+  final PureDartTlsEngineFFI _engine;
 
-  factory SecureSocketPureDart.client(int family, int type, int protocol) =>
-      SecureSocketPureDart._(
+  factory SecureSocketPureDartFFI.client(int family, int type, int protocol) =>
+      SecureSocketPureDartFFI._(
         transport: SocketNative(family, type, protocol),
         mode: PureDartTlsMode.client,
         ownsDataPath: true,
       );
 
-  factory SecureSocketPureDart.server(
+  factory SecureSocketPureDartFFI.server(
     int family,
     int type,
     int protocol,
     PureDartTlsConfig config,
   ) =>
-      SecureSocketPureDart._(
+      SecureSocketPureDartFFI._(
         transport: SocketNative(family, type, protocol),
         mode: PureDartTlsMode.server,
         ownsDataPath: false,
         config: config,
       );
 
-  factory SecureSocketPureDart.fromTransport(
+  factory SecureSocketPureDartFFI.fromTransport(
     RawTransport transport, {
     PureDartTlsMode mode = PureDartTlsMode.client,
     PureDartTlsConfig? config,
   }) =>
-      SecureSocketPureDart._(
+      SecureSocketPureDartFFI._(
         transport: transport,
         mode: mode,
         ownsDataPath: true,
@@ -89,7 +89,7 @@ class SecureSocketPureDart
     if (!_isServer || _config == null) {
       return child;
     }
-    return SecureSocketPureDart._(
+    return SecureSocketPureDartFFI._(
       transport: child,
       mode: PureDartTlsMode.server,
       ownsDataPath: true,

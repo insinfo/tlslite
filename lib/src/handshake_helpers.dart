@@ -8,7 +8,7 @@ import 'constants.dart';
 import 'errors.dart';
 import 'handshake_settings.dart';
 import 'messages.dart';
-import 'net/security/pure_dart_with_ffi_socket/tls_extensions.dart';
+import 'tls_extensions.dart';
 import 'utils/codec.dart';
 import 'utils/constanttime.dart';
 import 'utils/cryptomath.dart';

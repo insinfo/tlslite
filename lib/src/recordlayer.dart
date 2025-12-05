@@ -906,11 +906,14 @@ class RecordLayer {
 class RecordHeader2 {
   int length = 0;
   int padding = 0;
-  int type = 0;
+  int type = ContentType.handshake;
+  TlsProtocolVersion version = const TlsProtocolVersion(2, 0);
 
   RecordHeader2 create(int length, int padding) {
     this.length = length;
     this.padding = padding;
+    type = ContentType.handshake;
+    version = const TlsProtocolVersion(2, 0);
     return this;
   }
 
@@ -923,6 +926,8 @@ class RecordHeader2 {
       length = ((firstByte & 0x3f) << 8) | parser.get(1);
       padding = parser.get(1);
     }
+    type = ContentType.handshake;
+    version = const TlsProtocolVersion(2, 0);
     return this;
   }
 

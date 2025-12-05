@@ -1,31 +1,31 @@
 import 'dart:typed_data';
-import 'package:tlslite/src/net/security/pure_dart_with_ffi_socket/tls_extensions.dart';
+import 'package:tlslite/src/tls_extensions.dart';
 import 'package:tlslite/src/tls_protocol.dart';
 import '../../../constants.dart' as tls_constants;
 import '../../socket/socket_native_ffi.dart';
-import 'dart_tls_types.dart';
+import '../../../tls_types.dart';
 import '../../../handshake_parameters.dart';
-import 'tls_handshake_state.dart';
+import '../../../tls_handshake_state.dart';
 import '../../../messages.dart';
-import 'tls_record_layer.dart';
+import 'tls_record_layer_with_ffi_socket.dart';
 
-/// Controla o fluxo de handshake e registros para o engine puro Dart.
+/// Controla o fluxo de handshake e registros para o engine puro Dart que usa o SocketNative com FFI
 ///
 /// // TODO(tlslite-ng): portar `tlsconnection.py` para preencher esta classe
 /// com logica real de negociacao, cipher suites e controle de sessao.
-class PureDartTlsConnection {
-  PureDartTlsConnection({
+class PureDartTlsConnectionFFI {
+  PureDartTlsConnectionFFI({
     required this.mode,
     required PureDartTlsConfig config,
   })  : _config = config,
-        _recordLayer = PureDartRecordLayer(mode: mode),
+        _recordLayer = PureDartRecordLayerFFI(mode: mode),
         _handshakeState = PureDartTlsHandshakeStateMachine(mode: mode),
         _keyShareCoordinator = PureDartKeyShareCoordinator(mode: mode),
         _signatureNegotiator = const SignatureSchemeNegotiator();
 
   final PureDartTlsMode mode;
   final PureDartTlsConfig _config;
-  final PureDartRecordLayer _recordLayer;
+  final PureDartRecordLayerFFI _recordLayer;
   final PureDartTlsHandshakeStateMachine _handshakeState;
   final PureDartKeyShareCoordinator _keyShareCoordinator;
   final SignatureSchemeNegotiator _signatureNegotiator;

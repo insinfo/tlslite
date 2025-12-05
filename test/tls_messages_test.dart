@@ -2,8 +2,8 @@ import 'dart:typed_data';
 import 'dart:io' as io;
 import 'package:test/test.dart';
 import 'package:tlslite/src/constants.dart' as tls_constants;
-import 'package:tlslite/src/net/security/pure_dart_with_ffi_socket/dart_tls_types.dart';
-import 'package:tlslite/src/net/security/pure_dart_with_ffi_socket/tls_extensions.dart';
+import 'package:tlslite/src/tls_types.dart';
+import 'package:tlslite/src/tls_extensions.dart';
 import 'package:tlslite/src/messages.dart';
 import 'package:tlslite/src/tls_protocol.dart';
 

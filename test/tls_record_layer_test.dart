@@ -1,9 +1,9 @@
 import 'dart:typed_data';
 import 'dart:io' as io;
 import 'package:test/test.dart';
-import 'package:tlslite/src/net/security/pure_dart_with_ffi_socket/dart_tls_types.dart';
+import 'package:tlslite/src/tls_types.dart';
 
-import 'package:tlslite/src/net/security/pure_dart_with_ffi_socket/tls_record_layer.dart';
+import 'package:tlslite/src/net/security/pure_dart_with_ffi_socket/tls_record_layer_with_ffi_socket.dart';
 import 'package:tlslite/src/net/socket/socket_native_ffi.dart';
 import 'package:tlslite/src/messages.dart';
 
@@ -40,7 +40,7 @@ void main() {
     );
 
     final transport = _FakeTransport(record.serialize());
-    final layer = PureDartRecordLayer(mode: PureDartTlsMode.server)
+    final layer = PureDartRecordLayerFFI(mode: PureDartTlsMode.server)
       ..setHandshakeProtocolVersion(TlsProtocolVersion.tls13);
 
     final messages = layer.ensureHandshake(transport, config);

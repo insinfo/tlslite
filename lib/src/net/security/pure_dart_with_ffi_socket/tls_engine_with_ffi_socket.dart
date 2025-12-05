@@ -1,25 +1,25 @@
 import 'dart:typed_data';
 
 import '../../socket/socket_native_ffi.dart';
-import 'dart_tls_types.dart';
-import 'connection.dart';
+import '../../../tls_types.dart';
+import 'connection_with_ffi_socket.dart';
 
-/// Engine inicial responsável por concentrar o porte do TLS puro Dart.
+/// Engine inicial responsável por concentrar o porte do TLS puro Dart que usa o SocketNative com FFI
 ///
 /// // TODO(tlslite-ng): portar `tlslite-ng/tlslite/tlsconnection.py`,
 /// `recordlayer.py`, `messages.py` e dependências para dar suporte real
 /// ao handshake, negociação de ciphersuites e fluxo de registros.
-class PureDartTlsEngine {
-  PureDartTlsEngine({
+class PureDartTlsEngineFFI {
+  PureDartTlsEngineFFI({
     required this.mode,
     PureDartTlsConfig? config,
   }) : _config = config ?? PureDartTlsConfig() {
-    _connection = PureDartTlsConnection(mode: mode, config: _config);
+    _connection = PureDartTlsConnectionFFI(mode: mode, config: _config);
   }
 
   final PureDartTlsMode mode;
   final PureDartTlsConfig _config;
-  late final PureDartTlsConnection _connection;
+  late final PureDartTlsConnectionFFI _connection;
 
   bool get isHandshakeComplete => _connection.isHandshakeComplete;
 

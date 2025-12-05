@@ -5,12 +5,12 @@ import 'package:tlslite/src/tls_protocol.dart';
 
 import '../../socket/socket_native_ffi.dart';
 import '../../../utils/codec.dart' show DecodeError;
-import 'dart_tls_types.dart';
+import '../../../tls_types.dart';
 import '../../../messages.dart';
 
-/// Responsável por encapsular/decapsular registros TLS usando apenas Dart.
-class PureDartRecordLayer {
-  PureDartRecordLayer({required this.mode})
+/// Responsável por encapsular/decapsular registros TLS usando apenas Dart que usa o SocketNative com FFI
+class PureDartRecordLayerFFI {
+  PureDartRecordLayerFFI({required this.mode})
       : _protocolVersion = TlsProtocolVersion.tls12;
 
   static const int _maxPlaintextLength = 16 * 1024; // 2^14 bytes

@@ -87,6 +87,7 @@ dart analyze                 # análise estática
 - ✅ **NOVO**: `selectPskFromClientHello` seleciona automaticamente o PSK anunciado (externo ou TLS 1.3 ticket), valida binders e retorna `PskSelectionResult` para construção do ServerHello.
 - ✅ **NOVO**: `buildServerPreSharedKeyExtension` gera `TlsServerPreSharedKeyExtension` com índice do PSK selecionado.
 - ✅ **NOVO**: `_tryDecryptTicket` deriva PSK de tickets armazenados usando HKDF-expand-label com resumption master secret.
+- ✅ Fluxo legado SSLv2 agora converte `ClientHello` para o formato TLS nativo dentro de `_bufferHandshakeMessages`, reutilizando `TlsClientHello.parseSsl2` e cobrindo o caminho com um teste de regressão em `test/tlsconnection_test.dart`.
 - 🔜 Conectar `PskSelectionResult` ao fluxo completo de handshake para resumptions reais sem full handshake.
 
 ### Session cache

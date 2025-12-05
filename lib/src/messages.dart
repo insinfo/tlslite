@@ -4,7 +4,7 @@ import 'constants.dart' as tls_constants;
 import 'errors.dart';
 import 'utils/codec.dart';
 import 'utils/cryptomath.dart';
-import 'net/security/pure_dart_with_ffi_socket/tls_extensions.dart';
+import 'tls_extensions.dart';
 import 'tls_protocol.dart';
 
 
@@ -484,6 +484,65 @@ class TlsClientHello extends TlsHandshakeMessage {
       keyShares: keyShares,
       signatureAlgorithmsCert: signatureAlgorithmsCert,
       statusRequest: statusRequest,
+    );
+  }
+
+  static TlsClientHello parseSsl2(Uint8List body) {
+    final parser = Parser(body);
+    if (parser.getRemainingLength() < 6) {
+      throw DecodeError('SSLv2 ClientHello truncado');
+    }
+    final clientVersion = TlsProtocolVersion(parser.get(1), parser.get(1));
+    final cipherSpecsLength = parser.get(2);
+    final sessionIdLength = parser.get(2);
+    final challengeLength = parser.get(2);
+    final expectedLength =
+        cipherSpecsLength + sessionIdLength + challengeLength;
+    if (parser.getRemainingLength() < expectedLength) {
+      throw DecodeError(
+          'SSLv2 ClientHello incompleto (faltam ${expectedLength - parser.getRemainingLength()} bytes)');
+    }
+    if (cipherSpecsLength % 3 != 0) {
+      throw DecodeError('SSLv2 cipher_specs precisa ser múltiplo de 3 bytes');
+    }
+    final cipherSpecs = parser.getFixBytes(cipherSpecsLength);
+    final sessionId = parser.getFixBytes(sessionIdLength);
+    final challenge = parser.getFixBytes(challengeLength);
+
+    final cipherSuites = <int>[];
+    for (var i = 0; i < cipherSpecs.length; i += 3) {
+      final prefix = cipherSpecs[i];
+      final upper = cipherSpecs[i + 1];
+      final lower = cipherSpecs[i + 2];
+      if (prefix != 0) {
+        // Cipher doesn't map to a TLS suite; ignore.
+        continue;
+      }
+      cipherSuites.add((upper << 8) | lower);
+    }
+    if (cipherSuites.isEmpty) {
+      throw DecodeError(
+          'SSLv2 ClientHello não contém cipher suites compatíveis com TLS');
+    }
+
+    if (challengeLength < 16 || challengeLength > 32) {
+      throw DecodeError(
+          'SSLv2 ClientHello challenge precisa ter entre 16 e 32 bytes');
+    }
+    Uint8List random;
+    if (challengeLength == 32) {
+      random = challenge;
+    } else {
+      random = Uint8List(32);
+      random.setRange(32 - challengeLength, 32, challenge);
+    }
+
+    return TlsClientHello(
+      clientVersion: clientVersion,
+      random: random,
+      sessionId: sessionId,
+      cipherSuites: cipherSuites,
+      compressionMethods: const <int>[0],
     );
   }
 
