@@ -79,6 +79,27 @@ extension OpenSslExtension2 on OpenSSL {
     return fn.asFunction<int Function(ffi.Pointer<ssl_st>)>()(ssl);
   }
 
+  void SSL_set_connect_state(ffi.Pointer<ssl_st> ssl) {
+    final fn = getLookup()<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ssl_st>)>>(
+      'SSL_set_connect_state',
+    );
+    fn.asFunction<void Function(ffi.Pointer<ssl_st>)>()(ssl);
+  }
+
+  void SSL_set_accept_state(ffi.Pointer<ssl_st> ssl) {
+    final fn = getLookup()<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ssl_st>)>>(
+      'SSL_set_accept_state',
+    );
+    fn.asFunction<void Function(ffi.Pointer<ssl_st>)>()(ssl);
+  }
+
+  int SSL_do_handshake(ffi.Pointer<ssl_st> ssl) {
+    final fn = getLookup()<ffi.NativeFunction<ffi.Int Function(ffi.Pointer<ssl_st>)>>(
+      'SSL_do_handshake',
+    );
+    return fn.asFunction<int Function(ffi.Pointer<ssl_st>)>()(ssl);
+  }
+
   int SSL_read(ffi.Pointer<ssl_st> ssl, ffi.Pointer<ffi.Void> buf, int num) {
     final fn = getLookup()<
         ffi.NativeFunction<
