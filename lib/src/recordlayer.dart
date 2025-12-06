@@ -225,7 +225,7 @@ class RecordLayer {
     return _pendingWriteState.encryptThenMAC;
   }
 
-  int get blockSize => _writeState.encContext?.blockSize ?? 0; // Assuming blockSize getter
+  int get blockSize => _cipherBlockSize(_writeState.encContext);
 
   bool get tls13record => _tls13record;
   set tls13record(bool val) {

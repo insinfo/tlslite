@@ -19,6 +19,7 @@ class OpenSSLServer {
   final String _cipher;
   final bool _verbose;
   final String _protocolFlag;
+  final String? _tls13Cipher;
   final List<String> _stdout = [];
   final List<String> _stderr = [];
   bool _ready = false;
@@ -32,11 +33,13 @@ class OpenSSLServer {
     required String cipher,
     bool verbose = false,
     String protocolFlag = '-tls1_2',
+    String? tls13Cipher,
   })
       : _port = port,
         _cipher = cipher,
         _verbose = verbose,
-        _protocolFlag = protocolFlag;
+        _protocolFlag = protocolFlag,
+        _tls13Cipher = tls13Cipher;
 
   int get port => _port;
   List<String> get stdout => _stdout;
@@ -80,6 +83,12 @@ class OpenSSLServer {
       '-keylogfile',
       _keyLogFile!,
     ];
+
+    final tls13Cipher = _tls13Cipher;
+    if (tls13Cipher != null && tls13Cipher.isNotEmpty) {
+      args.add('-ciphersuites');
+      args.add(tls13Cipher);
+    }
 
     if (_verbose) {
       args.add('-debug');
@@ -155,6 +164,7 @@ class _OpenSslScenario {
     this.verbose = false,
     this.exerciseDataPath = false,
     this.testMessage = 'hello from dart',
+    this.tls13Cipher,
   });
 
   final String name;
@@ -165,6 +175,7 @@ class _OpenSslScenario {
   final bool verbose;
   final bool exerciseDataPath;
   final String testMessage;
+  final String? tls13Cipher;
 }
 
 Future<void> _printServerDiagnostics(OpenSSLServer server) async {
@@ -245,6 +256,38 @@ void main() {
           cipherNames: const ['aes256'],
           keyExchangeNames: const ['rsa'],
           useEncryptThenMAC: false,
+        ),
+      ),
+      _OpenSslScenario(
+        name: 'TLS 1.3 ECDHE-RSA + AES128-GCM',
+        cipher: 'ECDHE-RSA-AES128-GCM-SHA256',
+        protocolFlag: '-tls1_3',
+        port: 14444,
+        exerciseDataPath: true,
+        testMessage: 'hello tls1.3 aes128gcm',
+        tls13Cipher: 'TLS_AES_128_GCM_SHA256',
+        settingsBuilder: () => HandshakeSettings(
+          minVersion: (3, 4),
+          maxVersion: (3, 4),
+          cipherNames: const ['aes128gcm'],
+          keyExchangeNames: const ['ecdhe_rsa'],
+          eccCurves: const ['secp256r1', 'x25519'],
+        ),
+      ),
+      _OpenSslScenario(
+        name: 'TLS 1.3 ECDHE-RSA + CHACHA20-POLY1305',
+        cipher: 'ECDHE-RSA-CHACHA20-POLY1305',
+        protocolFlag: '-tls1_3',
+        port: 14445,
+        exerciseDataPath: true,
+        testMessage: 'hello tls1.3 chacha',
+        tls13Cipher: 'TLS_CHACHA20_POLY1305_SHA256',
+        settingsBuilder: () => HandshakeSettings(
+          minVersion: (3, 4),
+          maxVersion: (3, 4),
+          cipherNames: const ['chacha20-poly1305'],
+          keyExchangeNames: const ['ecdhe_rsa'],
+          eccCurves: const ['secp256r1', 'x25519'],
         ),
       ),
       _OpenSslScenario(
@@ -334,6 +377,7 @@ void main() {
           cipher: scenario.cipher,
           protocolFlag: scenario.protocolFlag,
           verbose: scenario.verbose,
+          tls13Cipher: scenario.tls13Cipher,
         );
 
         Socket? socket;

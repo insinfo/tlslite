@@ -25,6 +25,15 @@ void main() {
         'useEtm': false,
       },
       {
+        'name': 'TLS 1.0 RSA + 3DES-CBC',
+        'minVer': (3, 1),
+        'maxVer': (3, 1),
+        'ciphers': const ['3des'],
+        'kx': const ['rsa'],
+        'curves': const <String>[],
+        'useEtm': false,
+      },
+      {
         'name': 'TLS 1.1 RSA + AES128-CBC',
         'minVer': (3, 2),
         'maxVer': (3, 2),
