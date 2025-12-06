@@ -1,6 +1,6 @@
 library tlslite;
 
-export 'src/net/security/secure_socket_openssl.dart';
+export 'src/net_ffi/security/secure_socket_openssl.dart';
 export 'src/dh.dart';
 export 'src/checker.dart';
 export 'src/verifierdb.dart';

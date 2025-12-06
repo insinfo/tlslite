@@ -7,7 +7,7 @@ import 'curve_oids.dart' show decodeOid;
 import 'der.dart';
 import 'pem.dart';
 import 'package:pointycastle/api.dart' show BlockCipher, KeyParameter, ParametersWithIV;
-import 'package:pointycastle/block/aes_fast.dart';
+import 'package:pointycastle/block/aes.dart';
 import 'package:pointycastle/block/modes/cbc.dart';
 
 const _oidPbes2 = [1, 2, 840, 113549, 1, 5, 13];
@@ -187,7 +187,7 @@ Uint8List _aesCbcEncrypt(Uint8List key, Uint8List iv, Uint8List plaintext) {
   if (plaintext.length % _aesBlockSize != 0) {
     throw ArgumentError('Plaintext must be block aligned');
   }
-  final cipher = CBCBlockCipher(AESFastEngine())
+  final cipher = CBCBlockCipher(AESEngine())
     ..init(true, ParametersWithIV(KeyParameter(key), iv));
   return _processBlocks(cipher, plaintext);
 }
@@ -196,7 +196,7 @@ Uint8List _aesCbcDecrypt(Uint8List key, Uint8List iv, Uint8List ciphertext) {
   if (ciphertext.length % _aesBlockSize != 0) {
     throw ArgumentError('Ciphertext must be block aligned');
   }
-  final cipher = CBCBlockCipher(AESFastEngine())
+  final cipher = CBCBlockCipher(AESEngine())
     ..init(false, ParametersWithIV(KeyParameter(key), iv));
   return _processBlocks(cipher, ciphertext);
 }

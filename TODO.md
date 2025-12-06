@@ -12,7 +12,7 @@
    - ✅ `_clientSendClientHello`
    - ✅ `_clientHandleServerHello`
    - ✅ `_clientHandshake13` (Full flow implemented, signature verification complete (RSA/ECDSA), Client Auth supported)
-   - ✅ `_clientHandshake12` (RSA/DHE/ECDHE Key Exchange implemented, Client Auth supported)
+   - ✅ `_clientHandshake12` (RSA/DHE/ECDHE Key Exchange implemented, Client Auth supported, ECDSA verification/signing implemented)
    - ✅ `handshakeServer` entry point (Version negotiation implemented)
    - ✅ `_serverHandshake13` (Basic implementation: RSA auth, X25519 key exchange)
    - ✅ `_serverHandshake12` (Implemented: RSA/DHE/ECDHE key exchange, Client Auth supported)
@@ -23,7 +23,7 @@
 6. **handshakehelpers.py** → handshake_helpers.dart (789 linhas) - ✅ COMPLETO
 
 ### 🔵 BAIXA (pode esperar)
-7. integration/ (asyncstatemachine, httptlsconnection, etc.)
+7. integration/ (asyncstatemachine, httptlsconnection ported)
 
 ---
 
@@ -32,6 +32,8 @@
 **Utils**: codec, asn1parser, pem, x25519, aes, chacha20, poly1305, rsa, ecdsa, eddsa, dsa, hmac, compression, constanttime, datefuncs, lists, dns_utils, format_output, keyfactory, tlshashlib, tlshmac, tripledes, rc4, rijndael, dh, checker, verifierdb, api, basedb
 
 **Core**: constants, errors, x509, x509certchain, ocsp, signed, session, mathtls, ffdhe_groups, defragmenter, handshake_hashes, sessioncache, messagesocket
+
+**Integration**: async_state_machine, http_tls_connection
 
 **Crypto**: AES (CBC/CTR/GCM/CCM/CCM8), ChaCha20-Poly1305, TripleDES, RC4, **Ed448**, **ML-KEM (FIPS 203)**
 

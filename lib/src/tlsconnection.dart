@@ -639,9 +639,21 @@ class TlsConnection extends MessageSocket {
                           signedData,
                           hashAlg: hashName
                       );
+                  } else if (pubKey is ECDSAKey) {
+                      final hashAlg = message.hashAlg;
+                      final hashName = HashAlgorithm.toRepr(hashAlg);
+                      if (hashName == null) {
+                           throw TLSHandshakeFailure('Unknown hash algorithm in ServerKeyExchange');
+                      }
+                      
+                      valid = pubKey.verify(
+                          Uint8List.fromList(message.signature),
+                          signedData,
+                          hashAlg: hashName
+                      );
                   } else {
-                      // TODO: ECDSA/DSA
-                      throw UnimplementedError('Only RSA server keys supported for now');
+                      // TODO: DSA
+                      throw UnimplementedError('Unsupported server key type: ${pubKey.runtimeType}');
                   }
                   
                   if (!valid) {
@@ -695,11 +707,20 @@ class TlsConnection extends MessageSocket {
       // Send CertificateVerify (if certificate was sent)
       if (certRequested && certParams != null && certParams.certificates.isNotEmpty) {
            int signatureScheme;
+           String? padding;
+           String? hashAlg;
+           
            if (certParams.key is RSAKey) {
                signatureScheme = SignatureScheme.rsa_pkcs1_sha256.value;
+               padding = 'pkcs1';
+               hashAlg = null; // Implicit in verifyBytes for TLS 1.2 RSA
+           } else if (certParams.key is ECDSAKey) {
+               signatureScheme = SignatureScheme.ecdsa_secp256r1_sha256.value;
+               padding = null;
+               hashAlg = 'sha256';
            } else {
-               // TODO: Support other key types
-               throw UnimplementedError('Only RSA client keys supported for now');
+               // TODO: Support DSA
+               throw UnimplementedError('Unsupported client key type: ${certParams.key.runtimeType}');
            }
            
            final verifyBytes = KeyExchange.calcVerifyBytes(
@@ -708,10 +729,10 @@ class TlsConnection extends MessageSocket {
                signatureScheme
            );
            
-           final signature = certParams.key.sign(
+           final signature = (certParams.key as dynamic).sign(
                verifyBytes, 
-               padding: 'pkcs1', 
-               hashAlg: null 
+               padding: padding, 
+               hashAlg: hashAlg 
            );
            
            final certVerify = TlsCertificateVerify(
@@ -1787,6 +1808,19 @@ class TlsConnection extends MessageSocket {
       compressionMethods: [0],
       extensions: TlsExtensionBlock(extensions: extensions),
     );
+
+    if (settings.pskConfigs.isNotEmpty || session.tls13Tickets.isNotEmpty) {
+      HandshakeHelpers.updateBinders(
+        clientHello,
+        handshakeHashes,
+        settings.pskConfigs,
+        tickets: session.tls13Tickets,
+        resMasterSecret: session.resumptionMasterSecret.isNotEmpty 
+            ? session.resumptionMasterSecret 
+            : null,
+      );
+    }
+
     clientRandom = clientHello.random;
     _clientHelloMsg = clientHello;
 
