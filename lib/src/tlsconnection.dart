@@ -637,10 +637,31 @@ class TlsConnection extends MessageSocket {
     }
     
     version = negotiatedVersion;
+
+    // Validate version against settings
+    final minV = TlsProtocolVersion(handshakeSettings.minVersion.$1, handshakeSettings.minVersion.$2);
+    final maxV = TlsProtocolVersion(handshakeSettings.maxVersion.$1, handshakeSettings.maxVersion.$2);
+    if (version < minV || version > maxV) {
+        await _sendAlert(AlertLevel.fatal, AlertDescription.protocol_version);
+        throw TLSLocalAlert(
+            AlertDescription.protocol_version, AlertLevel.fatal,
+            detailedMessage: 'Server selected version $version which is not in range [$minV, $maxV]');
+    }
+
     _serverHelloMsg = serverHello;
     
     // Update Session
     session.cipherSuite = serverHello.cipherSuite;
+
+    // Check if the cipher suite is valid for this version
+    if (version < const TlsProtocolVersion(3, 3) &&
+        CipherSuite.sha256Suites.contains(session.cipherSuite)) {
+      await _sendAlert(AlertLevel.fatal, AlertDescription.illegal_parameter);
+      throw TLSLocalAlert(
+          AlertDescription.illegal_parameter, AlertLevel.fatal,
+          detailedMessage: 'SHA256 cipher suite with TLS < 1.2');
+    }
+    
     serverRandom = serverHello.random;
     session.sessionID = serverHello.sessionId;
     
