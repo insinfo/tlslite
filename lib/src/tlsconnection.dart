@@ -1196,6 +1196,7 @@ class TlsConnection extends MessageSocket {
       );
       
       final handshakeSecret = secureHMAC(derivedSecret, sharedSecret, hashName);
+      late Uint8List masterSecret;
       
       // Calculate Client/Server Handshake Traffic Secrets
       final helloHash = handshakeHashes.digest(hashName);
@@ -1381,6 +1382,42 @@ class TlsConnection extends MessageSocket {
           await _sendAlert(AlertLevel.fatal, AlertDescription.decrypt_error);
           throw TLSHandshakeFailure('Finished verification failed');
       }
+
+        // Prepare application traffic secrets using the transcript up through the
+        // server's Finished so we can immediately accept TLS 1.3 application data.
+        final trafficHandshakeHash = handshakeHashes.digest(hashName);
+        final derivedSecret2 = derive_secret(
+          handshakeSecret,
+          Uint8List.fromList('derived'.codeUnits),
+          null,
+          hashName);
+
+        masterSecret = secureHMAC(derivedSecret2, Uint8List(hashLen), hashName);
+        session.masterSecret = masterSecret;
+
+        final clientAppTrafficSecret = HKDF_expand_label(
+          masterSecret,
+          Uint8List.fromList('c ap traffic'.codeUnits),
+          trafficHandshakeHash,
+          hashLen,
+          hashName);
+
+        final serverAppTrafficSecret = HKDF_expand_label(
+          masterSecret,
+          Uint8List.fromList('s ap traffic'.codeUnits),
+          trafficHandshakeHash,
+          hashLen,
+          hashName);
+
+        session.clAppSecret = clientAppTrafficSecret;
+        session.srAppSecret = serverAppTrafficSecret;
+
+        calcTLS1_3PendingState(
+          session.cipherSuite,
+          clientAppTrafficSecret,
+          serverAppTrafficSecret,
+          null);
+        changeReadState();
       
       // Send Certificate and CertificateVerify if requested
       if (certRequested) {
@@ -1470,62 +1507,23 @@ class TlsConnection extends MessageSocket {
           }
       }
 
-      // Send Finished
-      final verifyData = buildFinishedVerifyData(forClient: true);
-      await sendHandshakeMessage(TlsFinished(verifyData: verifyData));
-      
-      // Derive Application Traffic Secrets
-      final derivedSecret2 = derive_secret(
-          handshakeSecret, 
-          Uint8List.fromList('derived'.codeUnits), 
-          null, 
-          hashName
-      );
-      
-      final masterSecret = secureHMAC(derivedSecret2, Uint8List(hashLen), hashName); // 0-filled
-      session.masterSecret = masterSecret;
-      
-      final handshakeHash = handshakeHashes.digest(hashName);
-      
-      final clientAppTrafficSecret = HKDF_expand_label(
-          masterSecret,
-          Uint8List.fromList('c ap traffic'.codeUnits),
-          handshakeHash,
-          hashLen,
-          hashName
-      );
-      
-      final serverAppTrafficSecret = HKDF_expand_label(
-          masterSecret,
-          Uint8List.fromList('s ap traffic'.codeUnits),
-          handshakeHash,
-          hashLen,
-          hashName
-      );
-      
-      session.clAppSecret = clientAppTrafficSecret;
-      session.srAppSecret = serverAppTrafficSecret;
-      
-      // Calculate Resumption Master Secret
-      final resumptionMasterSecret = derive_secret(
+        // Send Finished
+        final verifyData = buildFinishedVerifyData(forClient: true);
+        await sendHandshakeMessage(TlsFinished(verifyData: verifyData));
+
+        // After sending our Finished, derive the resumption master secret using
+        // the full transcript (which now includes the client's handshake)
+        final fullHandshakeHash = handshakeHashes.digest(hashName);
+        final resumptionMasterSecret = derive_secret(
           masterSecret,
           Uint8List.fromList('res master'.codeUnits),
-          handshakeHash,
-          hashName
-      );
-      session.resumptionMasterSecret = resumptionMasterSecret;
-      
-      // Switch to Application Keys
-      calcTLS1_3PendingState(
-          session.cipherSuite,
-          clientAppTrafficSecret,
-          serverAppTrafficSecret,
-          null
-      );
-      changeReadState();
-      changeWriteState();
-      
-      handshakeEstablished = true;
+          fullHandshakeHash,
+          hashName);
+        session.resumptionMasterSecret = resumptionMasterSecret;
+
+        changeWriteState();
+
+        handshakeEstablished = true;
   }
 
   Future<void> handshakeServer({
