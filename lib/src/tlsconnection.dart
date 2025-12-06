@@ -315,6 +315,8 @@ class TlsConnection extends MessageSocket {
         continue;
       }
       final recordVersion = _inferRecordVersion(header);
+      final effectiveRecordVersion =
+          _isTls13Plus() ? const TlsProtocolVersion(3, 4) : recordVersion;
       final fragment = _consumeParser(parser);
       if (fragment.isEmpty) {
         continue;
@@ -323,7 +325,7 @@ class TlsConnection extends MessageSocket {
           ? _parseSsl2HandshakeFragment(fragment)
           : TlsHandshakeMessage.parseFragment(
               fragment,
-              recordVersion: recordVersion,
+              recordVersion: effectiveRecordVersion,
             );
       if (parsed.isEmpty) {
         continue;
@@ -1260,6 +1262,7 @@ class TlsConnection extends MessageSocket {
       _validateCertificateChain(session.serverCertChain!);
       
       // Receive CertificateVerify
+      final certVerifyTranscript = handshakeHashes.copy();
       final certVerifyMsg = await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.certificateVerify]);
       if (certVerifyMsg is! TlsCertificateVerify) {
           await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
@@ -1281,6 +1284,7 @@ class TlsConnection extends MessageSocket {
           signatureScheme: certVerifyMsg.signatureScheme!,
           peerTag: 'server',
           keyType: keyType,
+          handshakeSnapshot: certVerifyTranscript,
       );
       
       final schemeName = SignatureScheme.toRepr(certVerifyMsg.signatureScheme!);
@@ -1330,6 +1334,7 @@ class TlsConnection extends MessageSocket {
       }
       
       // Receive Finished
+      final finishedTranscript = handshakeHashes.copy();
       final finishedMsg = await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.finished]);
       if (finishedMsg is! TlsFinished) {
           await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
@@ -1337,7 +1342,10 @@ class TlsConnection extends MessageSocket {
       }
       
       // Verify Finished
-      final expectedVerifyData = buildFinishedVerifyData(forClient: false);
+      final expectedVerifyData = buildFinishedVerifyData(
+        forClient: false,
+        handshakeSnapshot: finishedTranscript,
+      );
       if (!_bytesEqual(finishedMsg.verifyData, expectedVerifyData)) {
           await _sendAlert(AlertLevel.fatal, AlertDescription.decrypt_error);
           throw TLSHandshakeFailure('Finished verification failed');
@@ -1797,56 +1805,6 @@ class TlsConnection extends MessageSocket {
       await sendHandshakeMessage(TlsFinished(verifyData: verifyData));
       
       // 9. Derive Application Keys
-      final derivedSecret2 = derive_secret(
-          handshakeSecret, 
-          Uint8List.fromList('derived'.codeUnits), 
-          null, 
-          hashName
-      );
-      
-      final masterSecret = secureHMAC(derivedSecret2, Uint8List(hashLen), hashName);
-      session.masterSecret = masterSecret;
-      
-      final handshakeHash = handshakeHashes.digest(hashName);
-      
-      final clientAppTrafficSecret = HKDF_expand_label(
-          masterSecret,
-          Uint8List.fromList('c ap traffic'.codeUnits),
-          handshakeHash,
-          hashLen,
-          hashName
-      );
-      
-      final serverAppTrafficSecret = HKDF_expand_label(
-          masterSecret,
-          Uint8List.fromList('s ap traffic'.codeUnits),
-          handshakeHash,
-          hashLen,
-          hashName
-      );
-      
-      session.clAppSecret = clientAppTrafficSecret;
-      session.srAppSecret = serverAppTrafficSecret;
-      
-      // Calculate Resumption Master Secret
-      final resumptionMasterSecret = derive_secret(
-          masterSecret,
-          Uint8List.fromList('res master'.codeUnits),
-          handshakeHash,
-          hashName
-      );
-      session.resumptionMasterSecret = resumptionMasterSecret;
-      
-      // Switch to Application Keys
-      calcTLS1_3PendingState(
-          session.cipherSuite,
-          clientAppTrafficSecret,
-          serverAppTrafficSecret,
-          null
-      );
-      changeReadState();
-      changeWriteState();
-      
       // 10. Receive Client Messages (Certificate, CertificateVerify, Finished)
       if (reqCert) {
           final certMsg = await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.certificate]);
@@ -1868,6 +1826,7 @@ class TlsConnection extends MessageSocket {
           }
           
           if (clientCertChain != null) {
+               final cvTranscript = handshakeHashes.copy();
                final cvMsg = await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.certificateVerify]);
                if (cvMsg is! TlsCertificateVerify) {
                     await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
@@ -1879,6 +1838,7 @@ class TlsConnection extends MessageSocket {
                    signatureScheme: cvMsg.signatureScheme!,
                    peerTag: 'client',
                    keyType: pubKey is RSAKey ? 'rsa' : 'ecdsa',
+                   handshakeSnapshot: cvTranscript,
                );
                
                bool valid = false;
@@ -1921,18 +1881,70 @@ class TlsConnection extends MessageSocket {
           }
       }
 
+      final finishedTranscript = handshakeHashes.copy();
       final finishedMsg = await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.finished]);
       if (finishedMsg is! TlsFinished) {
           await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
           throw TLSUnexpectedMessage('Expected Finished');
       }
       
-      final expectedVerifyData = buildFinishedVerifyData(forClient: true);
+      final expectedVerifyData = buildFinishedVerifyData(
+        forClient: true,
+        handshakeSnapshot: finishedTranscript,
+      );
       if (!_bytesEqual(finishedMsg.verifyData, expectedVerifyData)) {
           await _sendAlert(AlertLevel.fatal, AlertDescription.decrypt_error);
           throw TLSHandshakeFailure('Finished verification failed');
       }
-      
+
+      // Derive application traffic secrets now that the full handshake transcript
+      // (including the client's Finished) is known.
+      final derivedSecret2 = derive_secret(
+          handshakeSecret,
+          Uint8List.fromList('derived'.codeUnits),
+          null,
+          hashName);
+
+      final masterSecret =
+          secureHMAC(derivedSecret2, Uint8List(hashLen), hashName);
+      session.masterSecret = masterSecret;
+
+      final handshakeHash = handshakeHashes.digest(hashName);
+
+      final clientAppTrafficSecret = HKDF_expand_label(
+          masterSecret,
+          Uint8List.fromList('c ap traffic'.codeUnits),
+          handshakeHash,
+          hashLen,
+          hashName);
+
+      final serverAppTrafficSecret = HKDF_expand_label(
+          masterSecret,
+          Uint8List.fromList('s ap traffic'.codeUnits),
+          handshakeHash,
+          hashLen,
+          hashName);
+
+      session.clAppSecret = clientAppTrafficSecret;
+      session.srAppSecret = serverAppTrafficSecret;
+
+      // Calculate Resumption Master Secret
+      final resumptionMasterSecret = derive_secret(
+          masterSecret,
+          Uint8List.fromList('res master'.codeUnits),
+          handshakeHash,
+          hashName);
+      session.resumptionMasterSecret = resumptionMasterSecret;
+
+      // Switch to Application Keys
+      calcTLS1_3PendingState(
+          session.cipherSuite,
+          clientAppTrafficSecret,
+          serverAppTrafficSecret,
+          null);
+      changeReadState();
+      changeWriteState();
+
       handshakeEstablished = true;
   }
   
@@ -2768,9 +2780,13 @@ class TlsConnection extends MessageSocket {
   }
 
   /// Compute Finished.verify_data mirroring tlslite-ng for TLS 1.2 and 1.3.
-  Uint8List buildFinishedVerifyData({required bool forClient}) {
+  Uint8List buildFinishedVerifyData(
+      {required bool forClient, HandshakeHashes? handshakeSnapshot}) {
     if (_isTls13Plus()) {
-      return _buildTls13FinishedVerifyData(forClient: forClient);
+      return _buildTls13FinishedVerifyData(
+        forClient: forClient,
+        handshakeSnapshot: handshakeSnapshot,
+      );
     }
     final activeSession = session;
     if (activeSession.masterSecret.isEmpty) {
@@ -2789,7 +2805,8 @@ class TlsConnection extends MessageSocket {
     );
   }
 
-  Uint8List _buildTls13FinishedVerifyData({required bool forClient}) {
+  Uint8List _buildTls13FinishedVerifyData(
+      {required bool forClient, HandshakeHashes? handshakeSnapshot}) {
     final activeSession = session;
     final secret =
         forClient ? activeSession.clHandshakeSecret : activeSession.srHandshakeSecret;
@@ -2805,7 +2822,7 @@ class TlsConnection extends MessageSocket {
       digestLength,
       hashName,
     );
-    final transcript = handshakeHashes.digest(hashName);
+    final transcript = (handshakeSnapshot ?? handshakeHashes).digest(hashName);
     return secureHMAC(finishedKey, transcript, hashName);
   }
 
@@ -2823,11 +2840,12 @@ class TlsConnection extends MessageSocket {
     Uint8List? premasterSecret,
     Uint8List? clientRandom,
     Uint8List? serverRandom,
+    HandshakeHashes? handshakeSnapshot,
   }) {
     final prfName = _prfHashName();
     return KeyExchange.calcVerifyBytes(
       version,
-      handshakeHashes,
+      handshakeSnapshot ?? handshakeHashes,
       signatureScheme,
       premasterSecret: premasterSecret,
       clientRandom: clientRandom,

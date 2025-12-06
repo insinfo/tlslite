@@ -250,9 +250,12 @@ Uint8List derive_secret(Uint8List secret, Uint8List label,
   Uint8List hs_hash;
   if (handshake_hashes == null) {
     hs_hash = secureHash(Uint8List(0), algorithm);
+  } else if (handshake_hashes is Uint8List) {
+    hs_hash = handshake_hashes;
+  } else if (handshake_hashes is List<int>) {
+    hs_hash = Uint8List.fromList(handshake_hashes);
   } else {
     // Assumindo que handshake_hashes tem um método digest
-    // Adapte esta linha se a estrutura for diferente
     hs_hash = handshake_hashes.digest(algorithm) as Uint8List;
   }
 

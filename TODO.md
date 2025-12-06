@@ -178,6 +178,12 @@ Extensões menos comuns de client authz, token binding, etc.
 Recursos completos de TLS 1.3 como reemissão de tickets/0-RTT (a extensão early_data existe, mas o cliente TLS 1.3 ainda está marcado como experimental).
 Em tlslite-ng (caminho C:\MyDartProjects\tlslite\tlslite-ng\tlslite\tlslite.py e tls_extensions.py) várias dessas estão presentes e são reserializadas corretamente. No Dart, qualquer extensão não registrada cai em TlsRawExtension e, por isso, não é reemitida de forma fiel se reserializarmos a mensagem — daí a anotação de “extensões que não processamos completamente”.
 
+Garantir que o record layer trate sempre tls13record=true ao negociar 1.3 e construa nonces de 12 bytes (authData, sequence number) para AES-GCM/ChaCha20.
+
+Corrigir parsing/serialização de TlsCertificate e TlsFinished no caminho 1.3 (atualmente causa DecodeError com tamanhos absurdos).
+
+Implementar verificação de finished hash 1.3 e tratamento de encrypted_extensions, certificate_verify, finished no fluxo.
+
 Remaining FUTURE Items (Non-blocking)
 TACK extension support (rarely used)
 Full certificate path validation with trust anchors

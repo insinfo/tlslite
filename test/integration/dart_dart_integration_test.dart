@@ -14,29 +14,43 @@ import 'package:tlslite/src/x509certchain.dart';
 
 void main() {
   group('Dart-Dart TLS Integration', () {
-    final variants = [
-      (
-        name: 'RSA + AES128-GCM',
-        ciphers: const ['aes128gcm'],
-        kx: const ['rsa'],
-        curves: const <String>[],
-      ),
-      (
-        name: 'ECDHE_RSA + AES128-GCM',
-        ciphers: const ['aes128gcm'],
-        kx: const ['ecdhe_rsa'],
-        curves: const ['secp256r1', 'x25519'],
-      ),
-      (
-        name: 'ECDHE_RSA + CHACHA20-POLY1305',
-        ciphers: const ['chacha20-poly1305'],
-        kx: const ['ecdhe_rsa'],
-        curves: const ['secp256r1', 'x25519'],
-      ),
+    final variants = <Map<String, dynamic>>[
+      {
+        'name': 'TLS 1.2 RSA + AES128-GCM',
+        'minVer': (3, 3),
+        'maxVer': (3, 3),
+        'ciphers': const ['aes128gcm'],
+        'kx': const ['rsa'],
+        'curves': const <String>[],
+      },
+      {
+        'name': 'TLS 1.2 ECDHE_RSA + AES128-GCM',
+        'minVer': (3, 3),
+        'maxVer': (3, 3),
+        'ciphers': const ['aes128gcm'],
+        'kx': const ['ecdhe_rsa'],
+        'curves': const ['secp256r1', 'x25519'],
+      },
+      {
+        'name': 'TLS 1.2 ECDHE_RSA + CHACHA20-POLY1305',
+        'minVer': (3, 3),
+        'maxVer': (3, 3),
+        'ciphers': const ['chacha20-poly1305'],
+        'kx': const ['ecdhe_rsa'],
+        'curves': const ['secp256r1', 'x25519'],
+      },
+      {
+        'name': 'TLS 1.3 ECDHE_RSA + CHACHA20-POLY1305',
+        'minVer': (3, 4),
+        'maxVer': (3, 4),
+        'ciphers': const ['chacha20-poly1305'],
+        'kx': const ['ecdhe_rsa'],
+        'curves': const ['secp256r1', 'x25519'],
+      },
     ];
 
     for (final variant in variants) {
-      test('TLS 1.2 handshake (${variant.name})', () async {
+      test('Handshake (${variant['name']})', () async {
         // Certificados do nginx local (já presentes no repo).
         final certPem = await File('scripts/nginx/server.crt').readAsString();
         final keyPem = await File('scripts/nginx/server.key').readAsString();
@@ -53,12 +67,16 @@ void main() {
           try {
             await tlsServer.handshakeServer(
               settings: HandshakeSettings(
-                minVersion: (3, 3),
-                maxVersion: (3, 3),
+                minVersion: variant['minVer'] as (int, int),
+                maxVersion: variant['maxVer'] as (int, int),
                 alpnProtos: const ['dart-test'],
-                keyExchangeNames: variant.kx,
-                cipherNames: variant.ciphers,
-                eccCurves: variant.curves.isNotEmpty ? variant.curves : null,
+                keyExchangeNames:
+                    (variant['kx'] as List<String>).cast<String>(),
+                cipherNames:
+                    (variant['ciphers'] as List<String>).cast<String>(),
+                eccCurves: (variant['curves'] as List<String>).isNotEmpty
+                    ? (variant['curves'] as List<String>).cast<String>()
+                    : null,
               ),
               certChain: certChain,
               privateKey: privateKey,
@@ -88,12 +106,16 @@ void main() {
 
         await tlsClient.handshakeClient(
           settings: HandshakeSettings(
-            minVersion: (3, 3),
-            maxVersion: (3, 3),
+            minVersion: variant['minVer'] as (int, int),
+            maxVersion: variant['maxVer'] as (int, int),
             alpnProtos: const ['dart-test'],
-            keyExchangeNames: variant.kx,
-            cipherNames: variant.ciphers,
-            eccCurves: variant.curves.isNotEmpty ? variant.curves : null,
+            keyExchangeNames:
+                (variant['kx'] as List<String>).cast<String>(),
+            cipherNames:
+                (variant['ciphers'] as List<String>).cast<String>(),
+            eccCurves: (variant['curves'] as List<String>).isNotEmpty
+                ? (variant['curves'] as List<String>).cast<String>()
+                : null,
           ),
           serverName: 'localhost',
           alpn: const ['dart-test'],
@@ -106,7 +128,9 @@ void main() {
         expect(await serverDone.future, equals(message));
 
         await clientSocket.close();
-      }, timeout: const Timeout(Duration(seconds: 20)));
+      },
+          timeout: const Timeout(Duration(seconds: 20)),
+          skip: variant['skip'] as String?);
     }
   });
 }

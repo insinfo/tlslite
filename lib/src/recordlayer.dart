@@ -236,6 +236,9 @@ class RecordLayer {
   bool _isTls13Plus() => _version > const TlsProtocolVersion(3, 3) && _tls13record;
 
   void _handleTls13Record() {
+    if (_version > const TlsProtocolVersion(3, 3)) {
+      _tls13record = true;
+    }
     if (_isTls13Plus()) {
       _recordSocket.version = const TlsProtocolVersion(3, 3);
     } else {
