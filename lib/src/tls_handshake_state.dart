@@ -13,8 +13,8 @@ enum _HandshakePhase {
 ///
 /// This focuses on the ordering of ClientHello/ServerHello and Finished
 /// messages, allowing us to determine when the record layer can switch from
-/// handshake mode to application-data mode. The actual cryptographic
-/// operations are still TODO while the remaining tlslite-ng modules are ported.
+/// handshake mode to application-data mode. Cryptographic operations are
+/// handled by the key exchange and handshake helpers modules.
 class PureDartTlsHandshakeStateMachine {
   PureDartTlsHandshakeStateMachine({required this.mode});
 

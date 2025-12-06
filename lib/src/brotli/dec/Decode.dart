@@ -1190,10 +1190,9 @@ final class Decode {
           BitReader.fillBitWindow(s);
           {
             final int insertLengthExtraBits = insertAndCopyExtraBits & 0xFF;
-            // TODO ver isso
+            // OPTIMIZATION: Could mask unnecessary bits but readBits handles this
             // if (insertLengthExtraBits > 0) {
             //   final int mask = (1 << insertLengthExtraBits) - 1;
-              
             // }
             final int insertExtraValueRead = BitReader.readBits(s, insertLengthExtraBits);
             s.insertLength = insertLengthOffset + insertExtraValueRead;

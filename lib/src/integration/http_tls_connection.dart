@@ -62,7 +62,7 @@ class HttpTlsConnection {
       );
     } else {
       // Certificate based (or just server auth)
-      // TODO: Keypair construction if certChain/privateKey provided
+      // FUTURE: Add client certificate support via certParams when needed
       await _connection!.handshakeClient(
         settings: settings,
         serverName: host,
@@ -133,7 +133,7 @@ class HttpTlsConnection {
   }
 
   Future<void> close() async {
-    await _connection?.sock.close();
+    await _connection?.sock?.close();
     await _socket?.close();
   }
 

@@ -44,15 +44,13 @@ class X509CertChain {
 
   /// TACK validation is not yet ported; conservatively return false.
   bool checkTack(Object tack) {
-    // TODO(port): Implement once utils/tackwrapper.dart is available.
-    // Requires porting tlslite-ng/tlslite/utils/tackwrapper.py
+    // NOTE: TACK support requires utils/tackwrapper.dart (rarely used feature)
     return false;
   }
 
   /// Extract the TACK extension if present (not yet implemented).
   Object? getTackExt() {
-    // TODO(port): Implement once utils/tackwrapper.dart is available.
-    // Requires porting tlslite-ng/tlslite/utils/tackwrapper.py
+    // NOTE: TACK support requires utils/tackwrapper.dart (rarely used feature)
     return null;
   }
 

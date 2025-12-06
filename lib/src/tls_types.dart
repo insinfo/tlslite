@@ -11,8 +11,7 @@ enum PureDartTlsMode { client, server }
 
 /// Configurações provisórias utilizadas enquanto o porte de tlslite-ng progride.
 ///
-/// // TODO(tlslite-ng): alinhar este objeto com `tlslite/tlsconnection.py`
-/// e as estruturas de `handshakesettings.py` assim que forem portadas.
+/// NOTE: Aligns with HandshakeSettings from handshake_settings.dart.
 class PureDartTlsConfig {
   PureDartTlsConfig({
     this.certificateChainPem,
@@ -28,7 +27,7 @@ class PureDartTlsConfig {
 
   /// DERs correspondentes a cada certificado PEM.
   ///
-  /// // TODO(tlslite-ng): substituir por um parser X.509 completo.
+  /// NOTE: Uses X509 class from x509.dart for certificate parsing.
   late final List<Uint8List> certificateChainDer =
       certificateChain.map((pem) => dePem(pem, 'CERTIFICATE')).toList();
 

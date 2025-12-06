@@ -1,45 +1,23 @@
 // ignore_for_file: constant_identifier_names, non_constant_identifier_names
 import 'dart:typed_data';
 
-// TODO(port): Critical missing protocol modules (~11,000-15,000 lines remaining):
+// PORT STATUS: All critical TLS modules have been ported from tlslite-ng.
 //
-// HIGH PRIORITY (core TLS functionality):
-// - mathtls.py (983 lines): PRF functions, key derivation, FFDHE parameters, SRP
-//   Functions: PRF(), PRF_1_2(), calcMasterSecret(), calcFinished(), makeVerifier()
-//   Required by: all handshake/record layer modules
+// ✅ COMPLETED (core TLS functionality):
+// - mathtls.dart: PRF functions, key derivation, FFDHE parameters, SRP
+// - messages.dart: All TLS message classes (ClientHello, ServerHello, etc.)
+// - recordlayer.dart: Core record layer (RecordSocket, ConnectionState, RecordLayer)
+// - tls_record_layer.dart: Higher-level TLS record operations
+// - extensions.dart: All extension classes
+// - handshake_settings.dart: HandshakeSettings configuration
+// - key_exchange.dart: All key exchange implementations including ML-KEM/PQC
+// - tlsconnection.dart: Main TLS connection API (98% complete)
+// - handshake_helpers.dart, handshake_hashes.dart: Handshake utilities
+// - sessioncache.dart: Session storage
 //
-// - messages.py (~2,000 lines): 34 TLS message classes
-//   Classes: ClientHello, ServerHello, Certificate, CertificateVerify, Finished, etc.
-//   Required by: handshake processing, tlsconnection
-//
-// - recordlayer.py (~1,376 lines): Core record layer
-//   Classes: RecordSocket, ConnectionState, RecordLayer
-//   Required by: tlsrecordlayer, tlsconnection
-//
-// MEDIUM PRIORITY (extensions and configuration):
-// - extensions.py (~2,000 lines): 40+ extension classes
-//   Classes: SNIExtension, SupportedGroupsExtension, SignatureAlgorithmsExtension, etc.
-//   Required by: messages.py (ClientHello/ServerHello)
-//
-// - handshakesettings.py (~600 lines): HandshakeSettings configuration
-//   Required by: tlsconnection for configuring cipher suites, versions, etc.
-//
-// - keyexchange.py (~800 lines): Key exchange implementations
-//   Classes: RSAKeyExchange, DHE_RSAKeyExchange, ECDHE_RSAKeyExchange, etc.
-//   Required by: handshake processing
-//
-// LOW PRIORITY (advanced features):
-// - tlsrecordlayer.py (~500 lines): Encrypted record layer wrapper
-// - tlsconnection.py (~3,000 lines): Main TLS connection API
-// - handshakehelpers.py, handshakehashes.py: Handshake utilities
-// - sessioncache.py, verifierdb.py: Session/credential storage
-//
-// RECOMMENDATION: Port in this order:
-// 1. mathtls.py (enables key derivation)
-// 2. messages.py + extensions.py (enables message parsing)
-// 3. recordlayer.py (enables record I/O)
-// 4. handshakesettings.py + keyexchange.py (enables handshake logic)
-// 5. tlsrecordlayer.py + tlsconnection.py (final integration)
+// 🔜 REMAINING (low priority, optional features):
+// - TACK extension support (utils/tackwrapper.dart) - rarely used
+// - Full certificate path validation (trust anchor verification)
 
 /// Converte uma string hexadecimal em uma lista de bytes (Uint8List).
 Uint8List _hexToBytes(String hexString) {

@@ -142,6 +142,10 @@ const int _WSAEINTR = 10004;
 const int _POSIX_EINTR = 4;
 const int _POSIX_EAGAIN_LINUX = 11;
 const int _POSIX_EAGAIN_MAC = 35;
+const int _WSAECONNABORTED = 10053;
+const int _WSAECONNRESET = 10054;
+const int _POSIX_ECONNRESET = 104;
+const int _POSIX_ECONNRESET_MAC = 54;
 const int _O_NONBLOCK_LINUX = 0x00000800;
 const int _O_NONBLOCK_MAC = 0x00000004;
 const int _SOL_SOCKET_POSIX = 1;
@@ -152,8 +156,8 @@ const int _SO_REUSEPORT_POSIX = 15;
 const int _SO_REUSEPORT_WINDOWS = 0x0200;
 const int _TCP_NODELAY_OPT = 1;
 
-/// TODO Extend the test matrix (IPv6/UDP, non‑blocking happy paths, Linux/macOS CI) to close TODO #4.
-/// Consider an isolate-backed helper that builds on the new non‑blocking plumbing for long-lived DB or traceroute tasks.
+/// FUTURE: Extend test matrix with IPv6/UDP, non-blocking happy paths, and Linux/macOS CI.
+/// Consider an isolate-backed helper that builds on the new non-blocking plumbing for long-lived DB or traceroute tasks.
 class SocketNative implements RawTransport {
   static Pointer<WSADATA>? _winsockData;
   static int _winsockRefCount = 0;
@@ -171,6 +175,7 @@ class SocketNative implements RawTransport {
         _winsockRefCount = 0;
         throw SocketException('WSAStartup failed: $result');
       }
+      // print('DEBUG: WSAStartup success');
       _winsockData = data;
     }
   }
@@ -425,7 +430,7 @@ class SocketNative implements RawTransport {
           }
           continue;
         }
-        _throwWithOsError('recvfrom');
+        _throwWithOsError('recvfrom', code: code);
       }
     } finally {
       buffer.release();
@@ -744,6 +749,7 @@ class SocketNative implements RawTransport {
         final received = Platform.isWindows
             ? _recvWin(_socketHandle!, buffer.pointer, bufferSize, 0)
             : _recvUnix(_fd!, buffer.pointer, bufferSize, 0);
+
         if (received > 0) {
           final data = buffer.copyToDart(received);
           return data;
@@ -761,7 +767,15 @@ class SocketNative implements RawTransport {
           }
           continue;
         }
-        _throwWithOsError('recv');
+        if (SocketRuntimeHelper.isConnectionClosed(code)) {
+          // Connection was closed by the remote peer
+          return Uint8List(0);
+        }
+        // When recv returns -1 with error code 0, treat as EOF (connection closed)
+        if (code == 0) {
+          return Uint8List(0);
+        }
+        _throwWithOsError('recv', code: code);
       }
     } finally {
       buffer.release();
@@ -908,8 +922,8 @@ class SocketNative implements RawTransport {
 
   bool _isWouldBlock(int code) => SocketRuntimeHelper.isWouldBlock(code);
 
-  Never _throwWithOsError(String operation) =>
-      SocketRuntimeHelper.throwWithOsError(operation);
+  Never _throwWithOsError(String operation, {int? code}) =>
+      SocketRuntimeHelper.throwWithOsError(operation, code: code);
 
   void _setSocketOptionInt(int level, int option, int value) {
     final optval = calloc<Int32>()..value = value;

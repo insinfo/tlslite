@@ -15,38 +15,34 @@ import 'errors.dart';
 import 'mathtls.dart';
 
 
+import 'utils/binary_io.dart';
+
 /// Socket wrapper for reading and writing TLS Records
 class RecordSocket {
-  RecordSocket(this.socket) {
-    _subscription = socket.listen(
-      (data) {
-        _buffer.addAll(data);
-        _checkCompleter();
-      },
-      onError: (e) {
-        _error = e;
-        _checkCompleter();
-      },
-      onDone: () {
-        _closed = true;
-        _checkCompleter();
-      },
-    );
+  RecordSocket.fromSocket(this.socket) {
+    _input = SocketBinaryInput(socket!);
+    _output = SocketBinaryOutput(socket!);
   }
 
-  final Socket socket;
-  late final StreamSubscription<Uint8List> _subscription;
-  final List<int> _buffer = [];
-  Completer<void>? _completer;
-  dynamic _error;
-  bool _closed = false;
+  RecordSocket.fromTransport({
+    required BinaryInput input,
+    required BinaryOutput output,
+  })  : socket = null,
+        _input = input,
+        _output = output;
+
+  final Socket? socket;
+  late final BinaryInput _input;
+  late final BinaryOutput _output;
 
   TlsProtocolVersion version = const TlsProtocolVersion(0, 0);
   bool tls13record = false;
   int recvRecordLimit = 1 << 14;
 
   void close() {
-    _subscription.cancel();
+    // SocketBinaryInput handles subscription internally, but we can't explicitly cancel it 
+    // without exposing a cancel method on it. However, closing the socket usually suffices.
+    // For now, we rely on the socket closure.
   }
 
   /// Send message through socket
@@ -62,36 +58,42 @@ class RecordSocket {
       headerBytes = header.write();
     }
 
-    socket.add([...headerBytes, ...data]);
-    await socket.flush();
+    _output.writeBytes(headerBytes);
+    _output.writeBytes(data);
+    await _output.flush();
   }
 
   /// Read record from socket
   Future<(dynamic, Uint8List)> recv() async {
     // Read first byte
-    var buf = await _readBytes(1);
+    await _input.ensureBytes(1);
+    final firstByte = _input.readUint8();
+    var buf = <int>[firstByte];
     
     bool ssl2 = false;
-    if (ContentType.all.contains(buf[0])) {
+    if (ContentType.all.contains(firstByte)) {
       ssl2 = false;
       // SSLv3 record layer header is 5 bytes long, we already read 1
-      buf = Uint8List.fromList([...buf, ...await _readBytes(4)]);
+      await _input.ensureBytes(4);
+      buf.addAll(_input.readBytes(4));
     } else {
       ssl2 = true;
       // if header has no padding the header is 2 bytes long, 3 otherwise
       // at the same time we already read 1 byte
-      final readLen = (buf[0] & 0x80) != 0 ? 1 : 2;
-      buf = Uint8List.fromList([...buf, ...await _readBytes(readLen)]);
+      final readLen = (firstByte & 0x80) != 0 ? 1 : 2;
+      await _input.ensureBytes(readLen);
+      buf.addAll(_input.readBytes(readLen));
     }
 
     dynamic header;
+    final headerBytes = Uint8List.fromList(buf);
     if (ssl2) {
-      header = RecordHeader2().parse(Parser(buf));
+      header = RecordHeader2().parse(Parser(headerBytes));
       if ((header.padding > header.length) || (header.padding != 0 && header.length % 8 != 0)) {
         throw TLSIllegalParameterException('Malformed record layer header');
       }
     } else {
-      header = RecordHeader3().parse(Parser(buf));
+      header = RecordHeader3().parse(Parser(headerBytes));
     }
 
     // Check the record header fields
@@ -104,34 +106,9 @@ class RecordSocket {
       throw TLSRecordOverflow();
     }
 
-    final data = await _readBytes(header.length);
+    await _input.ensureBytes(header.length);
+    final data = Uint8List.fromList(_input.readBytes(header.length));
     return (header, data);
-  }
-
-  Future<Uint8List> _readBytes(int length) async {
-    if (length == 0) return Uint8List(0);
-    
-    while (_buffer.length < length) {
-      if (_error != null) throw _error;
-      if (_closed) {
-         if (_buffer.length < length) throw TLSAbruptCloseError();
-         break;
-      }
-      
-      _completer = Completer<void>();
-      await _completer!.future;
-    }
-    
-    final data = Uint8List.fromList(_buffer.sublist(0, length));
-    _buffer.removeRange(0, length);
-    return data;
-  }
-
-  void _checkCompleter() {
-    if (_completer != null && !_completer!.isCompleted) {
-      _completer!.complete();
-      _completer = null;
-    }
   }
 }
 
@@ -170,10 +147,14 @@ class ConnectionState {
 /// Implementation of TLS record layer protocol
 class RecordLayer {
   RecordLayer(this.sock) {
-    _recordSocket = RecordSocket(sock);
+    _recordSocket = RecordSocket.fromSocket(sock!);
   }
 
-  final Socket sock;
+  RecordLayer.custom(BinaryInput input, BinaryOutput output) : sock = null {
+    _recordSocket = RecordSocket.fromTransport(input: input, output: output);
+  }
+
+  final Socket? sock;
   late RecordSocket _recordSocket;
   TlsProtocolVersion _version = const TlsProtocolVersion(0, 0);
   bool _tls13record = false;

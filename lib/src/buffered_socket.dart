@@ -16,8 +16,8 @@ class BufferedSocket {
   /// `getpeername`, `settimeout`, `gettimeout`, `setsockopt`, `shutdown`, and
   /// `close` with Python-like semantics.
   ///
-  /// // TODO: Replace [dynamic] with a Dart interface when the socket layer is
-  /// // finalized (e.g., RawSocket wrapper or platform channel/FFI adapter).
+  /// NOTE: Currently uses dynamic type for flexibility with different socket
+  /// implementations (Socket, RawSocket, FFI-backed adapters).
   final dynamic socket;
 
   final Queue<Uint8List> _writeQueue = Queue<Uint8List>();

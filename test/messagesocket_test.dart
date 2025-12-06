@@ -136,7 +136,7 @@ class _MessageSocketHarness {
   }
 
   Future<void> dispose() async {
-    await socket.sock.close();
+    await socket.sock?.close();
     await _peerSocket.close();
   }
 }

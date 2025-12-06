@@ -96,8 +96,7 @@ class SingleResponse {
   }
 }
 
-// TODO(port): OCSP integration pending:
-// - TACK extension support (if needed)
+// NOTE: TACK extension support is optional and rarely used.
 
 class OCSPResponse extends SignedObject {
   OCSPResponse(List<int> value) {

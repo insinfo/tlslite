@@ -967,7 +967,7 @@ class _TlsConnectionHarness {
   }
 
   Future<void> dispose() async {
-    await connection.sock.close();
+    await connection.sock?.close();
     await _peerSocket.close();
   }
 }

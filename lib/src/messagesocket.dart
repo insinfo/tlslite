@@ -9,6 +9,8 @@ import 'defragmenter.dart';
 import 'utils/codec.dart';
 import 'tls_protocol.dart';
 
+import 'utils/binary_io.dart';
+
 /// TLS Record Layer socket that provides Message level abstraction
 ///
 /// Because the record layer has a hard size limit on sent messages, they need
@@ -20,6 +22,12 @@ import 'tls_protocol.dart';
 /// This class provides abstraction for handling Handshake protocol messages.
 class MessageSocket extends RecordLayer {
   MessageSocket(super.sock, this.defragmenter);
+
+  MessageSocket.custom(
+    BinaryInput input,
+    BinaryOutput output,
+    this.defragmenter,
+  ) : super.custom(input, output);
 
   /// Defragmenter used for read records
   final Defragmenter defragmenter;

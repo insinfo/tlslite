@@ -217,9 +217,20 @@ class X509 {
       }
       // iPAddress [7] OCTET STRING
       else if (item.type.tagClass == 2 && item.type.tagId == 7) {
-        // TODO: Convert IP bytes to string representation if needed
-        // For now, we skip IP addresses or store them as hex?
-        // tlslite-ng usually stores dNSNames.
+        // Convert IP bytes to string representation
+        final ipBytes = item.value;
+        if (ipBytes.length == 4) {
+          // IPv4 address
+          subjectAltName!.add(ipBytes.join('.'));
+        } else if (ipBytes.length == 16) {
+          // IPv6 address - convert to standard notation
+          final parts = <String>[];
+          for (var j = 0; j < 16; j += 2) {
+            parts.add(((ipBytes[j] << 8) | ipBytes[j + 1]).toRadixString(16));
+          }
+          subjectAltName!.add(parts.join(':'));
+        }
+        // Skip malformed IP addresses silently
       }
     }
   }
@@ -282,9 +293,8 @@ class X509 {
     return hexEncode(digestBytes);
   }
 
-  // TODO(port): Missing methods from Python x509.py:
-  // - getTackExt(): Extract TACK extension (requires utils/tackwrapper.dart)
-  // - checkTack(tack): Validate TACK (requires utils/tackwrapper.dart)
+  // NOTE: TACK extension methods (getTackExt, checkTack) require utils/tackwrapper.dart
+  // TACK is a rarely-used feature and not required for standard TLS operation.
 
   /// Return the raw DER certificate bytes.
   Uint8List writeBytes() => bytes;

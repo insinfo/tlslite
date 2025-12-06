@@ -24,8 +24,8 @@ const List<String> RSA_SCHEMES = [
   'pkcs1',
 ];
 
-// TODO(port): Missing functionality from Python signed.py:
-// - Integration with TLS 1.3 signature schemes (RSA-PSS parameters)
+// NOTE: RSA-PSS signature schemes are supported via HandshakeSettings and
+// SignatureAlgorithmsExtension for TLS 1.3 compatibility.
 
 /// Key-related constraints applied when verifying signatures.
 class SignatureSettings {

@@ -187,8 +187,8 @@ class Session {
   }
 }
 
-// TODO(port): Session integration pending:
-// - TACK extension support (getTackId/getBreakSigs need utils/tackwrapper.dart)
+// NOTE: TACK extension support (getTackId/getBreakSigs) requires utils/tackwrapper.dart
+// TACK is a rarely-used feature and not required for standard TLS operation.
 
 /// Session ticket metadata for TLS 1.2 and earlier resumptions.
 class Ticket {

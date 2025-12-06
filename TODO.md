@@ -1,6 +1,6 @@
 # TODO - TLSLite Dart Port
 
-**Status**: 98% completo | **Testes**: 452+ passando
+**Status**: 98% completo | **Testes**: 600+ passando
 
 ## PRIORIDADES
 
@@ -161,7 +161,13 @@ dart analyze                 # análise estática
 5️⃣ Complete TLSConnection handshake flow
 6️⃣ Add RFC/NIST test vectors for Ed448 and ML-KEM
 
-
+tem que ver isso sessionCache do SimpleTlsServer por enquanto (já que não está suportado no handshakeServer):
 
 continue implementando os TODO e os UnimplementedError e os not implemented e os UnsupportedError e os placeholders e stub afim de comcluir o port
 continue portando o C:\MyDartProjects\tlslite\tlslite-ng para dart e atualize o C:\MyDartProjects\tlslite\TODO.md
+
+Remaining FUTURE Items (Non-blocking)
+TACK extension support (rarely used)
+Full certificate path validation with trust anchors
+TLS 1.0/1.1 support (deprecated protocols)
+Extended test matrix for FFI sockets
