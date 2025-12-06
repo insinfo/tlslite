@@ -904,14 +904,6 @@ class TlsConnection extends MessageSocket {
           }
       }
       
-      session.masterSecret = calcMasterSecret(
-          [version.major, version.minor],
-          session.cipherSuite,
-          premasterSecret,
-          clientRandom, 
-          serverRandom
-      );
-      
       final clientKeyExchange = keyExchange.makeClientKeyExchange();
       
       await sendHandshakeMessage(clientKeyExchange);
@@ -959,6 +951,27 @@ class TlsConnection extends MessageSocket {
            await sendHandshakeMessage(certVerify);
       }
 
+      // Derive master secret now that all pre-CCS handshake messages are hashed
+      print('[DEBUG] extendedMasterSecret: ${session.extendedMasterSecret}');
+      if (session.extendedMasterSecret) {
+          session.masterSecret = calcKey(
+              [version.major, version.minor],
+              premasterSecret,
+              session.cipherSuite,
+              Uint8List.fromList('extended master secret'.codeUnits),
+              handshakeHashes: handshakeHashes,
+          );
+      } else {
+          session.masterSecret = calcMasterSecret(
+              [version.major, version.minor],
+              session.cipherSuite,
+              premasterSecret,
+              clientRandom, 
+              serverRandom
+          );
+      }
+      print('[DEBUG] masterSecret=${session.masterSecret.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+
       // Send ChangeCipherSpec
       await queueMessageBlocking(Message(ContentType.change_cipher_spec, Uint8List.fromList([1])));
       await flushBlocking();
@@ -1000,38 +1013,119 @@ class TlsConnection extends MessageSocket {
       await sendHandshakeMessage(TlsFinished(verifyData: verifyData));
       
       print('[DEBUG] Finished sent');
-      
       // Receive ChangeCipherSpec
       print('[DEBUG] About to receive CCS. _pendingMessages.length=${_pendingMessages.length}');
       if (_pendingMessages.isNotEmpty) {
         final firstPending = _pendingMessages.first;
         print('[DEBUG] First pending message type: ${firstPending.$1.type}');
       }
-      final (header, parser) = await recvMessageBlocking();
-      print('[DEBUG] Received message type: ${header.type}');
-      if (header.type == ContentType.alert) {
-        final alertBytes = parser.getFixBytes(parser.getRemainingLength());
-        print('[DEBUG] Alert received: level=${alertBytes.isNotEmpty ? alertBytes[0] : "?"} desc=${alertBytes.length > 1 ? alertBytes[1] : "?"}');
-        final alert = TlsAlert.parse(alertBytes);
-        throw TLSRemoteAlert(alert.description.code, alert.level.code);
-      }
-      if (header.type != ContentType.change_cipher_spec) {
-           await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
-           throw TLSUnexpectedMessage('Expected ChangeCipherSpec');
+      final pendingEncryptedHandshakes = <(dynamic, Uint8List)>[];
+      while (true) {
+        final (header, parser) = await recvRecord();
+        print('[DEBUG] Received message type: ${header.type}'
+              '${header is RecordHeader3 ? ', length=${header.length}' : ''}');
+
+        if (header.type == ContentType.alert) {
+          final alertBytes = parser.getFixBytes(parser.getRemainingLength());
+          print('[DEBUG] Alert received: level=${alertBytes.isNotEmpty ? alertBytes[0] : "?"} desc=${alertBytes.length > 1 ? alertBytes[1] : "?"}');
+          final alert = TlsAlert.parse(alertBytes);
+          throw TLSRemoteAlert(alert.description.code, alert.level.code);
+        }
+
+        if (header.type == ContentType.change_cipher_spec) {
+          changeReadState();
+          for (final pending in pendingEncryptedHandshakes) {
+            final (_, plaintext) = decryptRecordPayload(pending.$1, pending.$2);
+            defragmenter.addData(ContentType.handshake, plaintext);
+          }
+          break;
+        }
+
+        if (header.type == ContentType.handshake) {
+          final fragment = parser.getFixBytes(parser.getRemainingLength());
+          if (!hasReadCipher) {
+            try {
+              final recordVersion =
+                  header is RecordHeader3 ? header.version : version;
+              // If parsing succeeds, treat it as plaintext and let the
+              // defragmenter/handshake queue process it normally.
+              TlsHandshakeMessage.parseFragment(
+                fragment,
+                recordVersion: recordVersion,
+              );
+              defragmenter.addData(ContentType.handshake, fragment);
+              print('[DEBUG] Queued plaintext handshake before CCS '
+                  '(len=${fragment.length})');
+            } catch (_) {
+              print('[DEBUG] Stashed encrypted handshake fragment (hex): '
+                  '${fragment.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+              pendingEncryptedHandshakes.add((header, fragment));
+            }
+            continue;
+          }
+
+          // Otherwise, decrypt the encrypted handshake using the pending keys.
+          changeReadState();
+          print('[DEBUG] Encrypted handshake record (hex): '
+              '${fragment.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+          final (_, plaintext) = decryptRecordPayload(header, fragment);
+          defragmenter.addData(ContentType.handshake, plaintext);
+          break;
+        }
+
+        await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+        throw TLSUnexpectedMessage('Expected ChangeCipherSpec');
       }
       
-      // Switch to Application Keys (Read)
-      changeReadState();
-      
-      // Receive Finished
-      final finishedMsg = await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.finished]);
-      if (finishedMsg is! TlsFinished) {
+      // Receive Finished (tickets may arrive before it when not encrypted)
+      TlsFinished? finishedMsg;
+      final initialFinishedSnapshot = handshakeHashes.copy();
+      var finishedHandshakeSnapshot = initialFinishedSnapshot;
+      while (finishedMsg == null) {
+        final msg = await recvHandshakeMessage(
+          allowedTypes: [TlsHandshakeType.finished, TlsHandshakeType.newSessionTicket],
+        );
+        if (msg is TlsFinished) {
+          finishedMsg = msg;
+        } else if (msg is TlsNewSessionTicket) {
+          session.tickets ??= <Ticket>[];
+          session.tickets!.add(Ticket(
+            ticket: msg.ticket,
+            ticketLifetime: msg.ticketLifetime,
+            masterSecret: session.masterSecret,
+            cipherSuite: session.cipherSuite,
+          ));
+          final hh = handshakeHashes.digest('sha256');
+          print('[DEBUG] processed NST before Finished, handshakeHash='
+              '${hh.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+          finishedHandshakeSnapshot = handshakeHashes.copy();
+        } else {
           await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
           throw TLSUnexpectedMessage('Expected Finished');
+        }
       }
       
       // Verify Finished
-      final expectedVerifyData = buildFinishedVerifyData(forClient: false);
+      print('[DEBUG] received server Finished verifyData: '
+          '${finishedMsg.verifyData.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+      final expectedVerifyData = calcFinished(
+        [version.major, version.minor],
+        session.masterSecret,
+        session.cipherSuite,
+        finishedHandshakeSnapshot,
+        false,
+      );
+      print('[DEBUG] expected server Finished verifyData: '
+          '${expectedVerifyData.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+      final altVerifyData = calcFinished(
+        [version.major, version.minor],
+        session.masterSecret,
+        session.cipherSuite,
+        initialFinishedSnapshot,
+        false,
+      );
+      print('[DEBUG] expected (without NST) verifyData: '
+          '${altVerifyData.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
       if (!_bytesEqual(finishedMsg.verifyData, expectedVerifyData)) {
           await _sendAlert(AlertLevel.fatal, AlertDescription.decrypt_error);
           throw TLSHandshakeFailure('Finished verification failed');
@@ -1887,9 +1981,22 @@ class TlsConnection extends MessageSocket {
     if (clientHello.extensions?.byType(ExtensionType.renegotiation_info) != null) {
         extensions.add(TlsRawExtension(type: ExtensionType.renegotiation_info, body: Uint8List(1)..[0] = 0));
     }
-    if (handshakeSettings.useExtendedMasterSecret && 
-        clientHello.extensions?.byType(ExtensionType.extended_master_secret) != null) {
+    final clientOfferedEms =
+        clientHello.extensions?.byType(ExtensionType.extended_master_secret) != null;
+    if (handshakeSettings.useExtendedMasterSecret && clientOfferedEms) {
         extensions.add(const TlsExtendedMasterSecretExtension());
+        session.extendedMasterSecret = true;
+    } else if (handshakeSettings.requireExtendedMasterSecret && !clientOfferedEms) {
+        await _sendAlert(AlertLevel.fatal, AlertDescription.handshake_failure);
+        throw TLSHandshakeFailure('Client did not offer Extended Master Secret');
+    }
+
+    if (handshakeSettings.requireExtendedMasterSecret &&
+        !session.extendedMasterSecret) {
+      await _sendAlert(AlertLevel.fatal, AlertDescription.handshake_failure);
+      throw TLSHandshakeFailure(
+        'Server did not negotiate Extended Master Secret as required',
+      );
     }
 
     // ALPN Negotiation
@@ -2116,15 +2223,25 @@ class TlsConnection extends MessageSocket {
          }
     }
     
-    // Calculate Master Secret
-    final masterSecret = calcMasterSecret(
-        [3, 3], 
-        selectedSuite,
-        premasterSecret, 
-        clientHello.random, 
-        serverHello.random
-    );
-    session.masterSecret = masterSecret;
+    // Calculate Master Secret (respect Extended Master Secret if negotiated)
+    if (session.extendedMasterSecret) {
+        session.masterSecret = calcKey(
+            [3, 3],
+            premasterSecret,
+            selectedSuite,
+            Uint8List.fromList('extended master secret'.codeUnits),
+            handshakeHashes: handshakeHashes,
+        );
+    } else {
+        final masterSecret = calcMasterSecret(
+            [3, 3], 
+            selectedSuite,
+            premasterSecret, 
+            clientHello.random, 
+            serverHello.random
+        );
+        session.masterSecret = masterSecret;
+    }
     
     // 10. Receive ChangeCipherSpec
     final (header, _) = await recvMessage();
@@ -2135,13 +2252,20 @@ class TlsConnection extends MessageSocket {
     
     // 11. Receive Finished
     changeReadState(); // Switch to encrypted read
+    final clientFinishedHandshakeHashes = handshakeHashes.copy();
     final finishedMsg = await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.finished]);
     if (finishedMsg is! TlsFinished) {
          await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
          throw TLSUnexpectedMessage('Expected Finished');
     }
     
-    final expectedVerifyData = buildFinishedVerifyData(forClient: true);
+    final expectedVerifyData = calcFinished(
+      [version.major, version.minor],
+      session.masterSecret,
+      session.cipherSuite,
+      clientFinishedHandshakeHashes,
+      true,
+    );
     if (!_bytesEqual(finishedMsg.verifyData, expectedVerifyData)) {
          await _sendAlert(AlertLevel.fatal, AlertDescription.decrypt_error);
          throw TLSHandshakeFailure('Finished verification failed');
@@ -2796,8 +2920,10 @@ class TlsConnection extends MessageSocket {
 
   Future<bool> _handlePostHandshakeMessage(
       TlsHandshakeMessage message) async {
+    final isTls13Ticket =
+        _isTls13Plus() && message.handshakeType == TlsHandshakeType.newSessionTicket;
     final isPostHandshake = message.handshakeType == TlsHandshakeType.keyUpdate ||
-        message.handshakeType == TlsHandshakeType.newSessionTicket;
+        isTls13Ticket;
     if (!isPostHandshake) {
       return false;
     }

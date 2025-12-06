@@ -116,6 +116,16 @@ class RecordSocket {
         throw TLSRecordOverflow();
       }
 
+      final headerVersion = header is RecordHeader3
+          ? header.version
+          : header is RecordHeader2
+              ? header.version
+              : const TlsProtocolVersion(0, 0);
+      print('[DART-DEBUG-RECV] type=${header.type} '
+          'version=${headerVersion.major}.${headerVersion.minor} '
+          'length=${header.length} '
+          'headerBytes=${headerBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+
       await _input.ensureBytes(header.length);
       final data = Uint8List.fromList(_input.readBytes(header.length));
       return (header, data);
@@ -194,6 +204,8 @@ class RecordLayer {
 
   int get recvRecordLimit => _recordSocket.recvRecordLimit;
   set recvRecordLimit(int value) => _recordSocket.recvRecordLimit = value;
+
+  bool get hasReadCipher => _readState.encContext != null;
 
   bool get earlyDataOk => _earlyDataOk;
   set earlyDataOk(bool val) {
@@ -553,6 +565,13 @@ class RecordLayer {
     final seqnumBytes = _readState.getSeqNumBytes();
     Uint8List nonce;
     
+    print('\n[DART-DEBUG-DECRYPT] _decryptAndUnseal called');
+    print('[DART-DEBUG-DECRYPT]   seqNumBytes=${seqnumBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+    print('[DART-DEBUG-DECRYPT]   contentType=${header.type}');
+    print('[DART-DEBUG-DECRYPT]   version=${version.major}.${version.minor}');
+    print('[DART-DEBUG-DECRYPT]   ciphertext length=${buf.length}');
+    print('[DART-DEBUG-DECRYPT]   fixedNonce=${_readState.fixedNonce?.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+
     if (_readState.encContext.name.contains("aes") && !_isTls13Plus()) {
       final explicitNonceLength = 8;
       if (explicitNonceLength > buf.length) {
@@ -564,6 +583,8 @@ class RecordLayer {
       nonce = _getNonce(_readState, seqnumBytes);
     }
     
+    print('[DART-DEBUG-DECRYPT]   nonce=${nonce.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+
     if ((_readState.encContext.tagLength as int) > buf.length) {
       throw TLSBadRecordMAC("Truncated tag");
     }
@@ -591,6 +612,8 @@ class RecordLayer {
       }
       authData = header.write();
     }
+    
+    print('[DART-DEBUG-DECRYPT]   authData=${authData.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
     
     final result = _readState.encContext.open(nonce, buf, authData);
     if (result == null) {
@@ -641,73 +664,97 @@ class RecordLayer {
     throw TLSUnexpectedMessage("Malformed record layer inner plaintext - content type missing");
   }
 
+  /// Decrypt and authenticate a record payload using the current read state.
+  ///
+  /// Returns the potentially modified [header] (TLS 1.3 content-type fixups)
+  /// alongside the plaintext bytes. This mirrors the decryption path used by
+  /// [recvRecord] so callers can re-process already-read records after a
+  /// state transition.
+  (dynamic, Uint8List) decryptRecordPayload(dynamic header, Uint8List data) {
+    var decryptedData = data;
+
+    if (header is RecordHeader2) {
+      decryptedData = _decryptSSL2(decryptedData, header.padding);
+      if (handshakeFinished) {
+        header.type = ContentType.application_data;
+      }
+      return (header, decryptedData);
+    }
+
+    if (_isTls13Plus() && header.type == ContentType.change_cipher_spec) {
+      return (header, decryptedData);
+    }
+
+    if (_isTls13Plus() &&
+        header.type == ContentType.alert &&
+        decryptedData.length < 3 &&
+        _readState.encContext != null &&
+        _readState.seqnum == 0) {
+      return (header, decryptedData);
+    }
+
+    if (_readState.encContext != null && (_readState.encContext.isAEAD ?? false)) {
+      decryptedData = _decryptAndUnseal(header, decryptedData);
+    } else if (_readState.encryptThenMAC) {
+      decryptedData = _macThenDecrypt(header.type, decryptedData);
+    } else if (_readState.encContext != null && _readState.encContext.isBlockCipher) {
+      decryptedData = _decryptThenMAC(header.type, decryptedData);
+    } else {
+      decryptedData = _decryptStreamThenMAC(header.type, decryptedData);
+    }
+
+    if (_isTls13Plus() &&
+        _readState.encContext != null &&
+        header.type == ContentType.application_data) {
+      if (decryptedData.length > recvRecordLimit + 1) {
+        throw TLSRecordOverflow();
+      }
+      final res = _tls13DePad(decryptedData);
+      decryptedData = res.$1;
+      final contentType = res.$2;
+      if (header is RecordHeader3) {
+        header.type = contentType;
+        header.length = decryptedData.length;
+      }
+    }
+
+    if (decryptedData.length > recvRecordLimit) {
+      throw TLSRecordOverflow();
+    }
+
+    return (header, decryptedData);
+  }
+
   Future<(dynamic, Parser)> recvRecord() async {
     while (true) {
       final (header, data) = await _recordSocket.recv();
-      var decryptedData = data;
-      
       ConnectionState? readStateCopy;
       if (earlyDataOk) {
         readStateCopy = _readState.copy();
       }
       
       try {
-        if (header is RecordHeader2) {
-          decryptedData = _decryptSSL2(decryptedData, header.padding);
-          if (handshakeFinished) {
-            header.type = ContentType.application_data;
-          }
-        } else if (_isTls13Plus() && header.type == ContentType.change_cipher_spec) {
-          // Pass
-        } else if (_isTls13Plus() && header.type == ContentType.alert && decryptedData.length < 3 && _readState.encContext != null && _readState.seqnum == 0) {
-          // Pass
-        } else if (_readState.encContext != null && (_readState.encContext.isAEAD ?? false)) {
-          decryptedData = _decryptAndUnseal(header, decryptedData);
-        } else if (_readState.encryptThenMAC) {
-          decryptedData = _macThenDecrypt(header.type, decryptedData);
-        } else if (_readState.encContext != null && _readState.encContext.isBlockCipher) {
-          decryptedData = _decryptThenMAC(header.type, decryptedData);
-        } else {
-          decryptedData = _decryptStreamThenMAC(header.type, decryptedData);
-        }
-        
-        if (_readState.encContext == null && _readState.macContext == null && earlyDataOk && header.type == ContentType.application_data) {
+        final res = decryptRecordPayload(header, data);
+        final updatedHeader = res.$1;
+        final decryptedData = res.$2;
+
+        if (_readState.encContext == null &&
+            _readState.macContext == null &&
+            earlyDataOk &&
+            updatedHeader.type == ContentType.application_data) {
           throw TLSBadRecordMAC("early data received");
         }
+
+        earlyDataOk = false;
+        return (updatedHeader, Parser(decryptedData));
       } catch (e) {
-        if (e is TLSBadRecordMAC && earlyDataOk && (_earlyDataProcessed + decryptedData.length < maxEarlyData)) {
-          _earlyDataProcessed += decryptedData.length;
+        if (e is TLSBadRecordMAC && earlyDataOk && (_earlyDataProcessed + data.length < maxEarlyData)) {
+          _earlyDataProcessed += data.length;
           _readState = readStateCopy!;
           continue;
         }
         rethrow;
       }
-      
-      earlyDataOk = false;
-      
-      if (_isTls13Plus() && _readState.encContext != null && header.type == ContentType.application_data) {
-        if (decryptedData.length > recvRecordLimit + 1) {
-          throw TLSRecordOverflow();
-        }
-        final res = _tls13DePad(decryptedData);
-        decryptedData = res.$1;
-        final contentType = res.$2;
-        // Recreate header
-        // header = RecordHeader3().create(const TlsProtocolVersion(3, 4), contentType, decryptedData.length);
-        // But header is dynamic, so we can just modify it or return a new one.
-        // The caller expects (header, Parser).
-        // We should probably update the header object.
-        if (header is RecordHeader3) {
-           header.type = contentType;
-           header.length = decryptedData.length;
-        }
-      }
-      
-      if (decryptedData.length > recvRecordLimit) {
-        throw TLSRecordOverflow();
-      }
-
-      return (header, Parser(decryptedData));
     }
   }
 

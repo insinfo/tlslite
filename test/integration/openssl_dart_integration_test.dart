@@ -23,6 +23,7 @@ class OpenSSLServer {
   bool _ready = false;
   String? _keyFile;
   String? _certFile;
+  String? _keyLogFile;
   Directory? _tempDir;
 
   OpenSSLServer({required int port, required String cipher, bool verbose = false})
@@ -33,12 +34,14 @@ class OpenSSLServer {
   int get port => _port;
   List<String> get stdout => _stdout;
   List<String> get stderr => _stderr;
+  String? get keyLogFile => _keyLogFile;
 
   Future<void> start() async {
     // Generate test certificate on the fly
     _tempDir = await Directory.systemTemp.createTemp('tlstest_');
     _keyFile = '${_tempDir!.path}/server.key';
     _certFile = '${_tempDir!.path}/server.crt';
+    _keyLogFile = '${_tempDir!.path}/sslkeylog.log';
 
     // Generate RSA key and self-signed certificate
     final genKeyResult = await Process.run('openssl', [
@@ -65,6 +68,8 @@ class OpenSSLServer {
       '-tls1_2',  // Force TLS 1.2
       '-cipher', _cipher,
       '-no_dhe',  // Disable DHE to force ECDHE
+      '-keylogfile',
+      _keyLogFile!,
     ];
 
     if (_verbose) {
@@ -182,6 +187,13 @@ void main() {
           for (final line in server.stderr) {
             print(line);
           }
+          if (server.keyLogFile != null) {
+            final keyLog = File(server.keyLogFile!);
+            if (await keyLog.exists()) {
+              print('\n=== OpenSSL KeyLog ===');
+              print(await keyLog.readAsString());
+            }
+          }
           
           rethrow;
         }
@@ -236,7 +248,14 @@ void main() {
           for (final line in server.stderr) {
             print(line);
           }
-          
+          if (server.keyLogFile != null) {
+            final keyLog = File(server.keyLogFile!);
+            if (await keyLog.exists()) {
+              print('\n=== OpenSSL KeyLog ===');
+              print(await keyLog.readAsString());
+            }
+          }
+
           rethrow;
         }
       } finally {
@@ -309,6 +328,13 @@ void main() {
           for (final line in server.stderr) {
             print('  $line');
           }
+          if (server.keyLogFile != null) {
+            final keyLog = File(server.keyLogFile!);
+            if (await keyLog.exists()) {
+              print('\n=== OpenSSL KeyLog ===');
+              print(await keyLog.readAsString());
+            }
+          }
           
           rethrow;
         }
@@ -365,6 +391,13 @@ void main() {
               e.toString().contains('TLSBadRecordMAC')) {
             print('\n*** FOUND THE BUG: bad_record_mac error ***');
             print('This means record layer encryption/decryption is failing.');
+          }
+          if (server.keyLogFile != null) {
+            final keyLog = File(server.keyLogFile!);
+            if (await keyLog.exists()) {
+              print('\n=== OpenSSL KeyLog ===');
+              print(await keyLog.readAsString());
+            }
           }
           
           rethrow;

@@ -297,16 +297,21 @@ Uint8List calcKey(
   // TLS 1.0/1.1
   else if (version[0] == 3 && (version[1] == 1 || version[1] == 2)) {
     List<int> seed;
-    if (String.fromCharCodes(label) == 'extended master secret') {
+    final labelStr = String.fromCharCodes(label);
+    if (labelStr == 'extended master secret') {
       final md5 = handshakeHashes.digest('md5');
       final sha1 = handshakeHashes.digest('sha1');
       seed = [...md5, ...sha1];
-    } else if (String.fromCharCodes(label).endsWith('finished')) {
+    } else if (labelStr.endsWith('finished')) {
       seed = handshakeHashes.digest();
     } else {
       // key expansion or master secret
       assert(clientRandom != null && serverRandom != null);
-      seed = [...clientRandom!, ...serverRandom!];
+      if (labelStr == 'key expansion') {
+        seed = [...serverRandom!, ...clientRandom!];
+      } else {
+        seed = [...clientRandom!, ...serverRandom!];
+      }
     }
     return prf(secret, label, seed, outputLength ?? 48);
   }
@@ -315,15 +320,20 @@ Uint8List calcKey(
   else if (version[0] == 3 && version[1] == 3) {
     final useSha384 = CipherSuite.sha384PrfSuites.contains(cipherSuite);
     List<int> seed;
+    final labelStr = String.fromCharCodes(label);
 
-    if (String.fromCharCodes(label) == 'extended master secret') {
+    if (labelStr == 'extended master secret') {
       seed = handshakeHashes.digest(useSha384 ? 'sha384' : 'sha256');
-    } else if (String.fromCharCodes(label).endsWith('finished')) {
+    } else if (labelStr.endsWith('finished')) {
       seed = handshakeHashes.digest(useSha384 ? 'sha384' : 'sha256');
     } else {
       // key expansion or master secret
       assert(clientRandom != null && serverRandom != null);
-      seed = [...clientRandom!, ...serverRandom!];
+      if (labelStr == 'key expansion') {
+        seed = [...serverRandom!, ...clientRandom!];
+      } else {
+        seed = [...clientRandom!, ...serverRandom!];
+      }
     }
 
     if (useSha384) {

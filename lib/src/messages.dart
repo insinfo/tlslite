@@ -1148,6 +1148,7 @@ class TlsNewSessionTicket extends TlsHandshakeMessage {
     required Uint8List ticket,
     Uint8List? extensions,
     DateTime? receivedAt,
+    this.tls12Format = false,
   })  : ticketNonce = Uint8List.fromList(ticketNonce),
         ticket = Uint8List.fromList(ticket),
         extensions = Uint8List.fromList(extensions ?? Uint8List(0)),
@@ -1160,30 +1161,65 @@ class TlsNewSessionTicket extends TlsHandshakeMessage {
   final Uint8List ticket;
   final Uint8List extensions;
   final DateTime receivedAt;
+  final bool tls12Format;
 
   static TlsNewSessionTicket parseBody(Uint8List body) {
+    // TLS 1.3 format: lifetime(4) | age_add(4) | nonce<1..255> |
+    // ticket<0..2^16-1> | extensions<0..2^16-1>.
+    try {
+      final parser = Parser(body);
+      final lifetime = parser.get(4);
+      final ageAdd = parser.get(4);
+      final nonce = parser.getVarBytes(1);
+      final ticket = parser.getVarBytes(2);
+      final extensionsLength = parser.get(2);
+      final extensions = parser.getFixBytes(extensionsLength);
+      if (!parser.isDone) {
+        throw DecodeError('Sobrou payload após NewSessionTicket');
+      }
+      return TlsNewSessionTicket(
+        ticketLifetime: lifetime,
+        ticketAgeAdd: ageAdd,
+        ticketNonce: nonce,
+        ticket: ticket,
+        extensions: extensions,
+        receivedAt: DateTime.now(),
+        tls12Format: false,
+      );
+    } on TLSDecodeError catch (_) {
+      // Fall through to TLS 1.2 parsing.
+    } on DecodeError catch (_) {
+      // Fall through to TLS 1.2 parsing.
+    } on RangeError catch (_) {
+      // Fall through to TLS 1.2 parsing.
+    }
+
+    // TLS 1.2 format: lifetime(4) | ticket<0..2^16-1>
     final parser = Parser(body);
     final lifetime = parser.get(4);
-    final ageAdd = parser.get(4);
-    final nonce = parser.getVarBytes(1);
     final ticket = parser.getVarBytes(2);
-    final extensionsLength = parser.get(2);
-    final extensions = parser.getFixBytes(extensionsLength);
     if (!parser.isDone) {
-      throw DecodeError('Sobrou payload após NewSessionTicket');
+      throw DecodeError('Sobrou payload após NewSessionTicket (TLS 1.2)');
     }
     return TlsNewSessionTicket(
       ticketLifetime: lifetime,
-      ticketAgeAdd: ageAdd,
-      ticketNonce: nonce,
+      ticketAgeAdd: 0,
+      ticketNonce: Uint8List(0),
       ticket: ticket,
-      extensions: extensions,
+      extensions: Uint8List(0),
       receivedAt: DateTime.now(),
+      tls12Format: true,
     );
   }
 
   @override
   Uint8List serializeBody() {
+    if (tls12Format) {
+      final writer = Writer();
+      writer.add(ticketLifetime, 4);
+      writer.addVarBytes(ticket, 2);
+      return writer.bytes;
+    }
     final writer = Writer();
     writer.add(ticketLifetime, 4);
     writer.add(ticketAgeAdd, 4);
