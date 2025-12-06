@@ -10,7 +10,7 @@ import '../../../messages.dart';
 import 'tls_record_layer_with_ffi_socket.dart';
 
 /// Controla o fluxo de handshake e registros para o engine puro Dart que usa o SocketNative com FFI
-///
+/// Implementação Experimental que usa FFI para a parte do Socket
 /// // TODO(tlslite-ng): portar `tlsconnection.py` para preencher esta classe
 /// com logica real de negociacao, cipher suites e controle de sessao.
 class PureDartTlsConnectionFFI {

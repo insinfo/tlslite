@@ -11,11 +11,11 @@
    - ✅ `handshakeClient` entry point
    - ✅ `_clientSendClientHello`
    - ✅ `_clientHandleServerHello`
-   - ✅ `_clientHandshake13` (Full flow implemented, signature verification complete)
-   - ✅ `_clientHandshake12` (RSA Key Exchange implemented, DHE/ECDHE pending)
+   - ✅ `_clientHandshake13` (Full flow implemented, signature verification complete (RSA/ECDSA), Client Auth supported)
+   - ✅ `_clientHandshake12` (RSA/DHE/ECDHE Key Exchange implemented, Client Auth supported)
    - ✅ `handshakeServer` entry point (Version negotiation implemented)
    - ✅ `_serverHandshake13` (Basic implementation: RSA auth, X25519 key exchange)
-   - ✅ `_serverHandshake12` (Implemented: RSA/DHE/ECDHE key exchange)
+   - ✅ `_serverHandshake12` (Implemented: RSA/DHE/ECDHE key exchange, Client Auth supported)
 
 ### ✅ IMPORTANTE  
 4. **handshakesettings.py** → handshake_settings.dart (716 linhas) - ✅ COMPLETO
@@ -23,20 +23,19 @@
 6. **handshakehelpers.py** → handshake_helpers.dart (789 linhas) - ✅ COMPLETO
 
 ### 🔵 BAIXA (pode esperar)
-7. verifierdb.py, dh.py, checker.py
-8. api.py, basedb.py, messagesocket.py
+7. integration/ (asyncstatemachine, httptlsconnection, etc.)
 
 ---
 
 ## COMPLETO ✅
 
-**Utils**: codec, asn1parser, pem, x25519, aes, chacha20, poly1305, rsa, ecdsa, eddsa, dsa, hmac, compression, constanttime, datefuncs, lists, dns_utils, format_output, keyfactory, tlshashlib, tlshmac, tripledes, rc4
+**Utils**: codec, asn1parser, pem, x25519, aes, chacha20, poly1305, rsa, ecdsa, eddsa, dsa, hmac, compression, constanttime, datefuncs, lists, dns_utils, format_output, keyfactory, tlshashlib, tlshmac, tripledes, rc4, rijndael, dh, checker, verifierdb, api, basedb
 
-**Core**: constants, errors, x509, x509certchain, ocsp, signed, session, mathtls, ffdhe_groups, defragmenter, handshake_hashes, sessioncache
+**Core**: constants, errors, x509, x509certchain, ocsp, signed, session, mathtls, ffdhe_groups, defragmenter, handshake_hashes, sessioncache, messagesocket
 
 **Crypto**: AES (CBC/CTR/GCM/CCM/CCM8), ChaCha20-Poly1305, TripleDES, RC4, **Ed448**, **ML-KEM (FIPS 203)**
 
-**Parcial**: tls_messages (80%), tls_extensions (85%), buffered_socket
+**Parcial**: tls_messages (80%), tls_extensions (85%), buffered_socket, tlsconnection (75%)
 
 ---
 

@@ -22,6 +22,7 @@ import 'tls_protocol.dart';
 import 'utils/codec.dart';
 import 'utils/cryptomath.dart';
 import 'utils/rsakey.dart';
+import 'utils/ecdsakey.dart';
 import 'mathtls.dart';
 import 'x509certchain.dart';
 import 'x509.dart';
@@ -505,7 +506,7 @@ class TlsConnection extends MessageSocket {
     await _clientHandleServerHello(message);
 
     if (_isTls13Plus()) {
-        await _clientHandshake13();
+        await _clientHandshake13(certParams);
     } else {
         await _clientHandshake12(certParams);
     }
@@ -612,7 +613,41 @@ class TlsConnection extends MessageSocket {
           } else if (message is TlsServerKeyExchange) {
               final pubKey = session.serverCertChain?.getEndEntityPublicKey();
               premasterSecret = keyExchange.processServerKeyExchange(pubKey, message);
-              // TODO: Verify Signature of ServerKeyExchange (if authenticated)
+              
+              if (message.signature.isNotEmpty) {
+                  if (pubKey == null) {
+                      throw TLSHandshakeFailure('ServerKeyExchange signature present but no server certificate');
+                  }
+                  
+                  final params = message.encodeParameters();
+                  final signedData = Uint8List.fromList([
+                      ...clientRandom,
+                      ...serverRandom,
+                      ...params
+                  ]);
+                  
+                  bool valid = false;
+                  if (pubKey is RSAKey) {
+                      final hashAlg = message.hashAlg;
+                      final hashName = HashAlgorithm.toRepr(hashAlg);
+                      if (hashName == null) {
+                           throw TLSHandshakeFailure('Unknown hash algorithm in ServerKeyExchange');
+                      }
+                      
+                      valid = pubKey.verify(
+                          Uint8List.fromList(message.signature),
+                          signedData,
+                          hashAlg: hashName
+                      );
+                  } else {
+                      // TODO: ECDSA/DSA
+                      throw UnimplementedError('Only RSA server keys supported for now');
+                  }
+                  
+                  if (!valid) {
+                      throw TLSHandshakeFailure('ServerKeyExchange signature invalid');
+                  }
+              }
           } else if (message is TlsCertificateRequest) {
               certRequested = true;
               // TODO: Validate CertificateRequest parameters (types, sig algs)
@@ -725,7 +760,7 @@ class TlsConnection extends MessageSocket {
       handshakeEstablished = true;
   }
 
-  Future<void> _clientHandshake13() async {
+  Future<void> _clientHandshake13(Keypair? certParams) async {
       if (_pendingSharedSecret == null) {
           throw TLSHandshakeFailure('Missing shared secret for TLS 1.3');
       }
@@ -793,6 +828,9 @@ class TlsConnection extends MessageSocket {
           throw TLSUnexpectedMessage('Expected EncryptedExtensions, got ${encExtMsg.handshakeType.name}');
       }
 
+      bool certRequested = false;
+      TlsCertificateRequest? certRequestMsg;
+
       // Receive CertificateRequest (Optional) or Certificate
       var message = await recvHandshakeMessage(allowedTypes: [
           TlsHandshakeType.certificateRequest,
@@ -800,7 +838,8 @@ class TlsConnection extends MessageSocket {
       ]);
 
       if (message is TlsCertificateRequest) {
-          // TODO: Handle CertificateRequest (Client Auth)
+          certRequested = true;
+          certRequestMsg = message;
           message = await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.certificate]);
       }
 
@@ -829,9 +868,10 @@ class TlsConnection extends MessageSocket {
       String keyType;
       if (pubKey is RSAKey) {
           keyType = 'rsa';
+      } else if (pubKey is ECDSAKey) {
+          keyType = 'ecdsa';
       } else {
-          // TODO: Support ECDSA
-          throw UnimplementedError('Only RSA keys are supported for now');
+          throw UnimplementedError('Unsupported key type: ${pubKey.runtimeType}');
       }
 
       // Verify Signature
@@ -846,7 +886,7 @@ class TlsConnection extends MessageSocket {
           throw TLSHandshakeFailure('Unknown signature scheme: ${certVerifyMsg.signatureScheme}');
       }
 
-      String padding;
+      String? padding;
       String hash;
       int? saltLen;
 
@@ -871,11 +911,18 @@ class TlsConnection extends MessageSocket {
           else if (schemeName.endsWith('sha512')) hash = 'sha512';
           else if (schemeName.endsWith('sha1')) hash = 'sha1';
           else throw TLSHandshakeFailure('Unsupported hash for PKCS1: $schemeName');
+      } else if (schemeName.startsWith('ecdsa')) {
+          padding = null;
+          if (schemeName.endsWith('sha256')) hash = 'sha256';
+          else if (schemeName.endsWith('sha384')) hash = 'sha384';
+          else if (schemeName.endsWith('sha512')) hash = 'sha512';
+          else if (schemeName.endsWith('sha1')) hash = 'sha1';
+          else throw TLSHandshakeFailure('Unsupported hash for ECDSA: $schemeName');
       } else {
-           throw TLSHandshakeFailure('Mismatch between key type (RSA) and signature scheme: $schemeName');
+           throw TLSHandshakeFailure('Mismatch between key type and signature scheme: $schemeName');
       }
 
-      if (!pubKey.verify(certVerifyMsg.signature, verifyBytes, padding: padding, hashAlg: hash, saltLen: saltLen ?? 0)) {
+      if (!(pubKey as dynamic).verify(certVerifyMsg.signature, verifyBytes, padding: padding, hashAlg: hash, saltLen: saltLen ?? 0)) {
            await _sendAlert(AlertLevel.fatal, AlertDescription.decrypt_error);
            throw TLSHandshakeFailure('Invalid signature');
       }
@@ -894,6 +941,46 @@ class TlsConnection extends MessageSocket {
           throw TLSHandshakeFailure('Finished verification failed');
       }
       
+      // Send Certificate and CertificateVerify if requested
+      if (certRequested) {
+          if (certParams != null) {
+              final certEntries = certParams.certificates.map((c) => TlsCertificateEntry(certificate: c.bytes)).toList();
+              
+              await sendHandshakeMessage(TlsCertificate.tls13(
+                  certificateRequestContext: certRequestMsg!.certificateRequestContext,
+                  certificateEntries: certEntries
+              ));
+              
+              // Signature Scheme Selection
+              // TODO: Proper selection. For now, hardcoded RSA-PSS-SHA256 if RSA.
+              final sigScheme = SignatureScheme.rsa_pss_rsae_sha256;
+              
+              final verifyBytes = buildCertificateVerifyBytes(
+                  signatureScheme: sigScheme.value,
+                  peerTag: 'client',
+                  keyType: 'rsa',
+              );
+              
+              final signature = certParams.key.sign(
+                  verifyBytes,
+                  padding: 'pss',
+                  hashAlg: 'sha256',
+                  saltLen: 32
+              );
+              
+              await sendHandshakeMessage(TlsCertificateVerify(
+                  version: TlsProtocolVersion.tls13,
+                  signatureScheme: sigScheme.value,
+                  signature: signature
+              ));
+          } else {
+              await sendHandshakeMessage(TlsCertificate.tls13(
+                  certificateRequestContext: certRequestMsg!.certificateRequestContext,
+                  certificateEntries: []
+              ));
+          }
+      }
+
       // Send Finished
       final verifyData = buildFinishedVerifyData(forClient: true);
       await sendHandshakeMessage(TlsFinished(verifyData: verifyData));
@@ -1375,6 +1462,7 @@ class TlsConnection extends MessageSocket {
     
     // If reqCert, expect Certificate
     bool gotClientCert = false;
+    X509CertChain? clientCertChain;
     if (reqCert) {
         final certMsg = await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.certificate]);
         if (certMsg is! TlsCertificate) {
@@ -1383,7 +1471,14 @@ class TlsConnection extends MessageSocket {
         }
         if (certMsg.certificateChain.isNotEmpty) {
              gotClientCert = true;
-             // TODO: Validate certificate chain
+             final certs = <X509>[];
+             for (final certBytes in certMsg.certificateChain) {
+                 final x509 = X509();
+                 x509.parseBinary(certBytes);
+                 certs.add(x509);
+             }
+             clientCertChain = X509CertChain(certs);
+             // TODO: Validate certificate chain (path validation, expiration, etc.)
         }
     }
     
@@ -1401,13 +1496,62 @@ class TlsConnection extends MessageSocket {
     final premasterSecret = await keyExchange.processClientKeyExchange(ckeMsg);
     
     // 9. Receive CertificateVerify (if client cert was sent)
-    if (gotClientCert) {
+    if (gotClientCert && clientCertChain != null) {
          final cvMsg = await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.certificateVerify]);
          if (cvMsg is! TlsCertificateVerify) {
               await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
               throw TLSUnexpectedMessage('Expected CertificateVerify');
          }
-         // TODO: Verify signature using client public key and handshake transcript
+         
+         final signatureScheme = cvMsg.signatureScheme;
+         if (signatureScheme == null) {
+              await _sendAlert(AlertLevel.fatal, AlertDescription.decode_error);
+              throw TLSDecodeError('Missing signature scheme in CertificateVerify');
+         }
+         
+         final verifyBytes = KeyExchange.calcVerifyBytes(
+             const TlsProtocolVersion(3, 3),
+             handshakeHashes,
+             signatureScheme
+         );
+         
+         final pubKey = clientCertChain.getEndEntityPublicKey();
+         bool valid = false;
+         
+         if (pubKey is RSAKey) {
+             final schemeName = SignatureScheme.toRepr(signatureScheme);
+             if (schemeName == null) {
+                 throw TLSIllegalParameterException('Unknown signature scheme');
+             }
+             final hashName = SignatureScheme.getHash(schemeName);
+             final padding = SignatureScheme.getPadding(schemeName);
+             
+             if (padding == 'pkcs1') {
+                 valid = pubKey.verify(
+                     cvMsg.signature, 
+                     verifyBytes, 
+                     padding: 'pkcs1', 
+                     hashAlg: null 
+                 );
+             } else if (padding == 'pss') {
+                 valid = pubKey.verify(
+                     cvMsg.signature, 
+                     verifyBytes, 
+                     padding: 'pss', 
+                     hashAlg: hashName 
+                 );
+             } else {
+                 throw TLSIllegalParameterException('Unsupported padding: $padding');
+             }
+         } else {
+             // TODO: Support ECDSA/EdDSA
+             throw UnimplementedError('Only RSA client certificates supported for now');
+         }
+         
+         if (!valid) {
+             await _sendAlert(AlertLevel.fatal, AlertDescription.decrypt_error);
+             throw TLSHandshakeFailure('CertificateVerify signature invalid');
+         }
     }
     
     // Calculate Master Secret
