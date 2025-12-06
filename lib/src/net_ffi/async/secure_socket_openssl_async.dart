@@ -4,10 +4,12 @@
 
 import 'dart:async';
 import 'dart:ffi' as ffi;
+import 'dart:isolate';
 import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 import 'package:tlslite/src/net_ffi/socket_exceptions.dart';
 import 'package:tlslite/src/net_ffi/native_buffer_utils.dart';
+import 'package:tlslite/src/net_ffi/sync/socket_native_ffi.dart';
 
 import '../../openssl/generated/ffi.dart';
 import '../../openssl/openssl_loader.dart';
@@ -16,6 +18,52 @@ import '../secure_socket_constants.dart';
 
 typedef CiphertextWriter = Future<void> Function(Uint8List chunk);
 typedef CiphertextReader = Future<Uint8List?> Function(int preferredLength);
+
+/// High-level helper that combines the isolate-backed transport with the
+/// async OpenSSL engine so callers can await TLS handshakes without blocking
+/// the main isolate.
+class SecureSocketOpenSSLIsolateClient {
+  SecureSocketOpenSSLIsolateClient._(this._transport, this._tls);
+
+  final _IsolatedSocketTransport _transport;
+  final SecureFFISocketOpenSSLAsync _tls;
+
+  bool get isHandshakeComplete => _tls.isHandshakeComplete;
+
+  static Future<SecureSocketOpenSSLIsolateClient> connect({
+    required String host,
+    required int port,
+    int family = AF_INET,
+    int type = SOCK_STREAM,
+    int protocol = IPPROTO_TCP,
+  }) async {
+    final transport = await _IsolatedSocketTransport.connect(
+      host: host,
+      port: port,
+      family: family,
+      type: type,
+      protocol: protocol,
+    );
+    final tls = SecureFFISocketOpenSSLAsync.client(
+      writer: transport.writeCiphertext,
+      reader: transport.readCiphertext,
+    );
+    final client = SecureSocketOpenSSLIsolateClient._(transport, tls);
+    await client.ensureHandshakeCompleted();
+    return client;
+  }
+
+  Future<void> ensureHandshakeCompleted() => _tls.ensureHandshakeCompleted();
+
+  Future<int> send(Uint8List data) => _tls.send(data);
+
+  Future<Uint8List> recv(int bufferSize) => _tls.recv(bufferSize);
+
+  Future<void> close() async {
+    await _tls.close();
+    await _transport.close();
+  }
+}
 
 /// Exposes a BIO-backed TLS engine that can be wired into async protocols such
 /// as SQL Server TDS, where TLS records must be encapsulated in custom frames.
@@ -363,4 +411,250 @@ class SecureFFISocketOpenSSLAsync {
     }
     return bio;
   }
+}
+
+class _IsolatedSocketTransport {
+  _IsolatedSocketTransport._({
+    required Isolate isolate,
+    required SendPort commandPort,
+    required ReceivePort responsePort,
+    required ReceivePort exitPort,
+    required ReceivePort errorPort,
+  })  : _isolate = isolate,
+        _commandPort = commandPort,
+        _responsePort = responsePort,
+        _exitPort = exitPort,
+        _errorPort = errorPort {
+    _responseSubscription = _responsePort.listen(_handleResponse);
+    _exitSubscription = _exitPort.listen((_) {
+      _failAll(SocketException('Socket isolate exited unexpectedly'));
+    });
+    _errorSubscription = _errorPort.listen((dynamic message) {
+      final description = message is List && message.isNotEmpty
+          ? message.first.toString()
+          : 'Socket isolate error';
+      _failAll(SocketException(description));
+    });
+  }
+
+  final Isolate _isolate;
+  final SendPort _commandPort;
+  final ReceivePort _responsePort;
+  final ReceivePort _exitPort;
+  final ReceivePort _errorPort;
+  late final StreamSubscription<dynamic> _responseSubscription;
+  late final StreamSubscription<dynamic> _exitSubscription;
+  late final StreamSubscription<dynamic> _errorSubscription;
+  final Map<int, Completer<Object?>> _pending = <int, Completer<Object?>>{};
+  int _nextRequestId = 0;
+  bool _closed = false;
+
+  static Future<_IsolatedSocketTransport> connect({
+    required String host,
+    required int port,
+    required int family,
+    required int type,
+    required int protocol,
+  }) async {
+    final readyPort = ReceivePort();
+    final responsePort = ReceivePort();
+    final exitPort = ReceivePort();
+    final errorPort = ReceivePort();
+
+    final isolate = await Isolate.spawn<Map<String, Object?>>(
+      _socketWorkerEntry,
+      <String, Object?>{
+        'readyPort': readyPort.sendPort,
+        'responsePort': responsePort.sendPort,
+      },
+      errorsAreFatal: true,
+      onExit: exitPort.sendPort,
+      onError: errorPort.sendPort,
+      debugName: 'tlslite_socket_worker',
+    );
+
+    final commandPort = await readyPort.first as SendPort;
+    readyPort.close();
+
+    final transport = _IsolatedSocketTransport._(
+      isolate: isolate,
+      commandPort: commandPort,
+      responsePort: responsePort,
+      exitPort: exitPort,
+      errorPort: errorPort,
+    );
+
+    await transport._request<void>('connect', <String, Object?>{
+      'host': host,
+      'port': port,
+      'family': family,
+      'type': type,
+      'protocol': protocol,
+    });
+
+    return transport;
+  }
+
+  Future<void> writeCiphertext(Uint8List chunk) async {
+    if (chunk.isEmpty) {
+      return;
+    }
+    await _request<int>('write', <String, Object?>{'bytes': chunk});
+  }
+
+  Future<Uint8List?> readCiphertext(int preferredLength) async {
+    final size = preferredLength <= 0 ? 1 : preferredLength;
+    final data =
+        await _request<Uint8List>('read', <String, Object?>{'length': size});
+    return data;
+  }
+
+  Future<void> close() async {
+    if (_closed) {
+      return;
+    }
+    try {
+      await _request<void>('close', const <String, Object?>{});
+    } catch (_) {
+      // Ignore failures during shutdown; the isolate is going away anyway.
+    } finally {
+      _closed = true;
+      await _responseSubscription.cancel();
+      await _exitSubscription.cancel();
+      await _errorSubscription.cancel();
+      _responsePort.close();
+      _exitPort.close();
+      _errorPort.close();
+      _isolate.kill(priority: Isolate.immediate);
+      _failAll(SocketException('Socket isolate closed'));
+    }
+  }
+
+  Future<T> _request<T>(String op, Map<String, Object?> payload) {
+    if (_closed) {
+      throw SocketException('Socket isolate is already closed');
+    }
+    final id = _nextRequestId++;
+    final completer = Completer<Object?>();
+    _pending[id] = completer;
+    final message = Map<String, Object?>.from(payload);
+    message['id'] = id;
+    message['op'] = op;
+    _commandPort.send(message);
+    return completer.future.then((value) => value as T);
+  }
+
+  void _handleResponse(dynamic message) {
+    if (message is! Map) {
+      return;
+    }
+    final id = message['id'] as int?;
+    if (id == null) {
+      return;
+    }
+    final completer = _pending.remove(id);
+    if (completer == null) {
+      return;
+    }
+    final ok = message['ok'] as bool? ?? false;
+    if (ok) {
+      completer.complete(message['data']);
+    } else {
+      final errorMessage =
+          message['message'] as String? ?? 'Unknown socket isolate error';
+      completer.completeError(SocketException(errorMessage));
+    }
+  }
+
+  void _failAll(SocketException error) {
+    if (_pending.isEmpty) {
+      return;
+    }
+    final pending = _pending.values.toList();
+    _pending.clear();
+    for (final completer in pending) {
+      if (!completer.isCompleted) {
+        completer.completeError(error);
+      }
+    }
+  }
+}
+
+@pragma('vm:entry-point')
+void _socketWorkerEntry(Map<String, Object?> init) {
+  final readyPort = init['readyPort'] as SendPort;
+  final responsePort = init['responsePort'] as SendPort;
+  final commandPort = ReceivePort();
+  readyPort.send(commandPort.sendPort);
+
+  SocketNative? socket;
+
+  void sendOk(int id, [Object? data]) {
+    responsePort.send(<String, Object?>{'id': id, 'ok': true, 'data': data});
+  }
+
+  void sendError(int id, Object error) {
+    final description =
+        error is SocketException ? error.message : error.toString();
+    responsePort.send(<String, Object?>{
+      'id': id,
+      'ok': false,
+      'message': description,
+    });
+  }
+
+  commandPort.listen((dynamic rawMessage) {
+    if (rawMessage is! Map) {
+      return;
+    }
+    final id = rawMessage['id'] as int? ?? -1;
+    final op = rawMessage['op'] as String? ?? '';
+    try {
+      switch (op) {
+        case 'connect':
+          final host = rawMessage['host'] as String;
+          final port = rawMessage['port'] as int;
+          final family = rawMessage['family'] as int;
+          final type = rawMessage['type'] as int;
+          final protocol = rawMessage['protocol'] as int;
+          socket?.close();
+          socket = SocketNative.blocking(family, type, protocol);
+          socket!.connect(host, port);
+          sendOk(id);
+          break;
+        case 'write':
+          final bytes = rawMessage['bytes'] as Uint8List? ?? Uint8List(0);
+          if (socket == null) {
+            throw SocketException('Socket not connected');
+          }
+          if (bytes.isNotEmpty) {
+            socket!.sendall(bytes);
+          }
+          sendOk(id, bytes.length);
+          break;
+        case 'read':
+          final requested = rawMessage['length'] as int? ?? 1;
+          if (socket == null) {
+            throw SocketException('Socket not connected');
+          }
+          final size = requested <= 0 ? 1 : requested;
+          final data = socket!.recv(size);
+          sendOk(id, data);
+          break;
+        case 'close':
+          socket?.close();
+          socket = null;
+          sendOk(id);
+          commandPort.close();
+          break;
+        default:
+          throw SocketException('Unsupported socket op: $op');
+      }
+    } catch (error) {
+      sendError(id, error);
+      if (op == 'close') {
+        commandPort.close();
+      }
+    }
+  });
 }
