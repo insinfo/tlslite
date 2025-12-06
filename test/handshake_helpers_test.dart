@@ -6,27 +6,27 @@ import 'package:tlslite/src/handshake_helpers.dart';
 class MockClientHello {
   // Base length excluding extensions overhead
   int baseLength;
-  List<dynamic>? extensions;
+  List<dynamic>? _extensions;
+  final bool _baseIncludesExtLen;
 
-  MockClientHello(this.baseLength, {this.extensions});
+  List<dynamic>? get extensions => _extensions;
+  set extensions(List<dynamic>? value) => _extensions = value;
+
+  MockClientHello(this.baseLength, {List<dynamic>? extensions})
+      : _extensions = extensions,
+        _baseIncludesExtLen = extensions != null;
 
   Uint8List write() {
     int totalLength = baseLength;
-    
-    // If extensions list is present, we assume the baseLength INCLUDES the 
-    // overhead for the extensions block length field (2 bytes) if it was already accounted for,
-    // OR we need to add it.
-    // The helper logic says:
-    // if (clientHello.extensions == null) { ... clientHelloLength += 2; }
-    // This implies that if extensions is null, the 2 bytes are NOT in the length.
-    // If extensions is [], the 2 bytes ARE in the length.
-    
-    // For our mock, let's say baseLength is the length of everything EXCEPT the extensions content.
-    // If extensions is not null, we add the content length.
-    
+
+    // When extensions are present (even empty), account for the 2-byte length
+    // field plus the encoded extensions themselves.
     int extContentLength = 0;
-    if (extensions != null) {
-      for (var ext in extensions!) {
+    if (_extensions != null) {
+      if (!_baseIncludesExtLen) {
+        totalLength += 2; // extensions length field was not counted in baseLength
+      }
+      for (var ext in _extensions!) {
         // The extension added by HandshakeHelpers has a write() method
         try {
           final bytes = (ext as dynamic).write() as Uint8List;
@@ -114,10 +114,20 @@ void main() {
       expect(clientHello.extensions, isEmpty);
     });
     
-    test(
-      'initializes extensions list if null',
-      () {},
-      skip: 'MockClientHello does not emulate extensions=null header growth yet',
-    );
+    test('initializes extensions list if null', () {
+      // When extensions are null, alignClientHelloPadding should create the list
+      // and account for the 2-byte extensions length field before padding.
+      final clientHello = MockClientHello(260, extensions: null);
+
+      HandshakeHelpers.alignClientHelloPadding(clientHello);
+
+      // Padding target is 512 bytes payload (516 total with header).
+      // Starting length: 260 -> length without header is 256.
+      // Adding the implicit extensions length field (+2) and padding extension (4+252)
+      // should bring the total to 516.
+      expect(clientHello.write().length, 516);
+      expect(clientHello.extensions, isNotNull);
+      expect(clientHello.extensions, hasLength(1));
+    });
   });
 }

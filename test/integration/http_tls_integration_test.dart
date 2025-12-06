@@ -170,8 +170,7 @@ void main() {
       } finally {
         await conn.close();
       }
-    }, timeout: const Timeout(Duration(seconds: 30)),
-      skip: 'TLS 1.3 client handshake is still experimental');
+    }, timeout: const Timeout(Duration(seconds: 30)));
   });
 
   group('Direct TlsConnection Integration Tests', () {

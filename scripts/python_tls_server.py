@@ -14,7 +14,7 @@ from tlslite import TLSConnection, HandshakeSettings
 from tlslite.constants import CipherSuite, AlertDescription
 from tlslite.x509 import X509
 from tlslite.x509certchain import X509CertChain
-from tlslite.utils.rsakey import RSAKey
+from tlslite.utils import keyfactory
 
 # Server certificate and key (self-signed for testing)
 SERVER_CERT_PEM = """-----BEGIN CERTIFICATE-----
@@ -66,13 +66,22 @@ l/NU6C0rN0fHvPKHFq1k/dvFf2mU8vh9fh0j8F0n4bJjlp2e8hJYVCPdyaj8b1qo
 
 def load_credentials():
     """Load server certificate and private key"""
-    cert = X509().parse(SERVER_CERT_PEM)
+    cert_path = os.path.join(os.path.dirname(__file__), 'nginx', 'server.crt')
+    key_path = os.path.join(os.path.dirname(__file__), 'nginx', 'server.key')
+
+    if os.path.exists(cert_path) and os.path.exists(key_path):
+        cert_pem = open(cert_path, 'r', encoding='utf-8').read()
+        key_pem = open(key_path, 'r', encoding='utf-8').read()
+    else:
+        cert_pem = SERVER_CERT_PEM
+        key_pem = SERVER_KEY_PEM
+
+    cert = X509().parse(cert_pem)
     chain = X509CertChain([cert])
-    
-    # Use Python RSA key implementation
-    from tlslite.utils.python_rsakey import Python_RSAKey
-    key = Python_RSAKey.parsePEM(SERVER_KEY_PEM)
-    
+
+    # Use pure-Python RSA implementation (avoids backend mismatches)
+    key = keyfactory.parsePrivateKey(key_pem)
+
     return chain, key
 
 
@@ -119,6 +128,8 @@ class TLSTestServer:
             settings = HandshakeSettings()
             settings.minVersion = (3, 3)  # TLS 1.2 minimum
             settings.maxVersion = (3, 3)  # TLS 1.2 maximum
+            settings.rsaSigHashes = ["sha256"]
+            settings.rsaSchemes = ["pkcs1"]
             
             # Select cipher suite
             if self.cipher_suite == 'chacha20':

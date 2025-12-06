@@ -404,8 +404,7 @@ Future<void> main(List<String> args) async {
 
   final config = BenchmarkConfig(
     host: 'www.google.com',
-    port: 443,
-    iterations: 5,
+    port: 443,    
     verbose: true,
   );
 

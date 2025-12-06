@@ -66,10 +66,7 @@ class PythonTlsServer {
 }
 
 void main() {
-  group('Python-Dart TLS Integration',
-      skip:
-          'tlslite-ng reference server SKE signature currently failing with test key, see python_tls_server.py logs',
-      () {
+  group('Python-Dart TLS Integration', () {
     late PythonTlsServer server;
     
     setUp(() async {
@@ -207,8 +204,7 @@ void main() {
     }, timeout: Timeout(Duration(seconds: 30)));
   });
 
-  group('Debug: Step-by-step handshake analysis',
-      skip: 'Depends on python tlslite-ng server; currently failing SKE signature', () {
+  group('Debug: Step-by-step handshake analysis', () {
     test('Analyze handshake message by message', () async {
       final server = PythonTlsServer(port: 4435, cipher: 'chacha20');
       await server.start();
@@ -219,14 +215,6 @@ void main() {
         socket = await Socket.connect('127.0.0.1', 4435);
         
         // Use a custom transport to log all bytes
-        final received = <int>[];
-        final sent = <int>[];
-        
-        socket.listen((data) {
-          received.addAll(data);
-          print('RECEIVED ${data.length} bytes: ${_toHex(data.take(50).toList())}${data.length > 50 ? "..." : ""}');
-        });
-        
         // Create TLS connection
         final tls = TlsConnection(socket);
         
@@ -241,14 +229,6 @@ void main() {
           print('SUCCESS: Handshake completed');
         } on TLSError catch (e) {
           print('FAILURE: $e');
-          
-          // Analyze received data
-          print('\nTotal received: ${received.length} bytes');
-          print('Total sent: ${sent.length} bytes');
-          
-          // Try to parse TLS records
-          _analyzeTlsRecords(Uint8List.fromList(received), 'received');
-          _analyzeTlsRecords(Uint8List.fromList(sent), 'sent');
         }
         
         await Future.delayed(const Duration(seconds: 1));

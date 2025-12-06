@@ -167,6 +167,9 @@ class HttpTlsConnection {
           }
         }
       } catch (e) {
+        // TEMP debug to trace read failures
+        // ignore: avoid_print
+        print('[HttpTlsConnection._read] caught exception: $e');
         break;
       }
     }

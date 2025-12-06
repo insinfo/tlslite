@@ -638,6 +638,9 @@ class HandshakeSettings {
     }
 
     // Validate cipher names
+    if (cipherNames.isEmpty) {
+      throw ArgumentError('cipherNames cannot be empty');
+    }
     for (final cipher in cipherNames) {
       if (!allCipherNames.contains(cipher)) {
         throw ArgumentError('Unknown cipher: $cipher');
@@ -652,6 +655,9 @@ class HandshakeSettings {
     }
 
     // Validate certificate types
+    if (certificateTypes.isEmpty) {
+      throw ArgumentError('certificateTypes cannot be empty');
+    }
     for (final certType in certificateTypes) {
       if (!_certificateTypes.contains(certType)) {
         throw ArgumentError('Unknown certificate type: $certType');

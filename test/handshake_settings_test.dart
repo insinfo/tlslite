@@ -77,13 +77,12 @@ void main() {
     // Tests for empty lists that SHOULD throw according to Python but might not in Dart yet
     test('empty cipherNames throws', () {
       final settings = HandshakeSettings(cipherNames: []);
-      // If this fails, I will fix HandshakeSettings
       expect(() => settings.validate(), throwsArgumentError);
-    }, skip: 'Not implemented yet');
+    });
 
     test('empty certificateTypes throws', () {
       final settings = HandshakeSettings(certificateTypes: []);
       expect(() => settings.validate(), throwsArgumentError);
-    }, skip: 'Not implemented yet');
+    });
   });
 }
