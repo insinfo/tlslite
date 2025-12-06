@@ -4,7 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:test/test.dart';
-import 'package:tlslite/src/net_ffi/socket/socket_native_ffi.dart';
+import 'package:tlslite/src/net_ffi/sync/socket_native_ffi.dart';
 
 void main() {
   group('SocketNative TCP', () {

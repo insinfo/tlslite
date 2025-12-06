@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import '../socket/socket_native_ffi.dart';
+import 'raw_transport.dart';
 
 abstract interface class SecureTransport implements RawTransport {
   RawTransport get innerTransport;
@@ -40,7 +40,7 @@ mixin SecureTransportDelegates implements SecureTransport {
 
   @override
   void setBlockingMode(SocketBlockingMode mode) =>
-    _delegate.setBlockingMode(mode);
+      _delegate.setBlockingMode(mode);
 
   @override
   void settimeout(double? timeout) => _delegate.settimeout(timeout);
@@ -71,23 +71,22 @@ mixin SecureTransportDelegates implements SecureTransport {
 
   @override
   (Uint8List, String, int) recvfrom(int bufferSize) =>
-    _delegate.recvfrom(bufferSize);
+      _delegate.recvfrom(bufferSize);
 
   @override
   int sendto(Uint8List data, String host, int port) =>
-    _delegate.sendto(data, host, port);
+      _delegate.sendto(data, host, port);
 
   @override
   bool waitForRead({Duration? timeout}) =>
-    _delegate.waitForRead(timeout: timeout);
+      _delegate.waitForRead(timeout: timeout);
 
   @override
   bool waitForWrite({Duration? timeout}) =>
-    _delegate.waitForWrite(timeout: timeout);
+      _delegate.waitForWrite(timeout: timeout);
 
   @override
-  void setReuseAddress(bool enabled) =>
-    _delegate.setReuseAddress(enabled);
+  void setReuseAddress(bool enabled) => _delegate.setReuseAddress(enabled);
 
   @override
   void setReusePort(bool enabled) => _delegate.setReusePort(enabled);
@@ -97,7 +96,7 @@ mixin SecureTransportDelegates implements SecureTransport {
 
   @override
   void shutdown([SocketShutdown how = SocketShutdown.both]) =>
-    _delegate.shutdown(how);
+      _delegate.shutdown(how);
 
   @override
   void close() => _delegate.close();

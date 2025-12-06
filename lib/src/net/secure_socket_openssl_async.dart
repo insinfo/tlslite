@@ -7,7 +7,7 @@ import 'dart:io' as io;
 import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
-import '../net_ffi/socket/native_buffer_utils.dart';
+import '../net_ffi/native_buffer_utils.dart';
 import '../openssl/generated/ffi.dart';
 import '../openssl/openssl_loader.dart';
 
@@ -82,6 +82,7 @@ class SecureSocketOpenSSLAsync {
   final io.Socket _socket;
   final bool _isServer;
   late final OpenSsl _openSsl;
+  late final OpenSsl _openSslCrypto;
   ffi.Pointer<ssl_ctx_st>? _ctx;
   ffi.Pointer<ssl_st>? _ssl;
   ffi.Pointer<BIO>? _networkReadBio;
@@ -256,15 +257,14 @@ class SecureSocketOpenSSLAsync {
   }
 
   Future<bool> _fillReadBioFromSocket({int? preferredSize}) async {
+    // Ignore preferredSize; unused for BIO.
+    final _ = preferredSize;
     final bio = _networkReadBio;
     if (bio == null || bio == ffi.nullptr) {
       throw io.SocketException('TLS read BIO is unavailable.');
     }
-    final chunkSize =
-        (preferredSize == null || preferredSize <= 0)
-            ? _defaultCiphertextChunk
-            : preferredSize;
-    final ciphertext = await _nextCiphertextChunk(chunkSize);
+    // Return any available ciphertext immediately; don't aggregate.
+    final ciphertext = await _dequeueCiphertextChunk();
     if (ciphertext == null || ciphertext.isEmpty) {
       return false;
     }
@@ -273,8 +273,11 @@ class SecureSocketOpenSSLAsync {
       pool: NativeUint8BufferPool.global,
     );
     try {
-      final written =
-          _openSsl.BIO_write(bio, buffer.pointer.cast(), ciphertext.length);
+      final written = _openSslCrypto.BIO_write(
+        bio,
+        buffer.pointer.cast(),
+        ciphertext.length,
+      );
       if (written <= 0) {
         throw io.SocketException('Failed to feed the TLS read BIO.');
       }
@@ -291,7 +294,7 @@ class SecureSocketOpenSSLAsync {
     }
     var wroteAny = false;
     while (true) {
-      final pending = _openSsl.BIO_ctrl(
+      final pending = _openSslCrypto.BIO_ctrl(
         bio,
         _bioCtrlPending,
         0,
@@ -308,7 +311,8 @@ class SecureSocketOpenSSLAsync {
         pool: NativeUint8BufferPool.global,
       );
       try {
-        final read = _openSsl.BIO_read(bio, buffer.pointer.cast(), chunkSize);
+        final read =
+          _openSslCrypto.BIO_read(bio, buffer.pointer.cast(), chunkSize);
         if (read <= 0) {
           break;
         }
@@ -325,25 +329,6 @@ class SecureSocketOpenSSLAsync {
     if (wroteAny) {
       await _socket.flush();
     }
-  }
-
-  Future<Uint8List?> _nextCiphertextChunk(int preferredSize) async {
-    final firstChunk = await _dequeueCiphertextChunk();
-    if (firstChunk == null) {
-      return null;
-    }
-    if (firstChunk.length >= preferredSize) {
-      return firstChunk;
-    }
-    final builder = BytesBuilder(copy: false)..add(firstChunk);
-    while (builder.length < preferredSize) {
-      final next = await _dequeueCiphertextChunk();
-      if (next == null || next.isEmpty) {
-        break;
-      }
-      builder.add(next);
-    }
-    return builder.takeBytes();
   }
 
   Future<Uint8List?> _dequeueCiphertextChunk() async {
@@ -398,7 +383,9 @@ class SecureSocketOpenSSLAsync {
   }
 
   void _initOpenSsl() {
-    _openSsl = loadLibSsl(null);
+    final bindings = OpenSslBindings.load();
+    _openSsl = bindings.ssl;
+    _openSslCrypto = bindings.crypto;
   }
 
   void _initializeSSL({String? certFile, String? keyFile}) {
@@ -444,8 +431,8 @@ class SecureSocketOpenSSLAsync {
     if (_ssl == ffi.nullptr || _ssl == null) {
       throw io.SocketException('Failed to create the SSL instance.');
     }
-    _networkReadBio = _openSsl.BIO_new(_openSsl.BIO_s_mem());
-    _networkWriteBio = _openSsl.BIO_new(_openSsl.BIO_s_mem());
+    _networkReadBio = _openSslCrypto.BIO_new(_openSslCrypto.BIO_s_mem());
+    _networkWriteBio = _openSslCrypto.BIO_new(_openSslCrypto.BIO_s_mem());
     if (_networkReadBio == ffi.nullptr || _networkWriteBio == ffi.nullptr) {
       throw io.SocketException('Failed to create the TLS transport BIOs.');
     }

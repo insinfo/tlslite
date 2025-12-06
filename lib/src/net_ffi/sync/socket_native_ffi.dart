@@ -5,7 +5,9 @@ import 'dart:ffi' as ffi;
 import 'dart:io' show Platform;
 import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
-import 'native_buffer_utils.dart';
+import 'package:tlslite/src/net_ffi/socket_exceptions.dart';
+import '../raw_transport.dart';
+import '../native_buffer_utils.dart';
 part 'platform/windows.dart';
 part 'platform/linux.dart';
 part 'runtime_helpers.dart';
@@ -13,24 +15,22 @@ part 'runtime_helpers.dart';
 typedef SocketHandle = int;
 
 int Function(int, Pointer<Utf8>, Pointer) get _inetPton =>
-  Platform.isWindows ? _inetPtonWin : _inetPtonUnix;
+    Platform.isWindows ? _inetPtonWin : _inetPtonUnix;
 
 Pointer<Utf8> Function(int, Pointer, Pointer<Utf8>, int) get _inetNtop =>
-  Platform.isWindows ? _inetNtopWin : _inetNtopUnix;
+    Platform.isWindows ? _inetNtopWin : _inetNtopUnix;
 
 int Function(Pointer<Uint8>, int) get _gethostname =>
-  Platform.isWindows ? _gethostnameWin : _gethostnameUnix;
+    Platform.isWindows ? _gethostnameWin : _gethostnameUnix;
 
-int Function(int) get _htons =>
-  Platform.isWindows ? _htonsWin : _htonsPosix;
+int Function(int) get _htons => Platform.isWindows ? _htonsWin : _htonsPosix;
 
-int Function(int) get _ntohs =>
-  Platform.isWindows ? _ntohsWin : _ntohsPosix;
+int Function(int) get _ntohs => Platform.isWindows ? _ntohsWin : _ntohsPosix;
 
 int _getsockname(dynamic handle, Pointer addr, Pointer<Int32> addrLen) {
   return Platform.isWindows
-    ? _getsocknameWin(handle as SocketHandle, addr, addrLen)
-    : _getsocknameUnix(handle as int, addr, addrLen);
+      ? _getsocknameWin(handle as SocketHandle, addr, addrLen)
+      : _getsocknameUnix(handle as int, addr, addrLen);
 }
 
 extension Uint8Pointer on Pointer<Uint8> {
@@ -151,62 +151,6 @@ const int _SO_REUSEADDR_WINDOWS = 0x0004;
 const int _SO_REUSEPORT_POSIX = 15;
 const int _SO_REUSEPORT_WINDOWS = 0x0200;
 const int _TCP_NODELAY_OPT = 1;
-
-
-class SocketException implements Exception {
-  final String message;
-  SocketException(this.message);
-  @override
-  String toString() => 'SocketException: $message';
-}
-
-class SocketTimeoutException extends SocketException {
-  SocketTimeoutException(String message) : super(message);
-}
-
-class SocketWouldBlockException extends SocketException {
-  SocketWouldBlockException(String message) : super(message);
-}
-
-enum SocketBlockingMode { blocking, nonBlocking }
-
-enum SocketShutdown { receive, send, both }
-
-enum TransportEvent { read, write }
-
-abstract interface class RawTransport {
-  SocketBlockingMode get blockingMode;
-  bool get isClosed;
-  (String, int) get address;
-  int get port;
-  Duration? get timeoutDuration;
-  int? get nativeHandle;
-
-  void setBlockingMode(SocketBlockingMode mode);
-  void settimeout(double? timeout);
-  void setTimeout(Duration? duration);
-
-  void bind(String host, int port);
-  void connect(String host, int port);
-  void listen(int backlog);
-  RawTransport accept();
-
-  int send(Uint8List data);
-  void sendall(Uint8List data);
-  Uint8List recv(int bufferSize);
-  (Uint8List, String, int) recvfrom(int bufferSize);
-  int sendto(Uint8List data, String host, int port);
-
-  bool waitForRead({Duration? timeout});
-  bool waitForWrite({Duration? timeout});
-
-  void setReuseAddress(bool enabled);
-  void setReusePort(bool enabled);
-  void setNoDelay(bool enabled);
-
-  void shutdown([SocketShutdown how = SocketShutdown.both]);
-  void close();
-}
 
 /// TODO Extend the test matrix (IPv6/UDP, non‑blocking happy paths, Linux/macOS CI) to close TODO #4.
 /// Consider an isolate-backed helper that builds on the new non‑blocking plumbing for long-lived DB or traceroute tasks.
@@ -457,8 +401,8 @@ class SocketNative implements RawTransport {
             } else {
               final sockAddrIn6 = addr.cast<SockAddrIn6>().ref;
               final ptr = addr.cast<Uint8>() + 8;
-              final result = _inetNtop(
-                  AF_INET6, ptr, addrBuffer.cast(), INET6_ADDRSTRLEN);
+              final result =
+                  _inetNtop(AF_INET6, ptr, addrBuffer.cast(), INET6_ADDRSTRLEN);
               if (result == nullptr) {
                 _throwWithOsError('inet_ntop');
               }
@@ -539,8 +483,7 @@ class SocketNative implements RawTransport {
         final sent = Platform.isWindows
             ? _sendtoWin(
                 _socketHandle!, buffer.pointer, data.length, 0, addr, addrSize)
-            : _sendtoUnix(
-                _fd!, buffer.pointer, data.length, 0, addr, addrSize);
+            : _sendtoUnix(_fd!, buffer.pointer, data.length, 0, addr, addrSize);
         if (sent >= 0) {
           return sent;
         }
@@ -550,8 +493,7 @@ class SocketNative implements RawTransport {
         }
         if (_isWouldBlock(code)) {
           if (_mode == SocketBlockingMode.nonBlocking) {
-            throw SocketWouldBlockException(
-                'sendto would block (code=$code)');
+            throw SocketWouldBlockException('sendto would block (code=$code)');
           }
           continue;
         }
@@ -694,14 +636,15 @@ class SocketNative implements RawTransport {
       final clientAddr = calloc<SockaddrIn>();
       final addrLen = calloc<Int32>()..value = sizeOf<SockaddrIn>();
       if (Platform.isWindows) {
-        final clientSocket = _acceptWin(_socketHandle!, clientAddr.cast(), addrLen);
+        final clientSocket =
+            _acceptWin(_socketHandle!, clientAddr.cast(), addrLen);
         calloc.free(clientAddr);
         calloc.free(addrLen);
         if (clientSocket == _INVALID_SOCKET) {
           throw SocketException('Accept failed');
         }
-        final child = SocketNative._fromSocket(clientSocket, AF_INET, _type,
-            mode: _mode);
+        final child =
+            SocketNative._fromSocket(clientSocket, AF_INET, _type, mode: _mode);
         child._timeout = _timeout;
         return child;
       } else {
@@ -709,8 +652,8 @@ class SocketNative implements RawTransport {
         calloc.free(clientAddr);
         calloc.free(addrLen);
         if (clientFd == -1) throw SocketException('Accept failed');
-        final child = SocketNative._fromFd(clientFd, AF_INET, _type,
-            mode: _mode);
+        final child =
+            SocketNative._fromFd(clientFd, AF_INET, _type, mode: _mode);
         child._timeout = _timeout;
         return child;
       }
@@ -718,7 +661,8 @@ class SocketNative implements RawTransport {
       final clientAddr = calloc<SockAddrIn6>();
       final addrLen = calloc<Int32>()..value = sizeOf<SockAddrIn6>();
       if (Platform.isWindows) {
-        final clientSocket = _acceptWin(_socketHandle!, clientAddr.cast(), addrLen);
+        final clientSocket =
+            _acceptWin(_socketHandle!, clientAddr.cast(), addrLen);
         calloc.free(clientAddr);
         calloc.free(addrLen);
         if (clientSocket == _INVALID_SOCKET) {
@@ -733,8 +677,8 @@ class SocketNative implements RawTransport {
         calloc.free(clientAddr);
         calloc.free(addrLen);
         if (clientFd == -1) throw SocketException('Accept failed');
-        final child = SocketNative._fromFd(clientFd, AF_INET6, _type,
-            mode: _mode);
+        final child =
+            SocketNative._fromFd(clientFd, AF_INET6, _type, mode: _mode);
         child._timeout = _timeout;
         return child;
       }
@@ -743,7 +687,8 @@ class SocketNative implements RawTransport {
 
   // **6. Modos não bloqueantes**
   void setblocking(bool flag) {
-    setBlockingMode(flag ? SocketBlockingMode.blocking : SocketBlockingMode.nonBlocking);
+    setBlockingMode(
+        flag ? SocketBlockingMode.blocking : SocketBlockingMode.nonBlocking);
   }
 
   int send(Uint8List data) {
@@ -850,9 +795,10 @@ class SocketNative implements RawTransport {
     _timeout = duration == null ? null : duration.inMicroseconds / 1000000;
   }
 
-    @override
-    Duration? get timeoutDuration =>
-        _timeout == null ? null : SocketRuntimeHelper.secondsToDuration(_timeout!);
+  @override
+  Duration? get timeoutDuration => _timeout == null
+      ? null
+      : SocketRuntimeHelper.secondsToDuration(_timeout!);
 
   bool waitForRead({Duration? timeout}) =>
       _pollForAvailability(TransportEvent.read, timeout);
@@ -888,7 +834,8 @@ class SocketNative implements RawTransport {
 
   void _applyBlockingMode(SocketBlockingMode mode) {
     if (Platform.isWindows) {
-      final modePtr = calloc<Uint32>()..value = mode == SocketBlockingMode.blocking ? 0 : 1;
+      final modePtr = calloc<Uint32>()
+        ..value = mode == SocketBlockingMode.blocking ? 0 : 1;
       try {
         final result = _ioctlsocket(_socketHandle!, _FIONBIO, modePtr);
         if (result != 0) {
@@ -968,10 +915,10 @@ class SocketNative implements RawTransport {
     final optval = calloc<Int32>()..value = value;
     try {
       final result = Platform.isWindows
-            ? _setsockoptWin(_socketHandle!, level, option, optval.cast(),
-              sizeOf<Int32>())
-            : _setsockoptUnix(_fd!, level, option, optval.cast(),
-              sizeOf<Int32>());
+          ? _setsockoptWin(
+              _socketHandle!, level, option, optval.cast(), sizeOf<Int32>())
+          : _setsockoptUnix(
+              _fd!, level, option, optval.cast(), sizeOf<Int32>());
       if (result != 0) {
         _throwWithOsError('setsockopt');
       }
@@ -983,13 +930,11 @@ class SocketNative implements RawTransport {
   int get _solSocketLevel =>
       Platform.isWindows ? _SOL_SOCKET_WINDOWS : _SOL_SOCKET_POSIX;
 
-  int get _soReuseAddrOption => Platform.isWindows
-      ? _SO_REUSEADDR_WINDOWS
-      : _SO_REUSEADDR_POSIX;
+  int get _soReuseAddrOption =>
+      Platform.isWindows ? _SO_REUSEADDR_WINDOWS : _SO_REUSEADDR_POSIX;
 
-  int get _soReusePortOption => Platform.isWindows
-      ? _SO_REUSEPORT_WINDOWS
-      : _SO_REUSEPORT_POSIX;
+  int get _soReusePortOption =>
+      Platform.isWindows ? _SO_REUSEPORT_WINDOWS : _SO_REUSEPORT_POSIX;
 
   int get _oNonBlockFlag =>
       Platform.isMacOS ? _O_NONBLOCK_MAC : _O_NONBLOCK_LINUX;

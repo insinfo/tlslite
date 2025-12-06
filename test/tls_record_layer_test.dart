@@ -3,7 +3,7 @@ import 'dart:io' as io;
 import 'package:test/test.dart';
 import 'package:tlslite/src/tls_types.dart';
 
-import 'package:tlslite/src/net_ffi/security/pure_dart_with_ffi_socket/tls_record_layer_with_ffi_socket.dart';
+import 'package:tlslite/src/net_ffi/pure_dart_with_ffi_socket/tls_record_layer_with_ffi_socket.dart';
 import 'package:tlslite/src/net_ffi/socket/socket_native_ffi.dart';
 import 'package:tlslite/src/messages.dart';
 
