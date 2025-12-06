@@ -1,15 +1,12 @@
 // Comprehensive tests to compare TLS record layer operations between Dart and Python
 // This is designed to find the bug causing bad_record_mac errors
 
-import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:test/test.dart';
 import 'package:tlslite/src/mathtls.dart';
-import 'package:tlslite/src/utils/tlshmac.dart';
 import 'package:tlslite/src/utils/chacha20_poly1305.dart';
-import 'package:tlslite/src/utils/python_aesgcm.dart' as python_aesgcm;
 
 /// Helper to convert hex string to Uint8List
 Uint8List hex(String hexStr) {

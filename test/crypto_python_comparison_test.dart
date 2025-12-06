@@ -1,7 +1,7 @@
 // Test file to compare pure Dart crypto implementations with Python tlslite-ng
 // This ensures our Dart port produces identical results to the original Python implementation
 
-import 'dart:convert';
+
 import 'dart:io';
 import 'dart:typed_data';
 

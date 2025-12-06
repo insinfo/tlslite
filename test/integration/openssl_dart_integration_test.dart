@@ -301,7 +301,7 @@ void main() {
           await tlsConn.handshakeClient(settings: settings);
           
           print('\n=== Handshake SUCCESSFUL ===');
-          print('Negotiated cipher: ${tlsConn.session?.cipherSuite}');
+          print('Negotiated cipher: ${tlsConn.session.cipherSuite}');
           print('Negotiated version: ${tlsConn.version}');
           
           // Send and receive data

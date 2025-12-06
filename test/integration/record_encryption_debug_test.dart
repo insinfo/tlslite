@@ -4,16 +4,9 @@
 /// to compare with expected values.
 library;
 
-import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:test/test.dart';
-import 'package:tlslite/src/tlsconnection.dart';
-import 'package:tlslite/src/handshake_settings.dart';
-import 'package:tlslite/src/recordlayer.dart';
-import 'package:tlslite/src/mathtls.dart';
 import 'package:tlslite/src/utils/cipherfactory.dart';
 
 /// Test the nonce construction directly
