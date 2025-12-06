@@ -31,6 +31,7 @@ class Session {
   List<Ticket>? tls10Tickets;
   int ecPointFormat = 0;
   List<TlsNewSessionTicket> tls13Tickets = <TlsNewSessionTicket>[];
+  Uint8List? ocspResponse;
 
   /// Populate the session with negotiated handshake data.
   void create({

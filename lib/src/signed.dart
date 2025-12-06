@@ -25,7 +25,6 @@ const List<String> RSA_SCHEMES = [
 ];
 
 // TODO(port): Missing functionality from Python signed.py:
-// - Ed448 signature verification once Ed448 math lands
 // - Integration with TLS 1.3 signature schemes (RSA-PSS parameters)
 
 /// Key-related constraints applied when verifying signatures.

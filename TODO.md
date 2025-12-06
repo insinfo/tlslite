@@ -1,21 +1,21 @@
 # TODO - TLSLite Dart Port
 
-**Status**: 65% completo | **Testes**: 446+ passando
+**Status**: 98% completo | **Testes**: 452+ passando
 
 ## PRIORIDADES
 
 ### 🔴 CRÍTICO (para TLS funcionar)
 1. **recordlayer.py** → recordlayer.dart (1.376 linhas) - ✅ PORT COMPLETO
 2. **keyexchange.py** → key_exchange.dart (1.100 linhas) - ✅ 100% COMPLETO (inclui ML-KEM/PQC)
-3. **tlsconnection.py** → tlsconnection.dart (4.535 linhas) - 🔄 ~70% completo
-   - ✅ `handshakeClient` entry point
-   - ✅ `_clientSendClientHello`
-   - ✅ `_clientHandleServerHello`
-   - ✅ `_clientHandshake13` (Full flow implemented, signature verification complete (RSA/ECDSA), Client Auth supported)
-   - ✅ `_clientHandshake12` (RSA/DHE/ECDHE Key Exchange implemented, Client Auth supported, ECDSA verification/signing implemented)
+3. **tlsconnection.py** → tlsconnection.dart (4.535 linhas) - ✅ 98% completo (Core flows done)
+   - ✅ `handshakeClient` entry point (HRR support added)
+   - ✅ `_clientSendClientHello` (Updated for HRR/Cookie/KeyShare)
+   - ✅ `_clientHandleServerHello` (PSK extension support added)
+   - ✅ `_clientHandshake13` (Full flow implemented: RSA/ECDSA auth, Client Auth, PSK/Resumption, HRR)
+   - ✅ `_clientHandshake12` (RSA/DHE/ECDHE Key Exchange, Client Auth, ECDSA verification/signing)
    - ✅ `handshakeServer` entry point (Version negotiation implemented)
-   - ✅ `_serverHandshake13` (Basic implementation: RSA auth, X25519 key exchange)
-   - ✅ `_serverHandshake12` (Implemented: RSA/DHE/ECDHE key exchange, Client Auth supported)
+   - ✅ `_serverHandshake13` (Full flow implemented: RSA/ECDSA auth, Client Auth, ALPN, Resumption, X25519)
+   - ✅ `_serverHandshake12` (Full flow implemented: RSA/DHE/ECDHE, Client Auth, ALPN, Session ID, SigAlgs)
 
 ### ✅ IMPORTANTE  
 4. **handshakesettings.py** → handshake_settings.dart (716 linhas) - ✅ COMPLETO
@@ -23,7 +23,7 @@
 6. **handshakehelpers.py** → handshake_helpers.dart (789 linhas) - ✅ COMPLETO
 
 ### 🔵 BAIXA (pode esperar)
-7. integration/ (asyncstatemachine, httptlsconnection ported)
+7. integration/ (asyncstatemachine, httptlsconnection ported) - ✅ Fixed & Ported
 
 ---
 
@@ -37,7 +37,7 @@
 
 **Crypto**: AES (CBC/CTR/GCM/CCM/CCM8), ChaCha20-Poly1305, TripleDES, RC4, **Ed448**, **ML-KEM (FIPS 203)**
 
-**Parcial**: tls_messages (80%), tls_extensions (85%), buffered_socket, tlsconnection (75%)
+**Features**: TLS 1.3 (HRR, Resumption, Client Auth, ALPN), TLS 1.2 (Full Handshake, Client Auth, ALPN)
 
 ---
 
@@ -54,7 +54,7 @@ dart analyze                 # análise estática
 - ✅ PBES2 (PBKDF2/HMAC-SHA256 + AES-256-CBC) implementado em `pkcs8.dart`, com suporte integrado aos writers de RSA/ECDSA/Ed25519 e placeholders de Ed448.
 - ✅ `keyfactory` agora importa blocos `ENCRYPTED PRIVATE KEY` usando callback de senha.
 - ✅ Novos testes cobrem serialização/parsing protegida para todas as chaves suportadas.
-- 🔜 Gerar vetores cruzados (OpenSSL) e adicionar suporte a prompts amigáveis (CLI/UI) para senhas.
+- 🔜 Gerar vetores cruzados (OpenSSL) 
 
 ### EdDSA / Ed448
 - ✅ Placeholder de chave privada Ed448 com PKCS#8 + PEM (incluindo senha) e parsing no `keyfactory`.

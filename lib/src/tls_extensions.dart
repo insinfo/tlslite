@@ -11,6 +11,7 @@ enum TlsExtensionContext {
   encryptedExtensions,
   certificateRequest,
   helloRetryRequest,
+  certificate,
 }
 
 abstract class TlsExtension {
@@ -64,6 +65,9 @@ class TlsExtensionRegistry {
       tls_constants.ExtensionType.compress_certificate:
         _parseCompressedCertificate,
       tls_constants.ExtensionType.post_handshake_auth: _parsePostHandshakeAuth,
+      tls_constants.ExtensionType.cookie: _parseCookie,
+      tls_constants.ExtensionType.early_data: _parseEarlyData,
+      tls_constants.ExtensionType.client_hello_padding: _parsePadding,
   };
 
   static TlsExtension parse(
@@ -198,6 +202,15 @@ class TlsExtensionRegistry {
     Uint8List body,
     TlsExtensionContext context,
   ) {
+    if (context == TlsExtensionContext.certificate) {
+      final parser = Parser(body);
+      final statusType = parser.get(1);
+      final response = parser.getVarBytes(3);
+      return TlsCertificateStatusExtension(
+        statusType: statusType,
+        response: response,
+      );
+    }
     if (body.isEmpty) {
       return TlsStatusRequestExtension.acknowledgement();
     }
@@ -341,6 +354,35 @@ class TlsExtensionRegistry {
       throw DecodeError('post_handshake_auth não deve ter payload');
     }
     return const TlsPostHandshakeAuthExtension();
+  }
+
+  static TlsExtension _parseCookie(
+    Uint8List body,
+    TlsExtensionContext context,
+  ) {
+    final parser = Parser(body);
+    final length = parser.get(2);
+    final cookie = parser.getFixBytes(length);
+    return TlsCookieExtension(cookie: cookie);
+  }
+
+  static TlsExtension _parseEarlyData(
+    Uint8List body,
+    TlsExtensionContext context,
+  ) {
+    if (body.isNotEmpty) {
+      final parser = Parser(body);
+      final maxEarlyDataSize = parser.get(4);
+      return TlsEarlyDataExtension(maxEarlyDataSize: maxEarlyDataSize);
+    }
+    return TlsEarlyDataExtension();
+  }
+
+  static TlsExtension _parsePadding(
+    Uint8List body,
+    TlsExtensionContext context,
+  ) {
+    return TlsPaddingExtension(length: body.length);
   }
   
   static TlsExtension _parsePreSharedKey(
@@ -729,6 +771,25 @@ class TlsStatusRequestExtension extends TlsExtension {
   }
 }
 
+class TlsCertificateStatusExtension extends TlsExtension {
+  TlsCertificateStatusExtension({
+    required this.statusType,
+    required this.response,
+  }) : super(tls_constants.ExtensionType.status_request);
+
+  final int statusType;
+  final Uint8List response;
+
+  @override
+  Uint8List serializeBody() {
+    final writer = Writer();
+    writer.add(statusType, 1);
+    writer.add(response.length, 3);
+    writer.addBytes(response);
+    return writer.bytes;
+  }
+}
+
 class TlsPskIdentity {
   TlsPskIdentity({
     required List<int> identity,
@@ -988,4 +1049,48 @@ class TlsCompressedCertificateExtension extends TlsExtension {
     }
     return writer.bytes;
   }
+}
+
+class TlsCookieExtension extends TlsExtension {
+  TlsCookieExtension({required List<int> cookie})
+      : cookie = Uint8List.fromList(cookie),
+        super(tls_constants.ExtensionType.cookie);
+
+  final Uint8List cookie;
+
+  @override
+  Uint8List serializeBody() {
+    final writer = Writer();
+    writer.add(cookie.length, 2);
+    writer.addBytes(cookie);
+    return writer.bytes;
+  }
+}
+
+class TlsEarlyDataExtension extends TlsExtension {
+  TlsEarlyDataExtension({this.maxEarlyDataSize})
+      : super(tls_constants.ExtensionType.early_data);
+
+  final int? maxEarlyDataSize;
+
+  @override
+  Uint8List serializeBody() {
+    if (maxEarlyDataSize != null) {
+      final writer = Writer();
+      writer.add(maxEarlyDataSize!, 4);
+      return writer.bytes;
+    }
+    return Uint8List(0);
+  }
+}
+
+class TlsPaddingExtension extends TlsExtension {
+  TlsPaddingExtension({required int length})
+      : padding = Uint8List(length),
+        super(tls_constants.ExtensionType.client_hello_padding);
+
+  final Uint8List padding;
+
+  @override
+  Uint8List serializeBody() => padding;
 }

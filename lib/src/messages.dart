@@ -287,6 +287,8 @@ abstract class TlsHandshakeMessage extends TlsMessage {
         return TlsCertificateVerify.parseBody(body, version: recordVersion);
       case TlsHandshakeType.finished:
         return TlsFinished.parseBody(body);
+      case TlsHandshakeType.helloRetryRequest:
+        return TlsHelloRetryRequest.parseBody(body);
       case TlsHandshakeType.encryptedExtensions:
         return TlsEncryptedExtensions.parseBody(body);
       case TlsHandshakeType.newSessionTicket:
@@ -1031,6 +1033,66 @@ class TlsKeyUpdate extends TlsHandshakeMessage {
           ? tls_constants.KeyUpdateMessageType.update_requested
           : tls_constants.KeyUpdateMessageType.update_not_requested,
     ]);
+  }
+}
+
+class TlsHelloRetryRequest extends TlsHandshakeMessage {
+  TlsHelloRetryRequest({
+    required this.serverVersion,
+    required this.cipherSuite,
+    this.extensions = const [],
+  }) : super(TlsHandshakeType.helloRetryRequest);
+
+  final TlsProtocolVersion serverVersion;
+  final int cipherSuite;
+  final List<TlsExtension> extensions;
+
+  static TlsHelloRetryRequest parseBody(Uint8List body) {
+    final parser = Parser(body);
+    final serverVersion = TlsProtocolVersion.parse(parser);
+    final cipherSuite = parser.get(2);
+
+    final extensions = <TlsExtension>[];
+    if (parser.getRemainingLength() > 0) {
+      final extensionsLength = parser.get(2);
+      final extensionsParser = Parser(parser.getFixBytes(extensionsLength));
+      while (!extensionsParser.isDone) {
+        final type = extensionsParser.get(2);
+        final length = extensionsParser.get(2);
+        final extBody = extensionsParser.getFixBytes(length);
+        extensions.add(TlsExtensionRegistry.parse(
+          type,
+          extBody,
+          TlsExtensionContext.helloRetryRequest,
+        ));
+      }
+    }
+
+    return TlsHelloRetryRequest(
+      serverVersion: serverVersion,
+      cipherSuite: cipherSuite,
+      extensions: extensions,
+    );
+  }
+
+  @override
+  Uint8List serializeBody() {
+    final writer = Writer();
+    writer.addBytes(serverVersion.serialize());
+    writer.add(cipherSuite, 2);
+
+    final extWriter = Writer();
+    for (final ext in extensions) {
+      extWriter.add(ext.type, 2);
+      final body = ext.serializeBody();
+      extWriter.add(body.length, 2);
+      extWriter.addBytes(body);
+    }
+    final extBytes = extWriter.bytes;
+    writer.add(extBytes.length, 2);
+    writer.addBytes(extBytes);
+
+    return writer.bytes;
   }
 }
 

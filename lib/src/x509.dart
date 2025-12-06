@@ -36,6 +36,12 @@ class X509 {
   /// DER-encoded issuer distinguished name.
   Uint8List? issuer;
 
+  /// Start of validity period.
+  DateTime? notBefore;
+
+  /// End of validity period.
+  DateTime? notAfter;
+
   /// Parse a PEM certificate and populate this instance.
   X509 parse(String pem) {
     final der = dePem(pem, 'CERTIFICATE');
@@ -60,6 +66,11 @@ class X509 {
     issuer = Uint8List.fromList(
       tbsCertificate.getChildBytes(subjectPublicKeyInfoIndex - 3),
     );
+    
+    final validity = tbsCertificate.getChild(subjectPublicKeyInfoIndex - 2);
+    notBefore = _parseAsn1Time(validity.getChild(0));
+    notAfter = _parseAsn1Time(validity.getChild(1));
+
     subject = Uint8List.fromList(
       tbsCertificate.getChildBytes(subjectPublicKeyInfoIndex - 1),
     );
@@ -93,6 +104,49 @@ class X509 {
   @override
   bool operator ==(Object other) {
     return other is X509 && _bytesEqual(bytes, other.bytes);
+  }
+
+  DateTime _parseAsn1Time(ASN1Parser node) {
+    final text = String.fromCharCodes(node.value);
+    if (node.type.tagId == 0x17) {
+      // UTCTime: YYMMDDHHMMSSZ
+      // We need to handle the 2-digit year window.
+      // RFC 5280 says:
+      // Where YY is greater than or equal to 50, the year SHALL be 
+      // interpreted as 19YY; and
+      // Where YY is less than 50, the year SHALL be interpreted as 20YY.
+      
+      // However, datefuncs.dart might have helpers or we parse manually.
+      // Let's check datefuncs.dart content again or just implement here.
+      // I'll implement a simple parser here or use datefuncs if applicable.
+      // parseDateClass in datefuncs expects YYYY-MM-DD...
+      
+      // Let's implement manual parsing for UTCTime/GeneralizedTime to DateTime
+      
+      var year = int.parse(text.substring(0, 2));
+      if (year >= 50) {
+        year += 1900;
+      } else {
+        year += 2000;
+      }
+      final month = int.parse(text.substring(2, 4));
+      final day = int.parse(text.substring(4, 6));
+      final hour = int.parse(text.substring(6, 8));
+      final minute = int.parse(text.substring(8, 10));
+      final second = int.parse(text.substring(10, 12));
+      // Ignore timezone for now, assume Z
+      return DateTime.utc(year, month, day, hour, minute, second);
+    } else if (node.type.tagId == 0x18) {
+      // GeneralizedTime: YYYYMMDDHHMMSSZ
+      final year = int.parse(text.substring(0, 4));
+      final month = int.parse(text.substring(4, 6));
+      final day = int.parse(text.substring(6, 8));
+      final hour = int.parse(text.substring(8, 10));
+      final minute = int.parse(text.substring(10, 12));
+      final second = int.parse(text.substring(12, 14));
+      return DateTime.utc(year, month, day, hour, minute, second);
+    }
+    throw FormatException('Unknown time format tag: ${node.type.tagId}');
   }
 
   void _parsePublicKey(ASN1Parser spki, Uint8List publicKeyBytes) {
