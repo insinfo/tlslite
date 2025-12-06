@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:tlslite/src/ml_kem/ml_kem.dart';
@@ -99,5 +101,76 @@ void main() {
       final ssDecaps1024 = mlKem1024Decaps(dk1024, ct1024);
       expect(ssDecaps1024, equals(ss1024));
     });
+
+    group('NIST ACVP FIPS 203 KATs', () {
+      test('ML-KEM-512 decapsulation matches ACVP', () {
+        _expectAcvpDecapsulation(
+          kem: mlKem512Instance,
+          jsonPath: 'test/assets/ML-KEM-encapDecap-FIPS203/internalProjection.json',
+          parameterSet: 'ML-KEM-512',
+        );
+      });
+
+      test('ML-KEM-768 decapsulation matches ACVP', () {
+        _expectAcvpDecapsulation(
+          kem: mlKem768Instance,
+          jsonPath: 'test/assets/ML-KEM-encapDecap-FIPS203/internalProjection.json',
+          parameterSet: 'ML-KEM-768',
+        );
+      });
+
+      test('ML-KEM-1024 decapsulation matches ACVP', () {
+        _expectAcvpDecapsulation(
+          kem: mlKem1024Instance,
+          jsonPath: 'test/assets/ML-KEM-encapDecap-FIPS203/internalProjection.json',
+          parameterSet: 'ML-KEM-1024',
+        );
+      });
+    });
   });
+}
+
+void _expectAcvpDecapsulation({
+  required MlKem kem,
+  required String jsonPath,
+  required String parameterSet,
+}) {
+  final file = File(jsonPath);
+  if (!file.existsSync()) {
+    fail('Missing ACVP test vector file at $jsonPath');
+  }
+
+  final data = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+  final testGroups = data['testGroups'] as List<dynamic>;
+
+  // Find encapsulation test group for this parameter set (contains dk, c, k)
+  for (final group in testGroups) {
+    final groupMap = group as Map<String, dynamic>;
+    if (groupMap['parameterSet'] != parameterSet) continue;
+    if (groupMap['function'] != 'encapsulation') continue;
+
+    final tests = groupMap['tests'] as List<dynamic>;
+    for (final test in tests) {
+      final testMap = test as Map<String, dynamic>;
+      final tcId = testMap['tcId'] as int;
+      final dk = _hexToBytes(testMap['dk'] as String);
+      final c = _hexToBytes(testMap['c'] as String);
+      final kExpected = _hexToBytes(testMap['k'] as String);
+
+      final kDecaps = kem.decaps(dk, c);
+      expect(kDecaps, equals(kExpected), 
+        reason: '$parameterSet tcId $tcId: decapsulation result mismatch');
+    }
+    return; // Done with this parameter set
+  }
+  fail('No test group found for $parameterSet encapsulation');
+}
+
+Uint8List _hexToBytes(String hex) {
+  final sanitized = hex.trim();
+  final result = Uint8List(sanitized.length ~/ 2);
+  for (var i = 0; i < sanitized.length; i += 2) {
+    result[i >> 1] = int.parse(sanitized.substring(i, i + 2), radix: 16);
+  }
+  return result;
 }

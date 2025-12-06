@@ -31,6 +31,11 @@ class PolyVector {
     return PolyVector([for (final e in elements) e.fromNtt()]);
   }
 
+  /// Convert all elements into Montgomery domain
+  PolyVector toMontgomery() {
+    return PolyVector([for (final e in elements) e.toMontgomery()]);
+  }
+
   /// Add two vectors
   PolyVector operator +(PolyVector other) {
     assert(k == other.k);

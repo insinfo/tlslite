@@ -135,7 +135,20 @@ dart analyze                 # análise estática
   - `x25519mlkem768` (ML-KEM-768 + X25519)
   - `secp256r1mlkem768` (ML-KEM-768 + P-256)
   - `secp384r1mlkem1024` (ML-KEM-1024 + P-384)
-- 🔜 Validar contra vetores NIST KAT.
+- ✅ **VETORES NIST ACVP VALIDADOS**: Testes de decapsulação passando para 512/768/1024.
+
+#### Nota sobre formatos de vetores de teste NIST
+Os arquivos `PQCkemKAT_*.rsp` (formato antigo) usam DRBG interno para gerar randomness durante keygen/encaps.
+Isso significa que os campos `sk`, `ct`, `ss` desses arquivos **não podem** ser testados diretamente com
+`decaps(sk, ct) == ss` porque a chave privada foi gerada com DRBG específico que a implementação precisa replicar.
+
+O formato correto para testes unitários é o **ACVP JSON** (FIPS 203), que fornece diretamente:
+- `dk`: decapsulation key (chave privada completa)
+- `c`: ciphertext  
+- `k`: shared secret esperado
+
+Os testes em `test/ml_kem_test.dart` usam vetores de `test/assets/ML-KEM-encapDecap-FIPS203/internalProjection.json`,
+permitindo verificar `decaps(dk, c) == k` sem dependência de DRBG.
 
 ---
 
@@ -150,7 +163,7 @@ dart analyze                 # análise estática
 
 ### Verificação adicional
 - Testes de vetores RFC 8032 para Ed448
-- Testes de vetores NIST KAT para ML-KEM
+- ✅ Testes de vetores NIST ACVP FIPS 203 para ML-KEM (512/768/1024) passando
 - Validação de curvas brainpool
 
 ---

@@ -2,54 +2,49 @@
 library;
 
 import 'dart:typed_data';
+import 'field.dart';
 import 'ntt.dart';
-
-/// The modulus q = 3329 for ML-KEM
-const int q = 3329;
-
-/// Polynomial degree n = 256
-const int n = 256;
 
 /// A polynomial in R_q = Z_q[X]/(X^256 + 1)
 class Polynomial {
-  /// Coefficients in [0, q-1]
+  /// Coefficients in [0, mlKemModulus-1]
   final Int16List coeffs;
   
   /// Whether polynomial is in NTT domain
   final bool isNtt;
 
   Polynomial(this.coeffs, {this.isNtt = false}) {
-    assert(coeffs.length == n);
+    assert(coeffs.length == mlKemDegree);
   }
 
   /// Create zero polynomial
   factory Polynomial.zero({bool isNtt = false}) {
-    return Polynomial(Int16List(n), isNtt: isNtt);
+    return Polynomial(Int16List(mlKemDegree), isNtt: isNtt);
   }
 
   /// Create polynomial from coefficient list
   factory Polynomial.fromList(List<int> coefficients, {bool isNtt = false}) {
-    final c = Int16List(n);
-    for (var i = 0; i < coefficients.length && i < n; i++) {
-      c[i] = coefficients[i] % q;
+    final c = Int16List(mlKemDegree);
+    for (var i = 0; i < coefficients.length && i < mlKemDegree; i++) {
+      c[i] = _canonical(coefficients[i]);
     }
     return Polynomial(c, isNtt: isNtt);
   }
 
   /// Parse bytes using rejection sampling (Algorithm 6: SampleNTT)
   factory Polynomial.sampleNtt(Uint8List bytes) {
-    final coeffs = Int16List(n);
+    final coeffs = Int16List(mlKemDegree);
     var i = 0;
     var j = 0;
-    while (j < n) {
+    while (j < mlKemDegree) {
       final d1 = bytes[i] + 256 * (bytes[i + 1] % 16);
       final d2 = (bytes[i + 1] ~/ 16) + 16 * bytes[i + 2];
       
-      if (d1 < q) {
+      if (d1 < mlKemModulus) {
         coeffs[j] = d1;
         j++;
       }
-      if (d2 < q && j < n) {
+      if (d2 < mlKemModulus && j < mlKemDegree) {
         coeffs[j] = d2;
         j++;
       }
@@ -60,36 +55,59 @@ class Polynomial {
 
   /// Sample from centered binomial distribution (Algorithm 7: SamplePolyCBD)
   factory Polynomial.sampleCbd(Uint8List bytes, int eta, {bool isNtt = false}) {
-    assert(bytes.length == 64 * eta);
-    final coeffs = Int16List(n);
-    
-    // Convert bytes to bits and process
-    var bitIndex = 0;
-    int getBit() {
-      final byteIdx = bitIndex ~/ 8;
-      final bitIdx = bitIndex % 8;
-      bitIndex++;
-      return (bytes[byteIdx] >> bitIdx) & 1;
+    switch (eta) {
+      case 2:
+        assert(bytes.length == 64 * eta);
+        return Polynomial(_cbd2(bytes), isNtt: isNtt);
+      case 3:
+        assert(bytes.length == 64 * eta);
+        return Polynomial(_cbd3(bytes), isNtt: isNtt);
+      default:
+        throw ArgumentError('Unsupported eta value: $eta');
     }
-    
-    for (var i = 0; i < n; i++) {
-      var a = 0;
-      var b = 0;
-      for (var j = 0; j < eta; j++) {
-        a += getBit();
-        b += getBit();
+  }
+
+  static Int16List _cbd2(Uint8List bytes) {
+    final coeffs = Int16List(mlKemDegree);
+    final data = ByteData.sublistView(bytes);
+    for (var i = 0; i < mlKemDegree ~/ 8; i++) {
+      final t = data.getUint32(i * 4, Endian.little);
+      var d = t & 0x55555555;
+      d += (t >> 1) & 0x55555555;
+      for (var j = 0; j < 8; j++) {
+        final a = (d >> (4 * j)) & 0x3;
+        final b = (d >> (4 * j + 2)) & 0x3;
+        coeffs[8 * i + j] = _canonical(a - b);
       }
-      coeffs[i] = (a - b + q) % q;
     }
-    
-    return Polynomial(coeffs, isNtt: isNtt);
+    return coeffs;
+  }
+
+  static Int16List _cbd3(Uint8List bytes) {
+    final coeffs = Int16List(mlKemDegree);
+    for (var i = 0; i < mlKemDegree ~/ 4; i++) {
+      final t = _load24(bytes, 3 * i);
+      var d = t & 0x00249249;
+      d += (t >> 1) & 0x00249249;
+      d += (t >> 2) & 0x00249249;
+      for (var j = 0; j < 4; j++) {
+        final a = (d >> (6 * j)) & 0x7;
+        final b = (d >> (6 * j + 3)) & 0x7;
+        coeffs[4 * i + j] = _canonical(a - b);
+      }
+    }
+    return coeffs;
+  }
+
+  static int _load24(Uint8List bytes, int offset) {
+    return bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16);
   }
 
   /// Decode bytes to polynomial (Algorithm 4: ByteDecode)
   factory Polynomial.decode(Uint8List bytes, int d, {bool isNtt = false}) {
     assert(bytes.length == 32 * d);
-    final coeffs = Int16List(n);
-    final m = d == 12 ? q : (1 << d);
+    final coeffs = Int16List(mlKemDegree);
+    final m = d == 12 ? mlKemModulus : (1 << d);
     
     // Decode d-bit integers from bytes
     var bitBuffer = BigInt.zero;
@@ -98,8 +116,9 @@ class Polynomial {
     }
     
     final mask = (BigInt.one << d) - BigInt.one;
-    for (var i = 0; i < n; i++) {
-      coeffs[i] = ((bitBuffer & mask).toInt()) % m;
+    for (var i = 0; i < mlKemDegree; i++) {
+      final value = ((bitBuffer & mask).toInt()) % m;
+      coeffs[i] = d == 12 ? _canonical(value) : value;
       bitBuffer >>= d;
     }
     
@@ -112,8 +131,9 @@ class Polynomial {
     
     // Encode coefficients as d-bit integers
     var bitBuffer = BigInt.zero;
-    for (var i = n - 1; i >= 0; i--) {
-      bitBuffer = (bitBuffer << d) | BigInt.from(coeffs[i]);
+    for (var i = mlKemDegree - 1; i >= 0; i--) {
+      final value = _canonical(coeffs[i]) & ((1 << d) - 1);
+      bitBuffer = (bitBuffer << d) | BigInt.from(value);
     }
     
     for (var i = 0; i < result.length; i++) {
@@ -124,25 +144,61 @@ class Polynomial {
     return result;
   }
 
+  /// Construct polynomial from a 32-byte message (Algorithm 9)
+  factory Polynomial.fromMessage(Uint8List message) {
+    final expected = mlKemDegree >> 3;
+    if (message.length != expected) {
+      throw ArgumentError('Message must be $expected bytes');
+    }
+    final coeffs = Int16List(mlKemDegree);
+    for (var i = 0; i < expected; i++) {
+      for (var j = 0; j < 8; j++) {
+        final bit = (message[i] >> j) & 1;
+        coeffs[8 * i + j] = bit == 1 ? messageRepresentative : 0;
+      }
+    }
+    return Polynomial(coeffs);
+  }
+
+  /// Convert polynomial back to a 32-byte message
+  Uint8List toMessage() {
+    final result = Uint8List(mlKemDegree >> 3);
+    for (var i = 0; i < result.length; i++) {
+      var byte = 0;
+      for (var j = 0; j < 8; j++) {
+        var t = coeffs[8 * i + j];
+        t = barrettReduce(t);
+        t <<= 1;
+        t += 1665;
+        t *= 80635;
+        t >>= 28;
+        t &= 1;
+        byte |= t << j;
+      }
+      result[i] = byte;
+    }
+    return result;
+  }
+
   /// Compress polynomial coefficients
   Polynomial compress(int d) {
-    final result = Int16List(n);
+    final result = Int16List(mlKemDegree);
     final t = 1 << d;
-    for (var i = 0; i < n; i++) {
-      // round((2^d / q) * x) mod 2^d
-      final x = coeffs[i];
-      result[i] = ((t * x + 1664) ~/ q) % t;  // 1664 = q // 2
+    final rounding = mlKemModulus >> 1;
+    for (var i = 0; i < mlKemDegree; i++) {
+      final x = _canonical(coeffs[i]);
+      result[i] = ((t * x + rounding) ~/ mlKemModulus) & (t - 1);
     }
     return Polynomial(result, isNtt: isNtt);
   }
 
   /// Decompress polynomial coefficients
   Polynomial decompress(int d) {
-    final result = Int16List(n);
+    final result = Int16List(mlKemDegree);
     final t = 1 << (d - 1);
-    for (var i = 0; i < n; i++) {
-      // round((q / 2^d) * x)
-      result[i] = (q * coeffs[i] + t) >> d;
+    for (var i = 0; i < mlKemDegree; i++) {
+      // round((mlKemModulus / 2^d) * x)
+      result[i] = _canonical((mlKemModulus * coeffs[i] + t) >> d);
     }
     return Polynomial(result, isNtt: isNtt);
   }
@@ -163,12 +219,21 @@ class Polynomial {
     return Polynomial(nttInverse(coeffs), isNtt: false);
   }
 
+  /// Convert coefficients into Montgomery domain
+  Polynomial toMontgomery() {
+    final result = Int16List(mlKemDegree);
+    for (var i = 0; i < mlKemDegree; i++) {
+      result[i] = fqMul(coeffs[i], montgomeryFactor);
+    }
+    return Polynomial(result, isNtt: isNtt);
+  }
+
   /// Add two polynomials
   Polynomial operator +(Polynomial other) {
     assert(isNtt == other.isNtt);
-    final result = Int16List(n);
-    for (var i = 0; i < n; i++) {
-      result[i] = (coeffs[i] + other.coeffs[i]) % q;
+    final result = Int16List(mlKemDegree);
+    for (var i = 0; i < mlKemDegree; i++) {
+      result[i] = _canonical(coeffs[i] + other.coeffs[i]);
     }
     return Polynomial(result, isNtt: isNtt);
   }
@@ -176,9 +241,9 @@ class Polynomial {
   /// Subtract two polynomials
   Polynomial operator -(Polynomial other) {
     assert(isNtt == other.isNtt);
-    final result = Int16List(n);
-    for (var i = 0; i < n; i++) {
-      result[i] = (coeffs[i] - other.coeffs[i] + q) % q;
+    final result = Int16List(mlKemDegree);
+    for (var i = 0; i < mlKemDegree; i++) {
+      result[i] = _canonical(coeffs[i] - other.coeffs[i]);
     }
     return Polynomial(result, isNtt: isNtt);
   }
@@ -193,10 +258,12 @@ class Polynomial {
 
   /// Scale by integer
   Polynomial scale(int scalar) {
-    final result = Int16List(n);
-    for (var i = 0; i < n; i++) {
-      result[i] = (coeffs[i] * scalar) % q;
+    final result = Int16List(mlKemDegree);
+    for (var i = 0; i < mlKemDegree; i++) {
+      result[i] = _canonical(coeffs[i] * scalar);
     }
     return Polynomial(result, isNtt: isNtt);
   }
 }
+
+int _canonical(int value) => freeze(value);
