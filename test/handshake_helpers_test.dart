@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:tlslite/src/handshake_helpers.dart';
+import 'package:tlslite/src/tls_protocol.dart';
 
 // Mock ClientHello to simulate the behavior expected by HandshakeHelpers
 class MockClientHello {
@@ -128,6 +129,38 @@ void main() {
       expect(clientHello.write().length, 516);
       expect(clientHello.extensions, isNotNull);
       expect(clientHello.extensions, hasLength(1));
+    });
+  });
+
+  group('HandshakeHelpers.resolveLegacyProtocolVersion', () {
+    test('returns negotiated value within configured window', () {
+      final negotiated = HandshakeHelpers.resolveLegacyProtocolVersion(
+        clientVersion: TlsProtocolVersion.tls11,
+        minVersion: const (3, 1),
+        maxVersion: const (3, 3),
+      );
+
+      expect(negotiated, equals(TlsProtocolVersion.tls11));
+    });
+
+    test('clamps to server maximum when client advertises higher', () {
+      final negotiated = HandshakeHelpers.resolveLegacyProtocolVersion(
+        clientVersion: TlsProtocolVersion.tls12,
+        minVersion: const (3, 1),
+        maxVersion: const (3, 2),
+      );
+
+      expect(negotiated, equals(TlsProtocolVersion.tls11));
+    });
+
+    test('returns null when client version is below minimum', () {
+      final negotiated = HandshakeHelpers.resolveLegacyProtocolVersion(
+        clientVersion: TlsProtocolVersion.tls10,
+        minVersion: const (3, 2),
+        maxVersion: const (3, 3),
+      );
+
+      expect(negotiated, isNull);
     });
   });
 }

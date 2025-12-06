@@ -18,6 +18,7 @@ class OpenSSLServer {
   final int _port;
   final String _cipher;
   final bool _verbose;
+  final String _protocolFlag;
   final List<String> _stdout = [];
   final List<String> _stderr = [];
   bool _ready = false;
@@ -26,10 +27,16 @@ class OpenSSLServer {
   String? _keyLogFile;
   Directory? _tempDir;
 
-  OpenSSLServer({required int port, required String cipher, bool verbose = false})
+  OpenSSLServer({
+    required int port,
+    required String cipher,
+    bool verbose = false,
+    String protocolFlag = '-tls1_2',
+  })
       : _port = port,
         _cipher = cipher,
-        _verbose = verbose;
+        _verbose = verbose,
+        _protocolFlag = protocolFlag;
 
   int get port => _port;
   List<String> get stdout => _stdout;
@@ -65,7 +72,7 @@ class OpenSSLServer {
       '-accept', '$_port',
       '-key', _keyFile!,
       '-cert', _certFile!,
-      '-tls1_2',  // Force TLS 1.2
+      _protocolFlag,
       '-cipher', _cipher,
       '-no_dhe',  // Disable DHE to force ECDHE
       '-keylogfile',
@@ -256,6 +263,94 @@ void main() {
             }
           }
 
+          rethrow;
+        }
+      } finally {
+        socket?.destroy();
+        await server.stop();
+      }
+    });
+
+    test('TLS 1.1 handshake with RSA AES128-SHA', () async {
+      final server = OpenSSLServer(
+        port: 14437,
+        cipher: 'AES128-SHA',
+        protocolFlag: '-tls1_1',
+      );
+
+      Socket? socket;
+      try {
+        await server.start();
+        socket = await Socket.connect('127.0.0.1', server.port);
+
+        final settings = HandshakeSettings(
+          minVersion: (3, 2),
+          maxVersion: (3, 2),
+          cipherNames: const ['aes128'],
+          keyExchangeNames: const ['rsa'],
+          useEncryptThenMAC: false,
+        );
+
+        final tlsConn = TlsConnection(socket);
+        try {
+          await tlsConn.handshakeClient(settings: settings);
+          await tlsConn.write(utf8.encode('hello tls1.1'));
+          await tlsConn.flush();
+          expect(true, isTrue);
+        } catch (e) {
+          print('TLS 1.1 handshake FAILED: $e');
+          print('\n=== OpenSSL Server Output ===');
+          for (final line in server.stdout) {
+            print(line);
+          }
+          print('\n=== OpenSSL Server Errors ===');
+          for (final line in server.stderr) {
+            print(line);
+          }
+          rethrow;
+        }
+      } finally {
+        socket?.destroy();
+        await server.stop();
+      }
+    });
+
+    test('TLS 1.0 handshake with RSA AES128-SHA', () async {
+      final server = OpenSSLServer(
+        port: 14438,
+        cipher: 'AES128-SHA',
+        protocolFlag: '-tls1',
+      );
+
+      Socket? socket;
+      try {
+        await server.start();
+        socket = await Socket.connect('127.0.0.1', server.port);
+
+        final settings = HandshakeSettings(
+          minVersion: (3, 1),
+          maxVersion: (3, 1),
+          cipherNames: const ['aes128'],
+          keyExchangeNames: const ['rsa'],
+          useEncryptThenMAC: false,
+        );
+
+        final tlsConn = TlsConnection(socket);
+        try {
+          await tlsConn.handshakeClient(settings: settings);
+          await tlsConn.write(utf8.encode('hello tls1.0'));
+          await tlsConn.flush();
+          expect(true, isTrue);
+        } catch (e) {
+          print('TLS 1.0 handshake FAILED: $e');
+          print('\n=== OpenSSL Server Output ===');
+          for (final line in server.stdout) {
+            print(line);
+          }
+          print('\n=== OpenSSL Server Errors ===');
+          for (final line in server.stderr) {
+            print(line);
+          }
           rethrow;
         }
       } finally {

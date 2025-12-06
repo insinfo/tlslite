@@ -19,6 +19,10 @@ class TlsHmac {
   final Uint8List _key;
   final BytesBuilder _buffer;
 
+  int get digestSize => _digestSizeFor(_algorithm);
+
+  int get blockSize => _blockSizeFor(_algorithm);
+
   /// Appends data into the HMAC stream.
   void update(List<int> data) {
     _buffer.add(data);
@@ -85,6 +89,40 @@ crypto.Hash _selectHash(String algorithm) {
       return crypto.sha384;
     case 'sha512':
       return crypto.sha512;
+    default:
+      throw ArgumentError('Unsupported HMAC algorithm: $algorithm');
+  }
+}
+
+int _digestSizeFor(String algorithm) {
+  switch (algorithm) {
+    case 'md5':
+      return 16;
+    case 'sha1':
+      return 20;
+    case 'sha224':
+      return 28;
+    case 'sha256':
+      return 32;
+    case 'sha384':
+      return 48;
+    case 'sha512':
+      return 64;
+    default:
+      throw ArgumentError('Unsupported HMAC algorithm: $algorithm');
+  }
+}
+
+int _blockSizeFor(String algorithm) {
+  switch (algorithm) {
+    case 'md5':
+    case 'sha1':
+    case 'sha224':
+    case 'sha256':
+      return 64;
+    case 'sha384':
+    case 'sha512':
+      return 128;
     default:
       throw ArgumentError('Unsupported HMAC algorithm: $algorithm');
   }

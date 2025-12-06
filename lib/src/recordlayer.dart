@@ -7,10 +7,12 @@ import 'dart:typed_data';
 
 import 'constants.dart';
 import 'tls_protocol.dart';
+import 'utils/aes.dart';
 import 'utils/cipherfactory.dart';
 import 'utils/codec.dart';
-import 'utils/cryptomath.dart';
 import 'utils/constanttime.dart';
+import 'utils/cryptomath.dart';
+import 'utils/tripledes.dart';
 import 'errors.dart';
 import 'mathtls.dart';
 
@@ -190,7 +192,6 @@ class RecordLayer {
   ConnectionState _readState = ConnectionState();
   ConnectionState _pendingWriteState = ConnectionState();
   ConnectionState _pendingReadState = ConnectionState();
-  Uint8List? fixedIVBlock;
 
   bool handshakeFinished = false;
   int sendRecordLimit = 1 << 14;
@@ -267,6 +268,94 @@ class RecordLayer {
     return _writeState.encContext?.isBlockCipher ?? false;
   }
 
+  bool _cipherIsBlock(dynamic cipher) {
+    if (cipher == null) {
+      return false;
+    }
+    try {
+      return cipher.isBlockCipher == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  bool _cipherIsAead(dynamic cipher) {
+    if (cipher == null) {
+      return false;
+    }
+    try {
+      return cipher.isAEAD == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  int _cipherBlockSize(dynamic cipher) {
+    if (cipher == null) {
+      return 0;
+    }
+    if (cipher is AES) {
+      return cipher.blockSize;
+    }
+    if (cipher is TripleDES) {
+      return TripleDES.blockSize;
+    }
+    try {
+      final value = cipher.blockSize;
+      if (value is int) {
+        return value;
+      }
+    } catch (_) {}
+    return 0;
+  }
+
+  bool _shouldUseExplicitIv(dynamic cipher) {
+    if (version < const TlsProtocolVersion(3, 2)) {
+      return false;
+    }
+    return _cipherIsBlock(cipher) && !_cipherIsAead(cipher);
+  }
+
+  void _applyExplicitIv(dynamic cipher, Uint8List iv) {
+    if (cipher == null) {
+      return;
+    }
+    final copy = Uint8List.fromList(iv);
+    try {
+      cipher.iv = copy;
+    } catch (_) {
+      // Some cipher implementations might not expose IV mutation explicitly.
+    }
+  }
+
+  Uint8List? _prepareExplicitIvForWrite() {
+    final cipher = _writeState.encContext;
+    if (!_shouldUseExplicitIv(cipher)) {
+      return null;
+    }
+    final blockLength = _cipherBlockSize(cipher);
+    if (blockLength <= 0) {
+      return null;
+    }
+    final explicitIv = getRandomBytes(blockLength);
+    _applyExplicitIv(cipher, explicitIv);
+    return explicitIv;
+  }
+
+  Uint8List _consumeExplicitIvForRead(Uint8List buf) {
+    final cipher = _readState.encContext;
+    if (!_shouldUseExplicitIv(cipher)) {
+      return buf;
+    }
+    final blockLength = _cipherBlockSize(cipher);
+    if (blockLength <= 0 || buf.length < blockLength) {
+      throw TLSDecryptionFailed('CBC record truncated before IV');
+    }
+    final explicitIv = Uint8List.fromList(buf.sublist(0, blockLength));
+    _applyExplicitIv(cipher, explicitIv);
+    return buf.sublist(blockLength);
+  }
+
   Uint8List addPadding(Uint8List data) {
     final currentLength = data.length;
     final blockLength = blockSize;
@@ -298,24 +387,30 @@ class RecordLayer {
     }
 
     if (_writeState.encContext != null) {
-      if (_writeState.encContext.isBlockCipher) {
-        if (version >= const TlsProtocolVersion(3, 2)) {
-          data = Uint8List.fromList([...fixedIVBlock!, ...data]);
-        }
+      Uint8List? explicitIv;
+      if (_cipherIsBlock(_writeState.encContext)) {
+        explicitIv = _prepareExplicitIvForWrite();
         data = addPadding(data);
       }
       data = _writeState.encContext.encrypt(data);
+      if (explicitIv != null) {
+        data = Uint8List.fromList([...explicitIv, ...data]);
+      }
     }
     return data;
   }
   
   Uint8List _encryptThenMAC(Uint8List buf, int contentType) {
     if (_writeState.encContext != null) {
-      if (version >= const TlsProtocolVersion(3, 2)) {
-        buf = Uint8List.fromList([...fixedIVBlock!, ...buf]);
+      Uint8List? explicitIv;
+      if (_cipherIsBlock(_writeState.encContext)) {
+        explicitIv = _prepareExplicitIvForWrite();
+        buf = addPadding(buf);
       }
-      buf = addPadding(buf);
       buf = _writeState.encContext.encrypt(buf);
+      if (explicitIv != null) {
+        buf = Uint8List.fromList([...explicitIv, ...buf]);
+      }
     }
     
     if (_writeState.macContext != null) {
@@ -483,24 +578,32 @@ class RecordLayer {
   
   Uint8List _decryptThenMAC(int recordType, Uint8List data) {
     if (_readState.encContext != null) {
-      // assert block cipher
-      final blockLength = _readState.encContext.blockSize as int;
-      if (data.length % blockLength != 0) {
-        throw TLSDecryptionFailed();
+      var ciphertext = data;
+      if (_cipherIsBlock(_readState.encContext)) {
+        ciphertext = _consumeExplicitIvForRead(ciphertext);
+        final blockLength = _cipherBlockSize(_readState.encContext);
+        if (blockLength == 0 || ciphertext.isEmpty || ciphertext.length % blockLength != 0) {
+          throw TLSDecryptionFailed();
+        }
+        ciphertext = _readState.encContext.decrypt(ciphertext);
+
+        final seqnumBytes = _readState.getSeqNumBytes();
+        if (!ctCheckCbcMacAndPad(
+            ciphertext,
+            _readState.macContext,
+            seqnumBytes,
+            recordType,
+            [version.major, version.minor],
+            blockSize: blockLength)) {
+          throw TLSBadRecordMAC();
+        }
+
+        final endLength = ciphertext[ciphertext.length - 1] +
+            1 +
+            (_readState.macContext.digestSize as int);
+        return ciphertext.sublist(0, ciphertext.length - endLength);
       }
-      data = _readState.encContext.decrypt(data);
-      if (version >= const TlsProtocolVersion(3, 2)) {
-        data = data.sublist(blockLength);
-      }
-      
-      final seqnumBytes = _readState.getSeqNumBytes();
-      
-      if (!ctCheckCbcMacAndPad(data, _readState.macContext, seqnumBytes, recordType, [version.major, version.minor], blockSize: blockLength)) {
-        throw TLSBadRecordMAC();
-      }
-      
-      final endLength = data[data.length - 1] + 1 + (_readState.macContext.digestSize as int);
-      data = data.sublist(0, data.length - endLength);
+      data = _readState.encContext.decrypt(ciphertext);
     }
     return data;
   }
@@ -525,16 +628,15 @@ class RecordLayer {
     }
     
     if (_readState.encContext != null) {
-      final blockLength = _readState.encContext.blockSize as int;
-      if (buf.length % blockLength != 0) {
-        throw TLSDecryptionFailed("data length not multiple of block size");
+      if (_cipherIsBlock(_readState.encContext)) {
+        buf = _consumeExplicitIvForRead(buf);
+        final blockLength = _cipherBlockSize(_readState.encContext);
+        if (blockLength == 0 || buf.length % blockLength != 0) {
+          throw TLSDecryptionFailed("data length not multiple of block size");
+        }
       }
       
       buf = _readState.encContext.decrypt(buf);
-      
-      if (version >= const TlsProtocolVersion(3, 2)) {
-        buf = buf.sublist(blockLength);
-      }
       
       if (buf.isEmpty) {
         throw TLSBadRecordMAC("No data left after IV removal");
@@ -905,9 +1007,6 @@ class RecordLayer {
       _pendingReadState = clientPendingState;
     }
 
-    if (version >= const TlsProtocolVersion(3, 2) && ivLength > 0) {
-      fixedIVBlock = getRandomBytes(ivLength);
-    }
   }
   
   void calcTLS1_3PendingState(int cipherSuite, Uint8List clTrafficSecret, Uint8List srTrafficSecret, List<String>? implementations) {

@@ -269,6 +269,43 @@ abstract class TlsHandshakeMessage extends TlsMessage {
     return messages;
   }
 
+  static List<TlsParsedHandshakeMessage> parseFragmentWithBytes(
+    Uint8List fragment, {
+    TlsProtocolVersion recordVersion = TlsProtocolVersion.tls12,
+  }) {
+    if (fragment.isEmpty) {
+      return const <TlsParsedHandshakeMessage>[];
+    }
+    final parser = Parser(fragment);
+    final parsed = <TlsParsedHandshakeMessage>[];
+    while (!parser.isDone) {
+      if (parser.getRemainingLength() < 4) {
+        throw DecodeError('Fragmento de handshake truncado');
+      }
+      final start = parser.index;
+      final typeByte = parser.get(1);
+      final length = parser.get(3);
+      if (parser.getRemainingLength() < length) {
+        throw DecodeError(
+          'Fragmento de handshake espera $length bytes, '
+          'restam apenas ${parser.getRemainingLength()}',
+        );
+      }
+      final body = parser.getFixBytes(length);
+      final end = parser.index;
+      final type = TlsHandshakeType.fromByte(typeByte);
+      final message = _parseTyped(type, body, recordVersion);
+      final rawBytes = Uint8List.fromList(fragment.sublist(start, end));
+      parsed.add(
+        TlsParsedHandshakeMessage(
+          message: message,
+          rawBytes: rawBytes,
+        ),
+      );
+    }
+    return parsed;
+  }
+
   static TlsHandshakeMessage _parseTyped(
     TlsHandshakeType type,
     Uint8List body,
@@ -299,6 +336,16 @@ abstract class TlsHandshakeMessage extends TlsMessage {
         return RawTlsHandshakeMessage(type: type, body: body);
     }
   }
+}
+
+class TlsParsedHandshakeMessage {
+  TlsParsedHandshakeMessage({
+    required this.message,
+    required this.rawBytes,
+  });
+
+  final TlsHandshakeMessage message;
+  final Uint8List rawBytes;
 }
 
 class RawTlsHandshakeMessage extends TlsHandshakeMessage {

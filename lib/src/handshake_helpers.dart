@@ -9,6 +9,7 @@ import 'errors.dart';
 import 'handshake_settings.dart';
 import 'messages.dart';
 import 'tls_extensions.dart';
+import 'tls_protocol.dart';
 import 'utils/codec.dart';
 import 'utils/constanttime.dart';
 import 'utils/cryptomath.dart';
@@ -188,14 +189,34 @@ class HandshakeHelpers {
     final hh = handshakeHashes.copy();
     hh.update(clientHello.psk_truncate());
 
-    final binder = calcBinder(prf, secret, hh, external: external);
 
-    if (!ctCompareDigest(binder, ext.binders[position])) {
-      throw TLSIllegalParameterException('Binder does not verify');
+      final binder = calcBinder(prf, secret, hh, external: external);
+
+      if (!ctCompareDigest(binder, ext.binders[position])) {
+        throw TLSIllegalParameterException('Binder does not verify');
+      }
+
+      return true;
     }
 
-    return true;
-  }
+    /// Determine the legacy (TLS ≤ 1.2) protocol version negotiated with the client.
+    ///
+    /// Returns [null] when the offered [clientVersion] is below [minVersion].
+    /// Otherwise clamps the version to the server-side [maxVersion].
+    static TlsProtocolVersion? resolveLegacyProtocolVersion({
+      required TlsProtocolVersion clientVersion,
+      required (int, int) minVersion,
+      required (int, int) maxVersion,
+    }) {
+      final min = TlsProtocolVersion(minVersion.$1, minVersion.$2);
+      final max = TlsProtocolVersion(maxVersion.$1, maxVersion.$2);
+
+      if (clientVersion < min) {
+        return null;
+      }
+
+      return clientVersion > max ? max : clientVersion;
+    }
 
     static bool _matchesTicketIdentity(
       Uint8List identity, List<TlsNewSessionTicket> tickets) {

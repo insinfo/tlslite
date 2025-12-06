@@ -44,6 +44,37 @@ void main() {
       expect(fragments[0], equals(tlsFragment));
       expect(fragments[1], equals(ssl2Fragment));
     });
+
+    test('handshake transcript preserves on-the-wire bytes per message',
+        () async {
+      final harness = await _TlsConnectionHarness.create();
+      addTearDown(() async => harness.dispose());
+
+      final conn = harness.connection;
+      conn.version = TlsProtocolVersion.tls12;
+
+      final first = _handshakeFragment(
+        <int>[0x01, 0x02, 0x03],
+        handshakeType: TlsHandshakeType.helloRequest.code,
+      );
+      final second = _handshakeFragment(
+        <int>[0xAA, 0xBB],
+        handshakeType: TlsHandshakeType.serverHelloDone.code,
+      );
+      final combined = Uint8List.fromList(<int>[...first, ...second]);
+      final header = RecordHeader3().create(
+        TlsProtocolVersion.tls12,
+        ContentType.handshake,
+        combined.length,
+      );
+      conn.queueRecord(header, combined);
+
+      await conn.recvHandshakeMessage();
+      await conn.recvHandshakeMessage();
+
+      final transcript = conn.handshakeHashes.digest('intrinsic');
+      expect(transcript, equals(combined));
+    });
   });
 
   group('TlsConnection session cache integration', () {

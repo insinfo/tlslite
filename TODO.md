@@ -144,6 +144,9 @@ dart analyze                 # análise estática
 ### TLSConnection (tlsconnection.dart)
 - Finalizar porte do fluxo de handshake cliente/servidor
 - Conectar `PskSelectionResult` ao fluxo de resumption
+- ✅ Servidor já negocia TLS 1.0/1.1 reaproveitando o hash MD5+SHA1 para CertificateVerify/Finished, garantindo compatibilidade backward.
+- ✅ Transcript do handshake agora consome exatamente os bytes transmitidos por mensagem, preservando extensões desconhecidas e evitando duplicidade quando vários handshakes compartilham o mesmo record.
+- ✅ Record layer agora gera IV explícito por registro, aplica MAC-then-encrypt (CBC + HMAC) e reutiliza o PRF MD5+SHA1 para chavear cliente/servidor em TLS ≤ 1.1.
 
 ### Verificação adicional
 - Testes de vetores RFC 8032 para Ed448
@@ -187,7 +190,41 @@ Implementar verificação de finished hash 1.3 e tratamento de encrypted_extensi
 Remaining FUTURE Items (Non-blocking)
 TACK extension support (rarely used)
 Full certificate path validation with trust anchors
-TLS 1.0/1.1 support (deprecated protocols)
+TLS 1.0/1.1 support 
+  - Parcial: negociação + CertificateVerify + record layer CBC funcionam e já há integrações OpenSSL/Dart exercitando as versões; falta habilitar resumption/PSK e finalizar o caminho cliente em SSLv3.
 Extended test matrix for FFI sockets
 
 Temporarily skipped the Python tlslite-ng integration/debug groups because the reference server’s SKE signature is failing with the bundled key (test/integration/python_dart_integration_test.dart).
+
+Para que a implementação pura em lib acompanhe o suporte da referência Python (SSLv3, TLS 1.0, 1.1, 1.2, 1.3), o trabalho precisa cobrir quatro frentes principais:
+
+Negociação de versão completa
+
+Garantir que HandshakeSettings e TlsConnection aceitem todas as combinações de minVersion/maxVersion (hoje o fluxo cliente-servidor já trata 1.2/1.3, mas SSLv3/1.0/1.1 ainda estão parcialmente desligados).
+Revisar ClientHello/ServerHello para emitir e aceitar as estruturas legadas (ex.: legacy_version, fallback SCSV) e opções como renegotiation_info.
+Record layer para cada versão
+
+SSLv3/TLS 1.0/1.1 exigem MAC-then-encrypt com RC4/3DES/AES-CBC; precisamos assegurar que RecordLayer reexpõe esses caminhos (MAC padding, implicit IV em TLS 1.0, explicit IV em 1.1/1.2).
+TLS 1.3 já usa tls13record=true com nonce de 12 bytes; falta completar o fluxo de EncryptedExtensions, Certificate[Verify], Finished, KeyUpdate e reemissão de tickets.
+SSLv3 precisa manter compatibilidade com RecordHeader2 (já detectado no MessageSocket), mas o handshake deve ficar em pé.
+Handshake e extensões
+
+Portar/ativar os trechos restantes de tlsconnection.py que lidam com SSLv3/TLS 1.0/1.1 (ex.: PRF MD5+SHA1, client auth legada, renegotiation).
+Expandir TlsExtensionRegistry para as extensões legadas citadas (renegotiation_info, status_request_v2, signed_certificate_timestamp, NPN etc.) para que o handshake possa ecoar/extender dados sem cair no fallback “raw”.
+Finalizar os TODOs de parsing/serialização em TlsCertificate, TlsFinished, EncryptedExtensions, CertificateVerify.
+Testes e compatibilidade
+
+Criar suites de teste (unit e integração) que exercitem cada versão contra OpenSSL/tlslite-ng:
+SSLv3 handshake completo com RC4/3DES-CBC.
+TLS 1.0/1.1 com AES-CBC e renegociação.
+TLS 1.2 com AES-GCM/ChaCha20 (já em grande parte coberto).
+TLS 1.3 com os flights completos (EncryptedExtensions → Finished → KeyUpdate).
+Acrescentar vetores oficiais (RFCs) para PRF MD5+SHA1, CBC padding, Finished computations, etc.
+Próximos passos sugeridos:
+
+Habilitar novamente os caminhos SSLv3/TLS 1.0/1.1 em TlsConnection, reintroduzindo PRF MD5+SHA1 e MAC-then-encrypt no record layer.
+Completar as extensões legadas no TlsExtensionRegistry para que handshakes legado-modern possam ser retransmitidos sem reserializar extensões desconhecidas.
+Finalizar o fluxo TLS 1.3 (EncryptedExtensions, CertificateVerify, Finished, tickets) e alinhar o histórico de handshake com os bytes recebidos (já iniciado).
+Acrescentar testes de integração por versão usando tlslite-ng e OpenSSL, validando que cada combinação passa sem bad_record_mac.
+Quando essas etapas estiverem concluídas, a pilha Dart terá paridade funcional com a referência Python para todas as versões SSLv3–TLS 1.3.
+

@@ -16,6 +16,24 @@ void main() {
   group('Dart-Dart TLS Integration', () {
     final variants = <Map<String, dynamic>>[
       {
+        'name': 'TLS 1.0 RSA + AES128-CBC',
+        'minVer': (3, 1),
+        'maxVer': (3, 1),
+        'ciphers': const ['aes128'],
+        'kx': const ['rsa'],
+        'curves': const <String>[],
+        'useEtm': false,
+      },
+      {
+        'name': 'TLS 1.1 RSA + AES128-CBC',
+        'minVer': (3, 2),
+        'maxVer': (3, 2),
+        'ciphers': const ['aes128'],
+        'kx': const ['rsa'],
+        'curves': const <String>[],
+        'useEtm': false,
+      },
+      {
         'name': 'TLS 1.2 RSA + AES128-GCM',
         'minVer': (3, 3),
         'maxVer': (3, 3),
@@ -77,6 +95,8 @@ void main() {
                 eccCurves: (variant['curves'] as List<String>).isNotEmpty
                     ? (variant['curves'] as List<String>).cast<String>()
                     : null,
+                useEncryptThenMAC:
+                  (variant['useEtm'] as bool?) ?? true,
               ),
               certChain: certChain,
               privateKey: privateKey,
@@ -116,6 +136,7 @@ void main() {
             eccCurves: (variant['curves'] as List<String>).isNotEmpty
                 ? (variant['curves'] as List<String>).cast<String>()
                 : null,
+            useEncryptThenMAC: (variant['useEtm'] as bool?) ?? true,
           ),
           serverName: 'localhost',
           alpn: const ['dart-test'],
