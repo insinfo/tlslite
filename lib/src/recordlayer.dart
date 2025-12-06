@@ -58,6 +58,15 @@ class RecordSocket {
       headerBytes = header.write();
     }
 
+    print('\n[DART-DEBUG-SEND] RecordSocket.send');
+    print('[DART-DEBUG-SEND]   contentType=${msg.contentType}');
+    print('[DART-DEBUG-SEND]   version=${version.major}.${version.minor}');
+    print('[DART-DEBUG-SEND]   data.length=${data.length}');
+    print('[DART-DEBUG-SEND]   headerBytes=${headerBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+    print('[DART-DEBUG-SEND]   data=${data.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+    final fullRecord = Uint8List.fromList([...headerBytes, ...data]);
+    print('[DART-DEBUG-SEND]   fullRecord=${fullRecord.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+
     _output.writeBytes(headerBytes);
     _output.writeBytes(data);
     await _output.flush();
@@ -319,6 +328,15 @@ class RecordLayer {
   
   Uint8List _encryptThenSeal(Uint8List buf, int contentType) {
     final seqNumBytes = _writeState.getSeqNumBytes();
+    
+    print('\n[DART-DEBUG-ENCRYPT] _encryptThenSeal called');
+    print('[DART-DEBUG-ENCRYPT]   seqNumBytes=${seqNumBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+    print('[DART-DEBUG-ENCRYPT]   contentType=$contentType');
+    print('[DART-DEBUG-ENCRYPT]   version=${version.major}.${version.minor}');
+    print('[DART-DEBUG-ENCRYPT]   plaintext length=${buf.length}');
+    print('[DART-DEBUG-ENCRYPT]   plaintext=${buf.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+    print('[DART-DEBUG-ENCRYPT]   fixedNonce=${_writeState.fixedNonce?.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+    
     Uint8List authData;
     
     if (!_isTls13Plus()) {
@@ -343,11 +361,18 @@ class RecordLayer {
     
     final nonce = _getNonce(_writeState, seqNumBytes);
     
+    print('[DART-DEBUG-ENCRYPT]   nonce=${nonce.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+    print('[DART-DEBUG-ENCRYPT]   authData=${authData.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+    
     // Assuming seal returns ciphertext + tag
     buf = _writeState.encContext.seal(nonce, buf, authData);
     
+    print('[DART-DEBUG-ENCRYPT]   ciphertext length=${buf.length}');
+    print('[DART-DEBUG-ENCRYPT]   ciphertext=${buf.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+    
     if (_writeState.encContext.name.contains("aes") && !_isTls13Plus()) {
       buf = Uint8List.fromList([...seqNumBytes, ...buf]);
+      print('[DART-DEBUG-ENCRYPT]   (AES) prepended seqNumBytes, final length=${buf.length}');
     }
     
     return buf;
