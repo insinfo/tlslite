@@ -36,6 +36,8 @@ class MessageSocket extends RecordLayer {
   final unfragmentedDataTypes = [
     ContentType.application_data,
     ContentType.heartbeat,
+    ContentType.change_cipher_spec,
+    ContentType.alert,
   ];
 
   var _lastRecordVersion = const TlsProtocolVersion(0, 0);

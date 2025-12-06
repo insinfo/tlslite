@@ -760,8 +760,17 @@ class RecordLayer {
 
   void calcPendingStates(int cipherSuite, Uint8List masterSecret, Uint8List clientRandom,
       Uint8List serverRandom, List<String>? implementations) {
+    print('\n[DART-DEBUG-RL] calcPendingStates called');
+    print('[DART-DEBUG-RL]   cipherSuite=0x${cipherSuite.toRadixString(16).padLeft(4, '0')}');
+    print('[DART-DEBUG-RL]   masterSecret=${masterSecret.sublist(0, 16).map((b) => b.toRadixString(16).padLeft(2, '0')).join()}...');
+    print('[DART-DEBUG-RL]   clientRandom=${clientRandom.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+    print('[DART-DEBUG-RL]   serverRandom=${serverRandom.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+    
     final (keyLength, ivLength, createCipherFunc) = _getCipherSettings(cipherSuite);
+    print('[DART-DEBUG-RL]   keyLength=$keyLength, ivLength=$ivLength');
+    
     final (macLength, digestmod) = _getMacSettings(cipherSuite);
+    print('[DART-DEBUG-RL]   macLength=$macLength, digestmod=$digestmod');
     
     Function? createMACFunc;
     if (digestmod != null) {
@@ -769,9 +778,12 @@ class RecordLayer {
     }
 
     final outputLength = (macLength * 2) + (keyLength * 2) + (ivLength * 2);
+    print('[DART-DEBUG-RL]   outputLength=$outputLength');
+    
     final keyBlock = calcKey([version.major, version.minor], masterSecret, cipherSuite,
         Uint8List.fromList('key expansion'.codeUnits),
         clientRandom: clientRandom, serverRandom: serverRandom, outputLength: outputLength);
+    print('[DART-DEBUG-RL]   keyBlock=${keyBlock.sublist(0, 32).map((b) => b.toRadixString(16).padLeft(2, '0')).join()}...');
 
     final clientPendingState = ConnectionState();
     final serverPendingState = ConnectionState();
@@ -782,6 +794,11 @@ class RecordLayer {
     final serverKeyBlock = parser.getFixBytes(keyLength);
     final clientIVBlock = parser.getFixBytes(ivLength);
     final serverIVBlock = parser.getFixBytes(ivLength);
+    
+    print('[DART-DEBUG-RL]   clientKeyBlock=${clientKeyBlock.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+    print('[DART-DEBUG-RL]   serverKeyBlock=${serverKeyBlock.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+    print('[DART-DEBUG-RL]   clientIVBlock=${clientIVBlock.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+    print('[DART-DEBUG-RL]   serverIVBlock=${serverIVBlock.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
 
     if (digestmod != null) {
       clientPendingState.macContext = createMACFunc!(clientMACBlock, digestmod);

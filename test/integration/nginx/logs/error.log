@@ -1,0 +1,131 @@
+2025/12/06 03:20:58 [emerg] 16328#11928: CreateDirectory() "C:\MyDartProjects\tlslite\test\integration\nginx/temp/client_body_temp" failed (3: O sistema não pode encontrar o caminho especificado)
+2025/12/06 03:21:26 [debug] 16884#13436: bind() 0.0.0.0:8443 #616 
+2025/12/06 03:21:26 [notice] 16884#13436: using the "select" event method
+2025/12/06 03:21:26 [debug] 16884#13436: malloc: 014BFDF0:30
+2025/12/06 03:21:26 [debug] 16884#13436: counter: 2EFE0080, 1
+2025/12/06 03:21:26 [notice] 16884#13436: nginx/1.29.3
+2025/12/06 03:21:26 [info] 16884#13436: OS: 260200 build:9200, "", suite:100, type:1
+2025/12/06 03:21:26 [debug] 16884#13436: master started
+2025/12/06 03:21:26 [debug] 16884#13436: close listening 0.0.0.0:8443 #616 
+2025/12/06 03:21:26 [notice] 16884#13436: start worker processes
+2025/12/06 03:21:26 [debug] 16884#13436: GetModuleFileName: "C:\tools\nginx-1.29.3\nginx.exe"
+2025/12/06 03:21:26 [notice] 16884#13436: start worker process 11364
+2025/12/06 03:21:26 [debug] 11364#16276: bind() 0.0.0.0:8443 #588 
+2025/12/06 03:21:26 [debug] 11364#16276: malloc: 0094E6B8:30
+2025/12/06 03:21:26 [debug] 11364#16276: counter: 2EFE0080, 1
+2025/12/06 03:21:26 [notice] 11364#16276: nginx/1.29.3
+2025/12/06 03:21:26 [info] 11364#16276: OS: 260200 build:9200, "", suite:100, type:1
+2025/12/06 03:21:26 [debug] 11364#16276: worker started
+2025/12/06 03:21:26 [notice] 11364#16276: create thread 10464
+2025/12/06 03:21:26 [notice] 11364#16276: create thread 3660
+2025/12/06 03:21:26 [notice] 11364#16276: create thread 16848
+2025/12/06 03:21:26 [debug] 16884#13436: WaitForMultipleObjects: 0
+2025/12/06 03:21:26 [debug] 11364#3660: cache manager WaitForMultipleObjects: 1
+2025/12/06 03:21:26 [debug] 11364#10464: malloc: 008ECED8:8192
+2025/12/06 03:21:26 [debug] 11364#10464: malloc: 0095CD78:131072
+2025/12/06 03:21:26 [debug] 11364#10464: malloc: 0097CD80:81920
+2025/12/06 03:21:26 [debug] 11364#10464: malloc: 03100048:81920
+2025/12/06 03:21:26 [debug] 11364#10464: select add event fd:588 ev:768
+2025/12/06 03:21:26 [debug] 11364#10464: worker cycle
+2025/12/06 03:21:26 [debug] 11364#10464: select event: fd:588 wr:0
+2025/12/06 03:21:26 [debug] 11364#10464: select timer: 500
+2025/12/06 03:21:27 [debug] 11364#10464: select ready 0
+2025/12/06 03:21:27 [debug] 11364#10464: timer delta: 515
+2025/12/06 03:21:27 [debug] 11364#10464: worker cycle
+2025/12/06 03:21:27 [debug] 11364#10464: select event: fd:588 wr:0
+2025/12/06 03:21:27 [debug] 11364#10464: select timer: 500
+2025/12/06 03:21:27 [debug] 11364#10464: select ready 0
+2025/12/06 03:21:27 [debug] 11364#10464: timer delta: 505
+2025/12/06 03:21:27 [debug] 11364#10464: worker cycle
+2025/12/06 03:21:27 [debug] 11364#10464: select event: fd:588 wr:0
+2025/12/06 03:21:27 [debug] 11364#10464: select timer: 500
+2025/12/06 03:21:28 [debug] 11364#10464: select ready 0
+2025/12/06 03:21:28 [debug] 11364#10464: timer delta: 507
+2025/12/06 03:21:28 [debug] 11364#10464: worker cycle
+2025/12/06 03:21:28 [debug] 11364#10464: select event: fd:588 wr:0
+2025/12/06 03:21:28 [debug] 11364#10464: select timer: 500
+2025/12/06 03:21:28 [debug] 11364#10464: select ready 0
+2025/12/06 03:21:28 [debug] 11364#10464: timer delta: 510
+2025/12/06 03:21:28 [debug] 11364#10464: worker cycle
+2025/12/06 03:21:28 [debug] 11364#10464: select event: fd:588 wr:0
+2025/12/06 03:21:28 [debug] 11364#10464: select timer: 500
+2025/12/06 03:21:29 [debug] 11364#10464: select ready 0
+2025/12/06 03:21:29 [debug] 11364#10464: timer delta: 502
+2025/12/06 03:21:29 [debug] 11364#10464: worker cycle
+2025/12/06 03:21:29 [debug] 11364#10464: select event: fd:588 wr:0
+2025/12/06 03:21:29 [debug] 11364#10464: select timer: 500
+2025/12/06 03:21:29 [debug] 11364#10464: select ready 0
+2025/12/06 03:21:29 [debug] 11364#10464: timer delta: 515
+2025/12/06 03:21:29 [debug] 11364#10464: worker cycle
+2025/12/06 03:21:29 [debug] 11364#10464: select event: fd:588 wr:0
+2025/12/06 03:21:29 [debug] 11364#10464: select timer: 500
+2025/12/06 03:21:30 [debug] 11364#10464: select ready 0
+2025/12/06 03:21:30 [debug] 11364#10464: timer delta: 504
+2025/12/06 03:21:30 [debug] 11364#10464: worker cycle
+2025/12/06 03:21:30 [debug] 11364#10464: select event: fd:588 wr:0
+2025/12/06 03:21:30 [debug] 11364#10464: select timer: 500
+2025/12/06 03:21:30 [debug] 11364#10464: select ready 0
+2025/12/06 03:21:30 [debug] 11364#10464: timer delta: 513
+2025/12/06 03:21:30 [debug] 11364#10464: worker cycle
+2025/12/06 03:21:30 [debug] 11364#10464: select event: fd:588 wr:0
+2025/12/06 03:21:30 [debug] 11364#10464: select timer: 500
+2025/12/06 03:21:31 [debug] 11364#10464: select ready 0
+2025/12/06 03:21:31 [debug] 11364#10464: timer delta: 501
+2025/12/06 03:21:31 [debug] 11364#10464: worker cycle
+2025/12/06 03:21:31 [debug] 11364#10464: select event: fd:588 wr:0
+2025/12/06 03:21:31 [debug] 11364#10464: select timer: 500
+2025/12/06 03:21:31 [debug] 11364#10464: select ready 0
+2025/12/06 03:21:31 [debug] 11364#10464: timer delta: 501
+2025/12/06 03:21:31 [debug] 11364#10464: worker cycle
+2025/12/06 03:21:31 [debug] 11364#10464: select event: fd:588 wr:0
+2025/12/06 03:21:31 [debug] 11364#10464: select timer: 500
+2025/12/06 03:21:32 [debug] 11364#10464: select ready 0
+2025/12/06 03:21:32 [debug] 11364#10464: timer delta: 501
+2025/12/06 03:21:32 [debug] 11364#10464: worker cycle
+2025/12/06 03:21:32 [debug] 11364#10464: select event: fd:588 wr:0
+2025/12/06 03:21:32 [debug] 11364#10464: select timer: 500
+2025/12/06 03:21:32 [debug] 11364#10464: select ready 0
+2025/12/06 03:21:32 [debug] 11364#10464: timer delta: 503
+2025/12/06 03:21:32 [debug] 11364#10464: worker cycle
+2025/12/06 03:21:32 [debug] 11364#10464: select event: fd:588 wr:0
+2025/12/06 03:21:32 [debug] 11364#10464: select timer: 500
+2025/12/06 03:21:33 [debug] 11364#10464: select ready 0
+2025/12/06 03:21:33 [debug] 11364#10464: timer delta: 506
+2025/12/06 03:21:33 [debug] 11364#10464: worker cycle
+2025/12/06 03:21:33 [debug] 11364#10464: select event: fd:588 wr:0
+2025/12/06 03:21:33 [debug] 11364#10464: select timer: 500
+2025/12/06 03:21:33 [debug] 11364#10464: select ready 0
+2025/12/06 03:21:33 [debug] 11364#10464: timer delta: 513
+2025/12/06 03:21:33 [debug] 11364#10464: worker cycle
+2025/12/06 03:21:33 [debug] 11364#10464: select event: fd:588 wr:0
+2025/12/06 03:21:33 [debug] 11364#10464: select timer: 500
+2025/12/06 03:21:34 [debug] 11364#10464: select ready 0
+2025/12/06 03:21:34 [debug] 11364#10464: timer delta: 504
+2025/12/06 03:21:34 [debug] 11364#10464: worker cycle
+2025/12/06 03:21:34 [debug] 11364#10464: select event: fd:588 wr:0
+2025/12/06 03:21:34 [debug] 11364#10464: select timer: 500
+2025/12/06 03:21:34 [debug] 11364#10464: select ready 0
+2025/12/06 03:21:34 [debug] 11364#10464: timer delta: 514
+2025/12/06 03:21:34 [debug] 11364#10464: worker cycle
+2025/12/06 03:21:34 [debug] 11364#10464: select event: fd:588 wr:0
+2025/12/06 03:21:34 [debug] 11364#10464: select timer: 500
+2025/12/06 03:21:35 [debug] 11364#10464: select ready 0
+2025/12/06 03:21:35 [debug] 11364#10464: timer delta: 509
+2025/12/06 03:21:35 [debug] 11364#10464: worker cycle
+2025/12/06 03:21:35 [debug] 11364#10464: select event: fd:588 wr:0
+2025/12/06 03:21:35 [debug] 11364#10464: select timer: 500
+2025/12/06 03:21:35 [debug] 11364#10464: select ready 0
+2025/12/06 03:21:35 [debug] 11364#10464: timer delta: 506
+2025/12/06 03:21:35 [debug] 11364#10464: worker cycle
+2025/12/06 03:21:35 [debug] 11364#10464: select event: fd:588 wr:0
+2025/12/06 03:21:35 [debug] 11364#10464: select timer: 500
+2025/12/06 03:21:36 [debug] 11364#10464: select ready 0
+2025/12/06 03:21:36 [debug] 11364#10464: timer delta: 508
+2025/12/06 03:21:36 [debug] 11364#10464: worker cycle
+2025/12/06 03:21:36 [debug] 11364#10464: select event: fd:588 wr:0
+2025/12/06 03:21:36 [debug] 11364#10464: select timer: 500
+2025/12/06 03:21:36 [debug] 11364#10464: select ready 0
+2025/12/06 03:21:36 [debug] 11364#10464: timer delta: 508
+2025/12/06 03:21:36 [debug] 11364#10464: worker cycle
+2025/12/06 03:21:36 [debug] 11364#10464: select event: fd:588 wr:0
+2025/12/06 03:21:36 [debug] 11364#10464: select timer: 500

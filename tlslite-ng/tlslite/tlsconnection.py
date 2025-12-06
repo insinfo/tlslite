@@ -433,6 +433,9 @@ class TLSConnection(TLSRecordLayer):
                                reqTack, alpn):
 
         self._handshakeStart(client=True)
+        print(f"\n[PY-DEBUG] _handshakeClientAsyncHelper starting")
+        print(f"[PY-DEBUG]   serverName={serverName}")
+        print(f"[PY-DEBUG]   settings.minVersion={settings.minVersion}, maxVersion={settings.maxVersion}")
 
         #Unpack parameters
         srpUsername = None      # srpParams[0]
@@ -520,6 +523,7 @@ class TLSConnection(TLSRecordLayer):
         # *****************************
 
         # Send the ClientHello.
+        print(f"[PY-DEBUG] Sending ClientHello...")
         for result in self._clientSendClientHello(settings, session,
                                         srpUsername, srpParams, certParams,
                                         anonParams, serverName, nextProtos,
@@ -527,6 +531,7 @@ class TLSConnection(TLSRecordLayer):
             if result in (0,1): yield result
             else: break
         clientHello = result
+        print(f"[PY-DEBUG] ClientHello sent, waiting for ServerHello...")
 
         #Get the ServerHello.
         for result in self._clientGetServerHello(settings, session,
@@ -535,6 +540,22 @@ class TLSConnection(TLSRecordLayer):
             else: break
         serverHello = result
         cipherSuite = serverHello.cipher_suite
+        print(f"[PY-DEBUG] ServerHello received:")
+        print(f"[PY-DEBUG]   server_version={serverHello.server_version}")
+        print(f"[PY-DEBUG]   cipher_suite=0x{cipherSuite:04x}")
+        print(f"[PY-DEBUG]   session_id={serverHello.session_id.hex()[:32]}...")
+
+        # Determine key exchange type
+        if cipherSuite in CipherSuite.srpAllSuites:
+            print(f"[PY-DEBUG]   Type: SRP key exchange")
+        elif cipherSuite in CipherSuite.dhAllSuites:
+            print(f"[PY-DEBUG]   Type: DHE key exchange - WILL receive ServerKeyExchange")
+        elif cipherSuite in CipherSuite.ecdhAllSuites:
+            print(f"[PY-DEBUG]   Type: ECDHE key exchange - WILL receive ServerKeyExchange")
+        elif cipherSuite in CipherSuite.certSuites:
+            print(f"[PY-DEBUG]   Type: RSA key exchange - NO ServerKeyExchange")
+        else:
+            print(f"[PY-DEBUG]   Type: Unknown/other key exchange")
 
         # Check the serverHello.random  if it includes the downgrade protection
         # values as described in RFC8446 section 4.1.3
@@ -589,6 +610,7 @@ class TLSConnection(TLSRecordLayer):
             self.extendedMasterSecret = True
 
         #If the server elected to resume the session, it is handled here.
+        print(f"[PY-DEBUG] Checking for session resume...")
         for result in self._clientResume(session, serverHello,
                         clientHello.random,
                         nextProto, settings):
@@ -596,6 +618,7 @@ class TLSConnection(TLSRecordLayer):
             else: break
 
         if result == "resumed_and_finished":
+            print(f"[PY-DEBUG] Session RESUMED - handshake done")
             self._handshakeDone(resumed=True)
             self._serverRandom = serverHello.random
             self._clientRandom = clientHello.random
@@ -606,10 +629,12 @@ class TLSConnection(TLSRecordLayer):
                 session.appProto = alpnExt.protocol_names[0]
             return
 
+        print(f"[PY-DEBUG] Not resuming, doing full handshake")
         #If the server selected an SRP ciphersuite, the client finishes
         #reading the post-ServerHello messages, then derives a
         #premasterSecret and sends a corresponding ClientKeyExchange.
         if cipherSuite in CipherSuite.srpAllSuites:
+            print(f"[PY-DEBUG] Creating SRPKeyExchange")
             keyExchange = SRPKeyExchange(cipherSuite, clientHello,
                                          serverHello, None, None,
                                          srpUsername=srpUsername,
@@ -619,10 +644,12 @@ class TLSConnection(TLSRecordLayer):
         #If the server selected an anonymous ciphersuite, the client
         #finishes reading the post-ServerHello messages.
         elif cipherSuite in CipherSuite.dhAllSuites:
+            print(f"[PY-DEBUG] Creating DHE_RSAKeyExchange")
             keyExchange = DHE_RSAKeyExchange(cipherSuite, clientHello,
                                              serverHello, None)
 
         elif cipherSuite in CipherSuite.ecdhAllSuites:
+            print(f"[PY-DEBUG] Creating ECDHE_RSAKeyExchange")
             acceptedCurves = self._curveNamesToList(settings)
             keyExchange = ECDHE_RSAKeyExchange(cipherSuite, clientHello,
                                                serverHello, None,
@@ -635,6 +662,7 @@ class TLSConnection(TLSRecordLayer):
         #and also produces a CertificateVerify message that signs the
         #ClientKeyExchange.
         else:
+            print(f"[PY-DEBUG] Creating RSAKeyExchange")
             keyExchange = RSAKeyExchange(cipherSuite, clientHello,
                                          serverHello, None)
 
@@ -1774,10 +1802,15 @@ class TLSConnection(TLSRecordLayer):
                            tackExt, clientRandom, serverRandom,
                            keyExchange):
         """Perform the client side of key exchange"""
+        print(f"\n[PY-DEBUG] _clientKeyExchange starting")
+        print(f"[PY-DEBUG]   cipherSuite=0x{cipherSuite:04x}")
+        print(f"[PY-DEBUG]   keyExchange type={type(keyExchange).__name__}")
+        
         # if server chose cipher suite with authentication, get the certificate
         if cipherSuite in CipherSuite.certAllSuites or \
                 cipherSuite in CipherSuite.ecdheEcdsaSuites or \
                 cipherSuite in CipherSuite.dheDsaSuites:
+            print(f"[PY-DEBUG] Expecting Certificate message...")
             for result in self._getMsg(ContentType.handshake,
                                        HandshakeType.certificate,
                                        certificateType):
@@ -1785,10 +1818,13 @@ class TLSConnection(TLSRecordLayer):
                     yield result
                 else: break
             serverCertificate = result
+            print(f"[PY-DEBUG] Certificate received!")
         else:
+            print(f"[PY-DEBUG] No Certificate expected (anonymous cipher)")
             serverCertificate = None
         # if server chose RSA key exchange, we need to skip SKE message
         if cipherSuite not in CipherSuite.certSuites:
+            print(f"[PY-DEBUG] Expecting ServerKeyExchange message...")
             for result in self._getMsg(ContentType.handshake,
                                        HandshakeType.server_key_exchange,
                                        cipherSuite):
@@ -1796,9 +1832,12 @@ class TLSConnection(TLSRecordLayer):
                     yield result
                 else: break
             serverKeyExchange = result
+            print(f"[PY-DEBUG] ServerKeyExchange received!")
         else:
+            print(f"[PY-DEBUG] No ServerKeyExchange expected (RSA key exchange)")
             serverKeyExchange = None
 
+        print(f"[PY-DEBUG] Expecting CertificateRequest or ServerHelloDone...")
         for result in self._getMsg(ContentType.handshake,
                                    (HandshakeType.certificate_request,
                                     HandshakeType.server_hello_done)):
@@ -1809,6 +1848,7 @@ class TLSConnection(TLSRecordLayer):
         certificateRequest = None
         if isinstance(result, CertificateRequest):
             certificateRequest = result
+            print(f"[PY-DEBUG] CertificateRequest received!")
 
             #abort if Certificate Request with inappropriate ciphersuite
             if cipherSuite not in CipherSuite.certAllSuites \
@@ -1833,12 +1873,14 @@ class TLSConnection(TLSRecordLayer):
                     yield result
 
             # we got CertificateRequest so now we'll get ServerHelloDone
+            print(f"[PY-DEBUG] Expecting ServerHelloDone after CertificateRequest...")
             for result in self._getMsg(ContentType.handshake,
                                        HandshakeType.server_hello_done):
                 if result in (0, 1):
                     yield result
                 else: break
         serverHelloDone = result
+        print(f"[PY-DEBUG] ServerHelloDone received!")
 
         serverCertChain = None
         publicKey = None
@@ -4785,11 +4827,17 @@ class TLSConnection(TLSRecordLayer):
             label = b"client finished"
         else:
             label = b"server finished"
+        
+        # Debug: print handshake hash before building verifyData
+        hash_for_debug = self._handshake_hash.digest('sha256')
+        print(f"[PY-DEBUG] handshakeHash (sha256 before Finished): {hash_for_debug.hex()}")
+        
         #Calculate verification data
         verifyData = calc_key(self.version, masterSecret,
                               cipherSuite, label,
                               handshake_hashes=self._handshake_hash,
                               output_length=12)
+        print(f"[PY-DEBUG] verifyData: {verifyData.hex()}")
         if self.fault == Fault.badFinished:
             verifyData[0] = (verifyData[0]+1)%256
 

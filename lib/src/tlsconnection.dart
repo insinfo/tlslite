@@ -723,9 +723,18 @@ class TlsConnection extends MessageSocket {
       final isECDHE = suiteName.contains('_ECDHE_');
       final isRSA = suiteName.contains('_RSA_');
       
+      // Get accepted curves/groups from settings
+      final acceptedCurves = _curveNamesToList(handshakeSettings);
+      
       KeyExchange? keyExchange;
       if (isECDHE) {
-          keyExchange = ECDHE_RSAKeyExchange(session.cipherSuite, _clientHelloMsg, _serverHelloMsg, null);
+          keyExchange = ECDHE_RSAKeyExchange(
+              session.cipherSuite, 
+              _clientHelloMsg, 
+              _serverHelloMsg, 
+              null,
+              acceptedCurves: acceptedCurves.isNotEmpty ? acceptedCurves : null,
+          );
       } else if (isDHE) {
           keyExchange = DHE_RSAKeyExchange(session.cipherSuite, _clientHelloMsg, _serverHelloMsg, null);
       } else if (isRSA) {
@@ -745,7 +754,39 @@ class TlsConnection extends MessageSocket {
       // Receive ServerHelloDone
       
       while (true) {
-          final message = await recvHandshakeMessage();
+          var message = await recvHandshakeMessage();
+          print('[DART-DEBUG] Received message: ${message.runtimeType}, handshakeType: ${message.handshakeType.name}');
+          
+          // Handle RawTlsHandshakeMessage by parsing into specific types
+          if (message is RawTlsHandshakeMessage) {
+              print('[DART-DEBUG] Message is RawTlsHandshakeMessage, converting...');
+              final rawBody = message.serializeBody();
+              switch (message.handshakeType) {
+                  case TlsHandshakeType.serverHelloDone:
+                      message = TlsServerHelloDone();
+                      print('[DART-DEBUG] Converted to TlsServerHelloDone');
+                      break;
+                  case TlsHandshakeType.serverKeyExchange:
+                      message = TlsServerKeyExchange.parse(
+                          rawBody,
+                          session.cipherSuite,
+                          [version.major, version.minor],
+                      );
+                      print('[DART-DEBUG] Converted to TlsServerKeyExchange');
+                      break;
+                  case TlsHandshakeType.certificateStatus:
+                      message = TlsCertificateStatus.parse(rawBody);
+                      print('[DART-DEBUG] Converted to TlsCertificateStatus');
+                      break;
+                  default:
+                      print('[DART-DEBUG] Unknown type, keeping as RawTlsHandshakeMessage');
+                      // Keep as RawTlsHandshakeMessage, will be caught below
+                      break;
+              }
+          } else {
+              print('[DART-DEBUG] Message is NOT RawTlsHandshakeMessage, type: ${message.runtimeType}');
+          }
+          
           if (message is TlsServerHelloDone) {
               break;
           } else if (message is TlsCertificate) {
@@ -920,16 +961,60 @@ class TlsConnection extends MessageSocket {
 
       // Send ChangeCipherSpec
       await queueMessageBlocking(Message(ContentType.change_cipher_spec, Uint8List.fromList([1])));
+      await flushBlocking();
       
-      // Send Finished
-      final verifyData = buildFinishedVerifyData(forClient: true);
-      await sendHandshakeMessage(TlsFinished(verifyData: verifyData));
+      print('[DEBUG] About to calcPendingStates');
+      print('[DEBUG] cipherSuite: 0x${session.cipherSuite.toRadixString(16)}');
+      print('[DEBUG] masterSecret length: ${session.masterSecret.length}');
+      print('[DEBUG] clientRandom length: ${clientRandom.length}');
+      print('[DEBUG] serverRandom length: ${serverRandom.length}');
+      print('[DEBUG] version: ${version.major}.${version.minor}');
       
-      // Switch to Application Keys (Write)
+      // Calculate pending states for encryption (keys derived from master secret)
+      calcPendingStates(
+        session.cipherSuite,
+        Uint8List.fromList(session.masterSecret),
+        clientRandom,
+        serverRandom,
+        null, // implementations
+      );
+      
+      print('[DEBUG] calcPendingStates done');
+      print('[DEBUG] BEFORE changeWriteState - encContext: ${getCipherName()}');
+      
+      // Switch to Application Keys (Write) - MUST be done BEFORE sending Finished
       changeWriteState();
       
+      print('[DEBUG] AFTER changeWriteState - encContext: ${getCipherName()}');
+      
+      print('[DEBUG] changeWriteState done, about to send Finished');
+      
+      // Debug: print handshake hash before building verifyData
+      final hashForDebug = handshakeHashes.digest('sha256');
+      print('[DEBUG] handshakeHash (sha256 before Finished): ${hashForDebug.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+      
+      // Send Finished (now encrypted)
+      final verifyData = buildFinishedVerifyData(forClient: true);
+      print('[DEBUG] verifyData: ${verifyData.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+      print('[DEBUG] verifyData length: ${verifyData.length}');
+      await sendHandshakeMessage(TlsFinished(verifyData: verifyData));
+      
+      print('[DEBUG] Finished sent');
+      
       // Receive ChangeCipherSpec
+      print('[DEBUG] About to receive CCS. _pendingMessages.length=${_pendingMessages.length}');
+      if (_pendingMessages.isNotEmpty) {
+        final firstPending = _pendingMessages.first;
+        print('[DEBUG] First pending message type: ${firstPending.$1.type}');
+      }
       final (header, parser) = await recvMessageBlocking();
+      print('[DEBUG] Received message type: ${header.type}');
+      if (header.type == ContentType.alert) {
+        final alertBytes = parser.getFixBytes(parser.getRemainingLength());
+        print('[DEBUG] Alert received: level=${alertBytes.isNotEmpty ? alertBytes[0] : "?"} desc=${alertBytes.length > 1 ? alertBytes[1] : "?"}');
+        final alert = TlsAlert.parse(alertBytes);
+        throw TLSRemoteAlert(alert.description.code, alert.level.code);
+      }
       if (header.type != ContentType.change_cipher_spec) {
            await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
            throw TLSUnexpectedMessage('Expected ChangeCipherSpec');

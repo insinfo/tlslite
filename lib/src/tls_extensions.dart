@@ -86,6 +86,10 @@ class TlsExtensionRegistry {
     Uint8List body,
     TlsExtensionContext context,
   ) {
+    // Server may send empty SNI extension in ServerHello (just echoing the extension type)
+    if (body.isEmpty) {
+      return TlsServerNameExtension(hostNames: []);
+    }
     final parser = Parser(body);
     final listLength = parser.get(2);
     if (listLength != parser.getRemainingLength()) {

@@ -121,6 +121,53 @@ functions:
     - OPENSSL_version_patch
     - SSL_CTX_set_security_level
     - PEM_read_bio_X509
+    # EVP Cipher functions for crypto comparison tests
+    - EVP_CIPHER_CTX_new
+    - EVP_CIPHER_CTX_free
+    - EVP_CIPHER_CTX_ctrl
+    - EVP_EncryptInit_ex
+    - EVP_EncryptUpdate
+    - EVP_EncryptFinal_ex
+    - EVP_DecryptInit_ex
+    - EVP_DecryptUpdate
+    - EVP_DecryptFinal_ex
+    - EVP_aes_128_gcm
+    - EVP_aes_256_gcm
+    - EVP_aes_128_cbc
+    - EVP_aes_256_cbc
+    - EVP_aes_128_ccm
+    - EVP_aes_256_ccm
+    - EVP_chacha20_poly1305
+    - EVP_chacha20
+    # Poly1305 and HMAC
+    - EVP_MAC_CTX_new
+    - EVP_MAC_CTX_free
+    - EVP_MAC_init
+    - EVP_MAC_update
+    - EVP_MAC_final
+    - EVP_MAC_fetch
+    - EVP_MAC_free
+    # OSSL_PARAM for EVP_MAC
+    - OSSL_PARAM_construct_utf8_string
+    - OSSL_PARAM_construct_octet_string
+    - OSSL_PARAM_construct_end
+    # SHA functions
+    - EVP_sha1
+    - EVP_sha256
+    - EVP_sha384
+    - EVP_sha512
+    - EVP_MD_CTX_new
+    - EVP_MD_CTX_free
+    - EVP_DigestInit_ex
+    - EVP_DigestUpdate
+    - EVP_DigestFinal_ex
+    # HMAC
+    - HMAC
+    - HMAC_CTX_new
+    - HMAC_CTX_free
+    - HMAC_Init_ex
+    - HMAC_Update
+    - HMAC_Final
 macros:
   include:
     - BIO_C_SET_BUF_MEM_EOF_RETURN
@@ -135,6 +182,15 @@ macros:
     - SSL_AD_CLOSE_NOTIFY
     - SSL3_AL_FATAL
     - SSL_AD_UNEXPECTED_MESSAGE
+    - EVP_CTRL_GCM_SET_IVLEN
+    - EVP_CTRL_GCM_GET_TAG
+    - EVP_CTRL_GCM_SET_TAG
+    - EVP_CTRL_CCM_SET_IVLEN
+    - EVP_CTRL_CCM_GET_TAG
+    - EVP_CTRL_CCM_SET_TAG
+    - EVP_CTRL_AEAD_SET_IVLEN
+    - EVP_CTRL_AEAD_GET_TAG
+    - EVP_CTRL_AEAD_SET_TAG
 structs:
   include:
     - timeval

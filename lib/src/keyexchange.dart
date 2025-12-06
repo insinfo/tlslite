@@ -1190,8 +1190,11 @@ class AECDHKeyExchange extends KeyExchange {
   ) {
     final curveType = serverKeyExchange.curveType;
     final namedCurve = serverKeyExchange.namedCurve;
-    if (curveType != ECCurveType.named_curve ||
-        !acceptedCurves!.contains(namedCurve)) {
+    if (curveType != ECCurveType.named_curve) {
+      throw TLSIllegalParameterException("Server did not use named_curve type");
+    }
+    // If acceptedCurves is set, verify server picked an advertised curve
+    if (acceptedCurves != null && !acceptedCurves!.contains(namedCurve)) {
       throw TLSIllegalParameterException("Server picked curve we didn't advertise");
     }
 

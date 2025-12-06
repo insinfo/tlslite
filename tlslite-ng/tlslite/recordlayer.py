@@ -1189,10 +1189,18 @@ class RecordLayer(object):
     def calcPendingStates(self, cipherSuite, masterSecret, clientRandom,
                           serverRandom, implementations):
         """Create pending states for encryption and decryption."""
+        print(f"\n[PY-DEBUG-RL] calcPendingStates called")
+        print(f"[PY-DEBUG-RL]   cipherSuite=0x{cipherSuite:04x}")
+        print(f"[PY-DEBUG-RL]   masterSecret={masterSecret.hex()[:32]}...")
+        print(f"[PY-DEBUG-RL]   clientRandom={clientRandom.hex()}")
+        print(f"[PY-DEBUG-RL]   serverRandom={serverRandom.hex()}")
+        
         keyLength, ivLength, createCipherFunc = \
                 self._getCipherSettings(cipherSuite)
+        print(f"[PY-DEBUG-RL]   keyLength={keyLength}, ivLength={ivLength}")
 
         macLength, digestmod = self._getMacSettings(cipherSuite)
+        print(f"[PY-DEBUG-RL]   macLength={macLength}, digestmod={digestmod}")
 
         if not digestmod:
             createMACFunc = None
@@ -1200,12 +1208,14 @@ class RecordLayer(object):
             createMACFunc = self._getHMACMethod(self.version)
 
         outputLength = (macLength*2) + (keyLength*2) + (ivLength*2)
+        print(f"[PY-DEBUG-RL]   outputLength={outputLength}")
 
         #Calculate Keying Material from Master Secret
         keyBlock = calc_key(self.version, masterSecret, cipherSuite,
                             b"key expansion", client_random=clientRandom,
                             server_random=serverRandom,
                             output_length=outputLength)
+        print(f"[PY-DEBUG-RL]   keyBlock={keyBlock.hex()[:64]}...")
 
         #Slice up Keying Material
         clientPendingState = ConnectionState()
@@ -1217,6 +1227,11 @@ class RecordLayer(object):
         serverKeyBlock = parser.getFixBytes(keyLength)
         clientIVBlock = parser.getFixBytes(ivLength)
         serverIVBlock = parser.getFixBytes(ivLength)
+        
+        print(f"[PY-DEBUG-RL]   clientKeyBlock={clientKeyBlock.hex()}")
+        print(f"[PY-DEBUG-RL]   serverKeyBlock={serverKeyBlock.hex()}")
+        print(f"[PY-DEBUG-RL]   clientIVBlock={clientIVBlock.hex()}")
+        print(f"[PY-DEBUG-RL]   serverIVBlock={serverIVBlock.hex()}")
 
         if digestmod:
             # Legacy cipher
