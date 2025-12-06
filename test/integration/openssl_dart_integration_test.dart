@@ -44,6 +44,8 @@ class OpenSSLServer {
   String? get keyLogFile => _keyLogFile;
 
   Future<void> start() async {
+    final processEnv = _buildOpenSslEnv();
+
     // Generate test certificate on the fly
     _tempDir = await Directory.systemTemp.createTemp('tlstest_');
     _keyFile = '${_tempDir!.path}/server.key';
@@ -60,7 +62,7 @@ class OpenSSLServer {
       '-days', '1',
       '-nodes',
       '-subj', '/CN=localhost',
-    ]);
+    ], environment: processEnv);
     
     if (genKeyResult.exitCode != 0) {
       throw Exception('Failed to generate test certificate: ${genKeyResult.stderr}');
@@ -83,7 +85,7 @@ class OpenSSLServer {
       args.add('-debug');
     }
 
-    _process = await Process.start('openssl', args);
+    _process = await Process.start('openssl', args, environment: processEnv);
 
     // Capture stdout
     _process!.stdout
@@ -136,228 +138,240 @@ class OpenSSLServer {
   }
 }
 
+Map<String, String> _buildOpenSslEnv() {
+  final env = Map<String, String>.from(Platform.environment);
+  env.remove('OPENSSL_CONF');
+  env.remove('OPENSSL_MODULES');
+  return env;
+}
+
+class _OpenSslScenario {
+  const _OpenSslScenario({
+    required this.name,
+    required this.cipher,
+    required this.settingsBuilder,
+    this.protocolFlag = '-tls1_2',
+    this.port,
+    this.verbose = false,
+    this.exerciseDataPath = false,
+    this.testMessage = 'hello from dart',
+  });
+
+  final String name;
+  final String cipher;
+  final HandshakeSettings Function() settingsBuilder;
+  final String protocolFlag;
+  final int? port;
+  final bool verbose;
+  final bool exerciseDataPath;
+  final String testMessage;
+}
+
+Future<void> _printServerDiagnostics(OpenSSLServer server) async {
+  print('\n=== OpenSSL Server Output ===');
+  for (final line in server.stdout) {
+    print(line);
+  }
+  print('\n=== OpenSSL Server Errors ===');
+  for (final line in server.stderr) {
+    print(line);
+  }
+
+  final keyLogPath = server.keyLogFile;
+  if (keyLogPath != null) {
+    final keyLog = File(keyLogPath);
+    if (await keyLog.exists()) {
+      print('\n=== OpenSSL KeyLog ===');
+      print(await keyLog.readAsString());
+    }
+  }
+}
+
 void main() {
   group('Dart-OpenSSL TLS Integration', () {
-    test('TLS 1.2 handshake with ECDHE-RSA-CHACHA20-POLY1305', () async {
-      final server = OpenSSLServer(
-        port: 14433,
+    final scenarios = <_OpenSslScenario>[
+      _OpenSslScenario(
+        name: 'TLS 1.2 ECDHE-RSA + CHACHA20-POLY1305',
         cipher: 'ECDHE-RSA-CHACHA20-POLY1305',
+        protocolFlag: '-tls1_2',
+        port: 14433,
         verbose: true,
-      );
-
-      Socket? socket;
-      try {
-        print('Starting OpenSSL server...');
-        await server.start();
-        print('OpenSSL server started on port ${server.port}');
-
-        // Connect with Dart TLS client
-        print('Connecting Dart TLS client...');
-        socket = await Socket.connect('127.0.0.1', server.port);
-        print('TCP connection established');
-
-        // Create TLS connection with ChaCha20-Poly1305 only
-        final settings = HandshakeSettings(
-          minVersion: (3, 3),  // TLS 1.2
-          maxVersion: (3, 3),  // TLS 1.2
-          cipherNames: ['chacha20-poly1305'],
-        );
-        
-        final tlsConn = TlsConnection(socket);
-
-        print('Starting TLS handshake...');
-        try {
-          await tlsConn.handshakeClient(settings: settings);
-          print('TLS handshake SUCCESSFUL!');
-
-          // Try to send data
-          final message = 'Hello from Dart!';
-          print('Sending: $message');
-          tlsConn.write(utf8.encode(message));
-          await tlsConn.flush();
-
-          // Read response (OpenSSL s_server echoes data)
-          await Future.delayed(const Duration(milliseconds: 500));
-          
-          print('Handshake complete!');
-          
-          expect(true, isTrue, reason: 'Handshake completed successfully');
-        } catch (e) {
-          print('TLS handshake FAILED: $e');
-          
-          // Print server output for debugging
-          print('\n=== OpenSSL Server Output ===');
-          for (final line in server.stdout) {
-            print(line);
-          }
-          print('\n=== OpenSSL Server Errors ===');
-          for (final line in server.stderr) {
-            print(line);
-          }
-          if (server.keyLogFile != null) {
-            final keyLog = File(server.keyLogFile!);
-            if (await keyLog.exists()) {
-              print('\n=== OpenSSL KeyLog ===');
-              print(await keyLog.readAsString());
-            }
-          }
-          
-          rethrow;
-        }
-      } finally {
-        socket?.destroy();
-        await server.stop();
-      }
-    });
-
-    test('TLS 1.2 handshake with ECDHE-RSA-AES128-GCM-SHA256', () async {
-      final server = OpenSSLServer(
-        port: 14434,
+        exerciseDataPath: true,
+        testMessage: 'Hello from Dart!',
+        settingsBuilder: () => HandshakeSettings(
+          minVersion: (3, 3),
+          maxVersion: (3, 3),
+          cipherNames: const ['chacha20-poly1305'],
+          keyExchangeNames: const ['ecdhe_rsa'],
+          eccCurves: const ['secp256r1', 'x25519'],
+        ),
+      ),
+      _OpenSslScenario(
+        name: 'TLS 1.2 ECDHE-RSA + AES128-GCM',
         cipher: 'ECDHE-RSA-AES128-GCM-SHA256',
-        verbose: true,
-      );
-
-      Socket? socket;
-      try {
-        print('Starting OpenSSL server...');
-        await server.start();
-        print('OpenSSL server started on port ${server.port}');
-
-        // Connect with Dart TLS client
-        print('Connecting Dart TLS client...');
-        socket = await Socket.connect('127.0.0.1', server.port);
-        print('TCP connection established');
-
-        // Create TLS connection with AES-128-GCM only
-        final settings = HandshakeSettings(
-          minVersion: (3, 3),  // TLS 1.2
-          maxVersion: (3, 3),  // TLS 1.2
-          cipherNames: ['aes128gcm'],
-        );
-        
-        final tlsConn = TlsConnection(socket);
-
-        print('Starting TLS handshake...');
-        try {
-          await tlsConn.handshakeClient(settings: settings);
-          print('TLS handshake SUCCESSFUL!');
-          
-          expect(true, isTrue, reason: 'Handshake completed successfully');
-        } catch (e) {
-          print('TLS handshake FAILED: $e');
-          
-          // Print server output for debugging
-          print('\n=== OpenSSL Server Output ===');
-          for (final line in server.stdout) {
-            print(line);
-          }
-          print('\n=== OpenSSL Server Errors ===');
-          for (final line in server.stderr) {
-            print(line);
-          }
-          if (server.keyLogFile != null) {
-            final keyLog = File(server.keyLogFile!);
-            if (await keyLog.exists()) {
-              print('\n=== OpenSSL KeyLog ===');
-              print(await keyLog.readAsString());
-            }
-          }
-
-          rethrow;
-        }
-      } finally {
-        socket?.destroy();
-        await server.stop();
-      }
-    });
-
-    test('TLS 1.1 handshake with RSA AES128-SHA', () async {
-      final server = OpenSSLServer(
-        port: 14437,
+        protocolFlag: '-tls1_2',
+        port: 14434,
+        settingsBuilder: () => HandshakeSettings(
+          minVersion: (3, 3),
+          maxVersion: (3, 3),
+          cipherNames: const ['aes128gcm'],
+          keyExchangeNames: const ['ecdhe_rsa'],
+          eccCurves: const ['secp256r1', 'x25519'],
+        ),
+      ),
+      _OpenSslScenario(
+        name: 'TLS 1.2 ECDHE-RSA + AES256-GCM',
+        cipher: 'ECDHE-RSA-AES256-GCM-SHA384',
+        protocolFlag: '-tls1_2',
+        port: 14439,
+        settingsBuilder: () => HandshakeSettings(
+          minVersion: (3, 3),
+          maxVersion: (3, 3),
+          cipherNames: const ['aes256gcm'],
+          keyExchangeNames: const ['ecdhe_rsa'],
+          eccCurves: const ['secp256r1', 'x25519'],
+        ),
+      ),
+      _OpenSslScenario(
+        name: 'TLS 1.2 RSA + AES256-CBC',
+        cipher: 'AES256-SHA',
+        protocolFlag: '-tls1_2',
+        port: 14440,
+        exerciseDataPath: true,
+        testMessage: 'hello tls1.2 aes256',
+        settingsBuilder: () => HandshakeSettings(
+          minVersion: (3, 3),
+          maxVersion: (3, 3),
+          cipherNames: const ['aes256'],
+          keyExchangeNames: const ['rsa'],
+          useEncryptThenMAC: false,
+        ),
+      ),
+      _OpenSslScenario(
+        name: 'TLS 1.2 ECDHE-RSA + AES128-CBC',
+        cipher: 'ECDHE-RSA-AES128-SHA',
+        protocolFlag: '-tls1_2',
+        port: 14436,
+        exerciseDataPath: true,
+        testMessage: 'hello tls1.2 ecdhe aes128',
+        settingsBuilder: () => HandshakeSettings(
+          minVersion: (3, 3),
+          maxVersion: (3, 3),
+          cipherNames: const ['aes128'],
+          keyExchangeNames: const ['ecdhe_rsa'],
+          eccCurves: const ['secp256r1', 'x25519'],
+          useEncryptThenMAC: false,
+        ),
+      ),
+      _OpenSslScenario(
+        name: 'TLS 1.1 RSA + AES128-CBC',
         cipher: 'AES128-SHA',
         protocolFlag: '-tls1_1',
-      );
-
-      Socket? socket;
-      try {
-        await server.start();
-        socket = await Socket.connect('127.0.0.1', server.port);
-
-        final settings = HandshakeSettings(
+        port: 14437,
+        exerciseDataPath: true,
+        testMessage: 'hello tls1.1',
+        settingsBuilder: () => HandshakeSettings(
           minVersion: (3, 2),
           maxVersion: (3, 2),
           cipherNames: const ['aes128'],
           keyExchangeNames: const ['rsa'],
           useEncryptThenMAC: false,
-        );
-
-        final tlsConn = TlsConnection(socket);
-        try {
-          await tlsConn.handshakeClient(settings: settings);
-          await tlsConn.write(utf8.encode('hello tls1.1'));
-          await tlsConn.flush();
-          expect(true, isTrue);
-        } catch (e) {
-          print('TLS 1.1 handshake FAILED: $e');
-          print('\n=== OpenSSL Server Output ===');
-          for (final line in server.stdout) {
-            print(line);
-          }
-          print('\n=== OpenSSL Server Errors ===');
-          for (final line in server.stderr) {
-            print(line);
-          }
-          rethrow;
-        }
-      } finally {
-        socket?.destroy();
-        await server.stop();
-      }
-    });
-
-    test('TLS 1.0 handshake with RSA AES128-SHA', () async {
-      final server = OpenSSLServer(
-        port: 14438,
+        ),
+      ),
+      _OpenSslScenario(
+        name: 'TLS 1.1 RSA + AES256-CBC',
+        cipher: 'AES256-SHA',
+        protocolFlag: '-tls1_1',
+        port: 14441,
+        exerciseDataPath: true,
+        testMessage: 'hello tls1.1 aes256',
+        settingsBuilder: () => HandshakeSettings(
+          minVersion: (3, 2),
+          maxVersion: (3, 2),
+          cipherNames: const ['aes256'],
+          keyExchangeNames: const ['rsa'],
+          useEncryptThenMAC: false,
+        ),
+      ),
+      _OpenSslScenario(
+        name: 'TLS 1.0 RSA + AES128-CBC',
         cipher: 'AES128-SHA',
         protocolFlag: '-tls1',
-      );
-
-      Socket? socket;
-      try {
-        await server.start();
-        socket = await Socket.connect('127.0.0.1', server.port);
-
-        final settings = HandshakeSettings(
+        port: 14438,
+        exerciseDataPath: true,
+        testMessage: 'hello tls1.0',
+        settingsBuilder: () => HandshakeSettings(
           minVersion: (3, 1),
           maxVersion: (3, 1),
           cipherNames: const ['aes128'],
           keyExchangeNames: const ['rsa'],
           useEncryptThenMAC: false,
+        ),
+      ),
+      _OpenSslScenario(
+        name: 'TLS 1.0 RSA + AES256-CBC',
+        cipher: 'AES256-SHA',
+        protocolFlag: '-tls1',
+        port: 14443,
+        exerciseDataPath: true,
+        testMessage: 'hello tls1.0 aes256',
+        settingsBuilder: () => HandshakeSettings(
+          minVersion: (3, 1),
+          maxVersion: (3, 1),
+          cipherNames: const ['aes256'],
+          keyExchangeNames: const ['rsa'],
+          useEncryptThenMAC: false,
+        ),
+      ),
+    ];
+
+    for (var idx = 0; idx < scenarios.length; idx++) {
+      final scenario = scenarios[idx];
+      final assignedPort = scenario.port ?? (14430 + idx);
+      test(scenario.name, () async {
+        final server = OpenSSLServer(
+          port: assignedPort,
+          cipher: scenario.cipher,
+          protocolFlag: scenario.protocolFlag,
+          verbose: scenario.verbose,
         );
 
-        final tlsConn = TlsConnection(socket);
+        Socket? socket;
         try {
-          await tlsConn.handshakeClient(settings: settings);
-          await tlsConn.write(utf8.encode('hello tls1.0'));
-          await tlsConn.flush();
-          expect(true, isTrue);
-        } catch (e) {
-          print('TLS 1.0 handshake FAILED: $e');
-          print('\n=== OpenSSL Server Output ===');
-          for (final line in server.stdout) {
-            print(line);
+          try {
+            await server.start();
+          } catch (e) {
+            print('Failed to start OpenSSL for ${scenario.name}: $e');
+            await _printServerDiagnostics(server);
+            rethrow;
           }
-          print('\n=== OpenSSL Server Errors ===');
-          for (final line in server.stderr) {
-            print(line);
+          socket = await Socket.connect('127.0.0.1', server.port);
+
+          final tlsConn = TlsConnection(socket);
+          final settings = scenario.settingsBuilder();
+
+          try {
+            await tlsConn.handshakeClient(settings: settings);
+
+            if (scenario.exerciseDataPath) {
+              tlsConn.write(utf8.encode(scenario.testMessage));
+              await tlsConn.flush();
+              await Future.delayed(const Duration(milliseconds: 300));
+            }
+
+            expect(true, isTrue,
+                reason: 'Handshake completed: ${scenario.name}');
+          } catch (e) {
+            print('TLS handshake FAILED (${scenario.name}): $e');
+            await _printServerDiagnostics(server);
+            rethrow;
           }
-          rethrow;
+        } finally {
+          socket?.destroy();
+          await server.stop();
         }
-      } finally {
-        socket?.destroy();
-        await server.stop();
-      }
-    });
+      }, timeout: const Timeout(Duration(seconds: 60)));
+    }
 
     test('Debug: Detailed handshake with packet capture', () async {
       final server = OpenSSLServer(
