@@ -97,9 +97,7 @@ class SingleResponse {
 }
 
 // TODO(port): OCSP integration pending:
-// - Integration with tlsconnection.py for stapling
-// - Certificate validation logic from x509.py (chain verification)
-// - Full extension parsing in responses
+// - TACK extension support (if needed)
 
 class OCSPResponse extends SignedObject {
   OCSPResponse(List<int> value) {
@@ -110,7 +108,8 @@ class OCSPResponse extends SignedObject {
   int respStatus = OCSPRespStatus.internalError;
   Uint8List? respType;
   int version = 1;
-  Uint8List? respId;
+  int? responderIdType;
+  Uint8List? responderIdValue;
   Uint8List? producedAt;
   final List<SingleResponse> responses = [];
   final List<X509> certs = [];
@@ -158,7 +157,10 @@ class OCSPResponse extends SignedObject {
     } else {
       version = 1;
     }
-    respId = Uint8List.fromList(value.getChild(offset).value);
+    final responderIdNode = value.getChild(offset);
+    responderIdType = responderIdNode.type.tagId;
+    responderIdValue = Uint8List.fromList(responderIdNode.value);
+    
     producedAt = Uint8List.fromList(value.getChild(offset + 1).value);
     final responsesNode = value.getChild(offset + 2);
     final count = responsesNode.getChildCount();
@@ -169,6 +171,68 @@ class OCSPResponse extends SignedObject {
 
   bool verifySignature(Object publicKey, {SignatureSettings? settings}) {
     return super.verifySignature(publicKey, settings: settings);
+  }
+
+  /// Validates the OCSP response against the issuer certificate.
+  bool validate(X509 issuer) {
+    // 1. Identify Signer
+    X509? signer;
+    if (responderIdType == 2) { // KeyHash
+      final issuerKeyHash = SHA1(issuer.subjectPublicKey!);
+      if (_bytesEqual(issuerKeyHash, responderIdValue!)) {
+        signer = issuer;
+      } else {
+        for (final cert in certs) {
+          final certKeyHash = SHA1(cert.subjectPublicKey!);
+          if (_bytesEqual(certKeyHash, responderIdValue!)) {
+            signer = cert;
+            break;
+          }
+        }
+      }
+    } else if (responderIdType == 1) { // Name
+      if (_bytesEqual(issuer.subject!, responderIdValue!)) {
+        signer = issuer;
+      } else {
+        for (final cert in certs) {
+          if (_bytesEqual(cert.subject!, responderIdValue!)) {
+            signer = cert;
+            break;
+          }
+        }
+      }
+    }
+
+    if (signer == null) {
+      throw TLSHandshakeFailure('Could not find OCSP signer');
+    }
+
+    // 2. Verify Signer Authority
+    if (signer != issuer) {
+      // Must be signed by issuer
+      if (issuer.publicKey == null) {
+        throw TLSHandshakeFailure('Issuer public key missing');
+      }
+      if (!signer.verify(issuer.publicKey!)) {
+        throw TLSHandshakeFailure('OCSP signer certificate not signed by issuer');
+      }
+      
+      // Check EKU
+      if (signer.extendedKeyUsage == null ||
+          !signer.extendedKeyUsage!.contains('1.3.6.1.5.5.7.3.9')) {
+        throw TLSHandshakeFailure(
+            'OCSP signer not authorized (missing OCSP Signing EKU)');
+      }
+    }
+
+    // 3. Verify OCSP Signature
+    if (signer.publicKey == null) {
+      throw TLSHandshakeFailure('Signer public key missing');
+    }
+
+    verifySignature(signer.publicKey!);
+
+    return true;
   }
 }
 

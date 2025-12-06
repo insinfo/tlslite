@@ -47,26 +47,3 @@ The callbacks decide how TLS bytes map to the underlying protocol, so the same
 engine can be reused for TDS 7.x, STARTTLS-style upgrades, or any transport that
 requires hand-crafted framing.
 
-## Regenerating OpenSSL bindings
-
-Set `OPENSSL_ROOT` to the installation directory that contains `include/openssl`.
-On Windows PowerShell:
-
-```powershell
-setx OPENSSL_ROOT "C:\\Program Files\\OpenSSL-Win64"
-```
-
-On Unix shells:
-
-```bash
-export OPENSSL_ROOT=/usr/local/opt/openssl
-```
-
-Then regenerate the bindings:
-
-```bash
-dart run ffigen --config ffigen.yaml
-```
-
-This updates `lib/src/openssl/generated/ffi.dart`, keeping DTLS and TLS layers
-aligned on the same header set.

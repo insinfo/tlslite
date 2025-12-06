@@ -23,6 +23,7 @@ import 'utils/codec.dart';
 import 'utils/cryptomath.dart';
 import 'utils/rsakey.dart';
 import 'utils/ecdsakey.dart';
+import 'utils/eddsakey.dart';
 import 'utils/dsakey.dart';
 import 'mathtls.dart';
 import 'x509certchain.dart';
@@ -645,7 +646,8 @@ class TlsConnection extends MessageSocket {
       }
 
       Uint8List? premasterSecret;
-      bool certRequested = false;
+      TlsCertificateRequest? certificateRequest;
+      bool sentNonEmptyCertificate = false;
 
       // Receive ServerCertificate (Optional)
       // Receive ServerKeyExchange (Optional)
@@ -721,8 +723,7 @@ class TlsConnection extends MessageSocket {
                   }
               }
           } else if (message is TlsCertificateRequest) {
-              certRequested = true;
-              // TODO: Validate CertificateRequest parameters (types, sig algs)
+              certificateRequest = message;
           } else {
               await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
               throw TLSUnexpectedMessage('Unexpected message in TLS 1.2 handshake: ${message.handshakeType.name}');
@@ -730,11 +731,31 @@ class TlsConnection extends MessageSocket {
       }
       
       // Send Certificate (if requested)
-      if (certRequested) {
+      if (certificateRequest != null) {
+          bool shouldSendCert = false;
           if (certParams != null && certParams.certificates.isNotEmpty) {
-              final certList = certParams.certificates.map((c) => c.bytes).toList();
+              final pubKey = certParams.key;
+              int? certType;
+              if (pubKey is RSAKey) {
+                  certType = ClientCertificateType.rsa_sign;
+              } else if (pubKey is ECDSAKey) {
+                  certType = ClientCertificateType.ecdsa_sign;
+              } else if (pubKey is DSAKey) {
+                  certType = ClientCertificateType.dss_sign;
+              }
+              
+              if (certType != null && 
+                  (certificateRequest.certificateTypes.isEmpty || 
+                   certificateRequest.certificateTypes.contains(certType))) {
+                  shouldSendCert = true;
+              }
+          }
+
+          if (shouldSendCert) {
+              final certList = certParams!.certificates.map((c) => c.bytes).toList();
               final certMsg = TlsCertificate.tls12(certificateChain: certList);
               await sendHandshakeMessage(certMsg);
+              sentNonEmptyCertificate = true;
           } else {
               // Send empty certificate if no suitable certificate available
               final certMsg = TlsCertificate.tls12(certificateChain: []);
@@ -765,12 +786,12 @@ class TlsConnection extends MessageSocket {
       await sendHandshakeMessage(clientKeyExchange);
       
       // Send CertificateVerify (if certificate was sent)
-      if (certRequested && certParams != null && certParams.certificates.isNotEmpty) {
+      if (sentNonEmptyCertificate) {
            int signatureScheme;
            String? padding;
            String? hashAlg;
            
-           if (certParams.key is RSAKey) {
+           if (certParams!.key is RSAKey) {
                signatureScheme = SignatureScheme.rsa_pkcs1_sha256.value;
                padding = 'pkcs1';
                hashAlg = null; // Implicit in verifyBytes for TLS 1.2 RSA
@@ -1900,9 +1921,18 @@ class TlsConnection extends MessageSocket {
              } else {
                  throw TLSIllegalParameterException('Unsupported padding: $padding');
              }
+         } else if (pubKey is ECDSAKey) {
+             valid = pubKey.verify(
+                 cvMsg.signature,
+                 verifyBytes
+             );
+         } else if (pubKey is EdDSAKey) {
+             valid = pubKey.hashAndVerify(
+                 cvMsg.signature,
+                 verifyBytes
+             );
          } else {
-             // TODO: Support ECDSA/EdDSA
-             throw UnimplementedError('Only RSA client certificates supported for now');
+             throw UnimplementedError('Unsupported client key type: ${pubKey.runtimeType}');
          }
          
          if (!valid) {
@@ -2131,20 +2161,30 @@ class TlsConnection extends MessageSocket {
 
     // PSK (TLS 1.3)
     if (settings.pskConfigs.isNotEmpty || session.tls13Tickets.isNotEmpty) {
+      // Remove expired tickets
+      session.tls13Tickets.removeWhere((t) {
+          final ageSeconds = DateTime.now().difference(t.receivedAt).inSeconds;
+          return ageSeconds > t.ticketLifetime;
+      });
+
       final identities = <TlsPskIdentity>[];
       for (final config in settings.pskConfigs) {
         identities.add(TlsPskIdentity(
             identity: config.identity, obfuscatedTicketAge: 0));
       }
       for (final ticket in session.tls13Tickets) {
+        final age = DateTime.now().difference(ticket.receivedAt).inMilliseconds;
+        final obfuscatedAge = (age + ticket.ticketAgeAdd) % 4294967296;
         identities.add(
-            TlsPskIdentity(identity: ticket.ticket, obfuscatedTicketAge: 0));
+            TlsPskIdentity(identity: ticket.ticket, obfuscatedTicketAge: obfuscatedAge));
       }
 
-      final binders =
-          List<Uint8List>.filled(identities.length, Uint8List(32));
-      extensions.add(
-          TlsPreSharedKeyExtension(identities: identities, binders: binders));
+      if (identities.isNotEmpty) {
+        final binders =
+            List<Uint8List>.filled(identities.length, Uint8List(32));
+        extensions.add(
+            TlsPreSharedKeyExtension(identities: identities, binders: binders));
+      }
     }
 
     final clientHello = TlsClientHello(

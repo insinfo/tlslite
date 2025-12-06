@@ -337,7 +337,7 @@ void main() {
     test('respId parsing', () {
       final resp = OCSPResponse(respOk);
       expect(
-        _hex(resp.respId!),
+        _hex(resp.responderIdValue!),
         '04149c4d0099000e8bb0018175a1baf0d025d7a01c47',
       );
     });

@@ -7,6 +7,9 @@ import 'utils/cryptomath.dart';
 import 'utils/keyfactory.dart';
 import 'utils/pem.dart';
 import 'utils/rsakey.dart';
+import 'utils/ecdsakey.dart';
+import 'utils/eddsakey.dart';
+import 'utils/dsakey.dart';
 
 /// Representation of an X.509 certificate (DER or PEM).
 class X509 {
@@ -42,6 +45,19 @@ class X509 {
   /// End of validity period.
   DateTime? notAfter;
 
+  // Extensions
+  List<String>? subjectAltName;
+  bool? isCA;
+  int? pathLenConstraint;
+  Set<String>? keyUsage;
+  List<String>? extendedKeyUsage;
+
+  /// Raw signature bytes.
+  Uint8List? signatureValue;
+
+  /// Raw TBSCertificate bytes (signed data).
+  Uint8List? tbsCertificateBytes;
+
   /// Parse a PEM certificate and populate this instance.
   X509 parse(String pem) {
     final der = dePem(pem, 'CERTIFICATE');
@@ -52,11 +68,17 @@ class X509 {
   X509 parseBinary(Uint8List certBytes) {
     bytes = Uint8List.fromList(certBytes);
     final parser = ASN1Parser(bytes);
+    
+    tbsCertificateBytes = Uint8List.fromList(parser.getChildBytes(0));
+    final tbsCertificate = parser.getChild(0);
+    
     final signatureAlgorithmIdentifier = parser.getChild(1);
     signatureAlgorithm =
         _resolveSignatureAlgorithm(signatureAlgorithmIdentifier);
+        
+    final signatureValueBitString = parser.getChild(2);
+    signatureValue = Uint8List.fromList(_extractBitString(signatureValueBitString.value));
 
-    final tbsCertificate = parser.getChild(0);
     final hasVersionField =
         tbsCertificate.value.isNotEmpty && tbsCertificate.value.first == 0xa0;
     final serialIndex = hasVersionField ? 1 : 0;
@@ -81,7 +103,177 @@ class X509 {
         _extractBitString(subjectPublicKeyInfo.getChild(1).value);
     subjectPublicKey = Uint8List.fromList(publicKeyBytes);
     _parsePublicKey(subjectPublicKeyInfo, publicKeyBytes);
+
+    // Parse optional fields (IssuerUniqueID, SubjectUniqueID, Extensions)
+    final totalChildren = tbsCertificate.getChildCount();
+    for (var i = subjectPublicKeyInfoIndex + 1; i < totalChildren; i++) {
+      final child = tbsCertificate.getChild(i);
+      // Extensions is [3] EXPLICIT
+      if (child.type.tagClass == 2 && child.type.tagId == 3) {
+        final extensionsSeq = ASN1Parser(child.value);
+        _parseExtensions(extensionsSeq);
+      }
+    }
+
     return this;
+  }
+
+  /// Verify the certificate signature against the issuer's public key.
+  bool verify(Object issuerPublicKey) {
+    if (tbsCertificateBytes == null || signatureValue == null || signatureAlgorithm == null) {
+      throw StateError('Certificate not parsed or incomplete');
+    }
+
+    String? hashName;
+    String? padding;
+    
+    if (signatureAlgorithm is int) {
+        final schemeName = SignatureScheme.toRepr(signatureAlgorithm);
+        if (schemeName == null) throw FormatException('Unknown signature scheme');
+        
+        hashName = SignatureScheme.getHash(schemeName);
+        padding = SignatureScheme.getPadding(schemeName);
+        if (padding.isEmpty) padding = null;
+        
+        // Handle EdDSA special case (intrinsic hash)
+        if (schemeName == 'ed25519' || schemeName == 'ed448') {
+            hashName = 'intrinsic';
+            padding = null;
+        }
+    } else if (signatureAlgorithm is List) {
+        // Legacy tuple [hashAlg, sigAlg]
+        final hashAlg = signatureAlgorithm[0];
+        final sigAlg = signatureAlgorithm[1];
+        hashName = HashAlgorithm.toRepr(hashAlg);
+        if (sigAlg == SignatureAlgorithm.rsa) {
+            padding = 'pkcs1';
+        } else if (sigAlg == SignatureAlgorithm.dsa) {
+            padding = null;
+        }
+    } else {
+        throw FormatException('Unknown signature algorithm format');
+    }
+
+    if (hashName == null) throw FormatException('Unknown hash algorithm');
+
+    // Calculate digest or use raw bytes
+    Uint8List dataToVerify;
+    if (hashName == 'intrinsic') {
+        dataToVerify = tbsCertificateBytes!;
+    } else {
+        dataToVerify = secureHash(tbsCertificateBytes!, hashName);
+    }
+
+    // Verify
+    if (issuerPublicKey is RSAKey) {
+        return issuerPublicKey.verify(signatureValue!, dataToVerify, padding: padding ?? 'pkcs1', hashAlg: hashName);
+    } else if (issuerPublicKey is ECDSAKey) {
+        return issuerPublicKey.verify(signatureValue!, dataToVerify);
+    } else if (issuerPublicKey is EdDSAKey) {
+        return issuerPublicKey.hashAndVerify(signatureValue!, dataToVerify);
+    } else if (issuerPublicKey is DSAKey) {
+        return issuerPublicKey.verify(signatureValue!, dataToVerify);
+    } else {
+        throw UnimplementedError('Unsupported issuer key type: ${issuerPublicKey.runtimeType}');
+    }
+  }
+
+  void _parseExtensions(ASN1Parser extensionsSeq) {
+    final count = extensionsSeq.getChildCount();
+    for (var i = 0; i < count; i++) {
+      final extension = extensionsSeq.getChild(i);
+      final oid = _decodeObjectIdentifier(extension.getChild(0).value);
+      
+      var valueIndex = 1;
+      if (extension.getChild(1).type.tagId == 1) { // BOOLEAN (critical)
+         valueIndex = 2;
+      }
+      
+      final extValueOctet = extension.getChild(valueIndex);
+      // The extension value is an OCTET STRING containing the DER encoding of the extension value.
+      final extValue = extValueOctet.value;
+      
+      if (_oidEquals(oid, _oidSubjectAltName)) {
+        _parseSubjectAltName(extValue);
+      } else if (_oidEquals(oid, _oidBasicConstraints)) {
+        _parseBasicConstraints(extValue);
+      } else if (_oidEquals(oid, _oidKeyUsage)) {
+        _parseKeyUsage(extValue);
+      } else if (_oidEquals(oid, _oidExtendedKeyUsage)) {
+        _parseExtendedKeyUsage(extValue);
+      }
+    }
+  }
+
+  void _parseSubjectAltName(Uint8List data) {
+    final parser = ASN1Parser(data);
+    final count = parser.getChildCount();
+    subjectAltName = [];
+    for (var i = 0; i < count; i++) {
+      final item = parser.getChild(i);
+      // dNSName [2] IA5String
+      if (item.type.tagClass == 2 && item.type.tagId == 2) {
+        subjectAltName!.add(String.fromCharCodes(item.value));
+      }
+      // iPAddress [7] OCTET STRING
+      else if (item.type.tagClass == 2 && item.type.tagId == 7) {
+        // TODO: Convert IP bytes to string representation if needed
+        // For now, we skip IP addresses or store them as hex?
+        // tlslite-ng usually stores dNSNames.
+      }
+    }
+  }
+
+  void _parseBasicConstraints(Uint8List data) {
+    final parser = ASN1Parser(data);
+    isCA = false;
+    if (parser.getChildCount() > 0) {
+      final first = parser.getChild(0);
+      if (first.type.tagId == 1) { // BOOLEAN
+        isCA = first.value.isNotEmpty && first.value[0] != 0;
+        if (parser.getChildCount() > 1) {
+          final second = parser.getChild(1);
+          if (second.type.tagId == 2) { // INTEGER
+            pathLenConstraint = bytesToNumber(second.value).toInt();
+          }
+        }
+      }
+    }
+  }
+
+  void _parseKeyUsage(Uint8List data) {
+    // KeyUsage ::= BIT STRING
+    // We need to parse the BIT STRING (skip unused bits byte)
+    if (data.length < 2) return; // Invalid
+    // First byte is number of unused bits, we ignore for now as we check specific bits
+    final bits = data.sublist(1);
+    keyUsage = {};
+    
+    bool isBitSet(int byteIndex, int bitIndex) {
+      if (byteIndex >= bits.length) return false;
+      return (bits[byteIndex] & (1 << (7 - bitIndex))) != 0;
+    }
+
+    if (isBitSet(0, 0)) keyUsage!.add('digitalSignature');
+    if (isBitSet(0, 1)) keyUsage!.add('nonRepudiation');
+    if (isBitSet(0, 2)) keyUsage!.add('keyEncipherment');
+    if (isBitSet(0, 3)) keyUsage!.add('dataEncipherment');
+    if (isBitSet(0, 4)) keyUsage!.add('keyAgreement');
+    if (isBitSet(0, 5)) keyUsage!.add('keyCertSign');
+    if (isBitSet(0, 6)) keyUsage!.add('cRLSign');
+    if (isBitSet(0, 7)) keyUsage!.add('encipherOnly');
+    if (isBitSet(1, 0)) keyUsage!.add('decipherOnly');
+  }
+
+  void _parseExtendedKeyUsage(Uint8List data) {
+    final parser = ASN1Parser(data);
+    final count = parser.getChildCount();
+    extendedKeyUsage = [];
+    for (var i = 0; i < count; i++) {
+      final item = parser.getChild(i);
+      final oid = _decodeObjectIdentifier(item.value);
+      extendedKeyUsage!.add(oid.map((e) => e.toString()).join('.'));
+    }
   }
 
   /// Hex fingerprint of the certificate (SHA-1 as in tlslite-ng).
@@ -93,7 +285,6 @@ class X509 {
   // TODO(port): Missing methods from Python x509.py:
   // - getTackExt(): Extract TACK extension (requires utils/tackwrapper.dart)
   // - checkTack(tack): Validate TACK (requires utils/tackwrapper.dart)
-  // - Full extension parsing (currently only basic cert fields are extracted)
 
   /// Return the raw DER certificate bytes.
   Uint8List writeBytes() => bytes;
@@ -335,3 +526,8 @@ const List<int> _oidDsa = [42, 134, 72, 206, 56, 4, 1];
 const List<int> _oidEcdsa = [42, 134, 72, 206, 61, 2, 1];
 const List<int> _oidEd25519 = [43, 101, 112];
 const List<int> _oidEd448 = [43, 101, 113];
+
+const List<int> _oidSubjectAltName = [85, 29, 17];
+const List<int> _oidBasicConstraints = [85, 29, 19];
+const List<int> _oidKeyUsage = [85, 29, 15];
+const List<int> _oidExtendedKeyUsage = [85, 29, 37];

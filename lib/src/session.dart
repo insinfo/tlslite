@@ -188,7 +188,6 @@ class Session {
 }
 
 // TODO(port): Session integration pending:
-// - Integration with tlsconnection.py/tlsrecordlayer.py for actual resumption
 // - TACK extension support (getTackId/getBreakSigs need utils/tackwrapper.dart)
 
 /// Session ticket metadata for TLS 1.2 and earlier resumptions.
