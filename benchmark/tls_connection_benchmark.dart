@@ -31,7 +31,7 @@ class BenchmarkConfig {
   const BenchmarkConfig({
     this.host = 'www.google.com',
     this.port = 443,
-    this.iterations = 5,
+    this.iterations = 50,
     this.dataSizeKb = 16,
     this.verbose = true,
   });

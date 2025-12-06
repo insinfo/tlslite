@@ -178,37 +178,37 @@ void main() {
     );
   });
 
-  test('x25519 thousand iterations', () {
-    var k = _hex(
-        '0900000000000000000000000000000000000000000000000000000000000000');
-    var u = Uint8List.fromList(k);
-    for (var i = 0; i < 1000; i++) {
-      final nextU = Uint8List.fromList(k);
-      final nextK = x25519(k, u);
-      u = nextU;
-      k = nextK;
-    }
-    expect(
-      _hexStr(k),
-      '684cf59ba83309552800ef566f2f4d3c1c3887c49360e3875f2eb94d99532c51',
-    );
-  }, skip: 'slow test case');
+  // test('x25519 thousand iterations', () {
+  //   var k = _hex(
+  //       '0900000000000000000000000000000000000000000000000000000000000000');
+  //   var u = Uint8List.fromList(k);
+  //   for (var i = 0; i < 1000; i++) {
+  //     final nextU = Uint8List.fromList(k);
+  //     final nextK = x25519(k, u);
+  //     u = nextU;
+  //     k = nextK;
+  //   }
+  //   expect(
+  //     _hexStr(k),
+  //     '684cf59ba83309552800ef566f2f4d3c1c3887c49360e3875f2eb94d99532c51',
+  //   );
+  // }, skip: 'slow test case');
 
-  test('x25519 million iterations', () {
-    var k = _hex(
-        '0900000000000000000000000000000000000000000000000000000000000000');
-    var u = Uint8List.fromList(k);
-    for (var i = 0; i < 1000000; i++) {
-      final nextU = Uint8List.fromList(k);
-      final nextK = x25519(k, u);
-      u = nextU;
-      k = nextK;
-    }
-    expect(
-      _hexStr(k),
-      '7c3911e0ab2586fd864497297e575e6f3bc601c0883c30df5f4dd2d24f665424',
-    );
-  }, skip: 'very slow test case');
+  // test('x25519 million iterations', () {
+  //   var k = _hex(
+  //       '0900000000000000000000000000000000000000000000000000000000000000');
+  //   var u = Uint8List.fromList(k);
+  //   for (var i = 0; i < 1000000; i++) {
+  //     final nextU = Uint8List.fromList(k);
+  //     final nextK = x25519(k, u);
+  //     u = nextU;
+  //     k = nextK;
+  //   }
+  //   expect(
+  //     _hexStr(k),
+  //     '7c3911e0ab2586fd864497297e575e6f3bc601c0883c30df5f4dd2d24f665424',
+  //   );
+  // }, skip: 'very slow test case');
 
   test('x448 one iteration', () {
     final k =
@@ -223,41 +223,41 @@ void main() {
     );
   });
 
-  test('x448 thousand iterations', () {
-    var k =
-        _hex('0500000000000000000000000000000000000000000000000000000000000000'
-            '000000000000000000000000000000000000000000000000');
-    var u = Uint8List.fromList(k);
-    for (var i = 0; i < 1000; i++) {
-      final nextU = Uint8List.fromList(k);
-      final nextK = x448(k, u);
-      u = nextU;
-      k = nextK;
-    }
-    expect(
-      _hexStr(k),
-      'aa3b4749d55b9daf1e5b00288826c467274ce3ebbdd5c17b975e09d4af6c67cf'
-      '10d087202db88286e2b79fceea3ec353ef54faa26e219f38',
-    );
-  }, skip: 'slow test case');
+  // test('x448 thousand iterations', () {
+  //   var k =
+  //       _hex('0500000000000000000000000000000000000000000000000000000000000000'
+  //           '000000000000000000000000000000000000000000000000');
+  //   var u = Uint8List.fromList(k);
+  //   for (var i = 0; i < 1000; i++) {
+  //     final nextU = Uint8List.fromList(k);
+  //     final nextK = x448(k, u);
+  //     u = nextU;
+  //     k = nextK;
+  //   }
+  //   expect(
+  //     _hexStr(k),
+  //     'aa3b4749d55b9daf1e5b00288826c467274ce3ebbdd5c17b975e09d4af6c67cf'
+  //     '10d087202db88286e2b79fceea3ec353ef54faa26e219f38',
+  //   );
+  // }, skip: 'slow test case');
 
-  test('x448 million iterations', () {
-    var k =
-        _hex('0500000000000000000000000000000000000000000000000000000000000000'
-            '000000000000000000000000000000000000000000000000');
-    var u = Uint8List.fromList(k);
-    for (var i = 0; i < 1000000; i++) {
-      final nextU = Uint8List.fromList(k);
-      final nextK = x448(k, u);
-      u = nextU;
-      k = nextK;
-    }
-    expect(
-      _hexStr(k),
-      '077f453681caca3693198420bbe515cae0002472519b3e67661a7e89cab94695'
-      'c8f4bcd66e61b9b9c946da8d524de3d69bd9d9d66b997e37',
-    );
-  }, skip: 'very slow test case');
+  // test('x448 million iterations', () {
+  //   var k =
+  //       _hex('0500000000000000000000000000000000000000000000000000000000000000'
+  //           '000000000000000000000000000000000000000000000000');
+  //   var u = Uint8List.fromList(k);
+  //   for (var i = 0; i < 1000000; i++) {
+  //     final nextU = Uint8List.fromList(k);
+  //     final nextK = x448(k, u);
+  //     u = nextU;
+  //     k = nextK;
+  //   }
+  //   expect(
+  //     _hexStr(k),
+  //     '077f453681caca3693198420bbe515cae0002472519b3e67661a7e89cab94695'
+  //     'c8f4bcd66e61b9b9c946da8d524de3d69bd9d9d66b997e37',
+  //   );
+  // }, skip: 'very slow test case');
 
   group('RFC 7748 ECDH', () {
     test('x25519 share A', () {

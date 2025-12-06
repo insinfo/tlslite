@@ -101,7 +101,11 @@ List<(int, int)> _resolveVersionPreference(
   (int, int) minVersion,
   (int, int) maxVersion,
 ) {
-  final seed = primary ?? secondary ?? _defaultProtocolVersions;
+  final seed = (primary != null && primary.isNotEmpty)
+      ? primary
+      : (secondary != null && secondary.isNotEmpty)
+          ? secondary
+          : _defaultProtocolVersions;
   return _filterProtocolVersions(seed, minVersion, maxVersion);
 }
 
@@ -308,6 +312,9 @@ class HandshakeSettings {
     this.useLegacySignatureSchemeIDCombination = false,
   })  : minVersion = minVersion ?? const (3, 1),
         maxVersion = maxVersion ?? const (3, 3),
+        _explicitEmptyVersions = versions != null && versions.isEmpty,
+        _explicitEmptySupportedVersions =
+            supportedVersions != null && supportedVersions.isEmpty,
         cipherNames = cipherNames ?? _cipherNames,
         macNames = macNames ?? _macNames,
         certificateTypes = certificateTypes ?? _certificateTypes,
@@ -475,6 +482,11 @@ class HandshakeSettings {
   /// Use legacy signature scheme ID combination
   final bool useLegacySignatureSchemeIDCombination;
 
+  // Track whether the user explicitly provided an empty versions list so
+  // validate() can surface a clear error instead of silently defaulting.
+  final bool _explicitEmptyVersions;
+  final bool _explicitEmptySupportedVersions;
+
   /// Create a new HandshakeSettings with modified values
   HandshakeSettings copyWith({
     int? minKeySize,
@@ -602,6 +614,13 @@ class HandshakeSettings {
     if (minVersion.$1 > maxVersion.$1 ||
         (minVersion.$1 == maxVersion.$1 && minVersion.$2 > maxVersion.$2)) {
       throw ArgumentError('minVersion > maxVersion');
+    }
+
+    if (_explicitEmptyVersions) {
+      throw ArgumentError('versions list cannot be empty');
+    }
+    if (_explicitEmptySupportedVersions) {
+      throw ArgumentError('supportedVersions list cannot be empty');
     }
 
     if (versions.isEmpty) {

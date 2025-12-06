@@ -41,33 +41,37 @@ typedef _ExtensionParser = TlsExtension Function(
 );
 
 class TlsExtensionRegistry {
-  static final Map<int, _ExtensionParser> _parsers =
-      <int, _ExtensionParser>{
+  static final Map<int, _ExtensionParser> _parsers = <int, _ExtensionParser>{
     tls_constants.ExtensionType.server_name: _parseServerName,
     tls_constants.ExtensionType.alpn: _parseAlpn,
     tls_constants.ExtensionType.supported_versions: _parseSupportedVersions,
     tls_constants.ExtensionType.supported_groups: _parseSupportedGroups,
     tls_constants.ExtensionType.ec_point_formats: _parseEcPointFormats,
     tls_constants.ExtensionType.status_request: _parseStatusRequest,
-      tls_constants.ExtensionType.signature_algorithms: _parseSignatureAlgorithms,
+    tls_constants.ExtensionType.status_request_v2: _parseStatusRequestV2,
+    tls_constants.ExtensionType.signature_algorithms: _parseSignatureAlgorithms,
     tls_constants.ExtensionType.signature_algorithms_cert:
         _parseSignatureAlgorithmsCert,
     tls_constants.ExtensionType.key_share: _parseKeyShare,
     tls_constants.ExtensionType.pre_shared_key: _parsePreSharedKey,
-      tls_constants.ExtensionType.encrypt_then_mac: _parseEncryptThenMac,
-      tls_constants.ExtensionType.extended_master_secret:
+    tls_constants.ExtensionType.encrypt_then_mac: _parseEncryptThenMac,
+    tls_constants.ExtensionType.extended_master_secret:
         _parseExtendedMasterSecret,
-      tls_constants.ExtensionType.heartbeat: _parseHeartbeat,
-      tls_constants.ExtensionType.psk_key_exchange_modes:
+    tls_constants.ExtensionType.heartbeat: _parseHeartbeat,
+    tls_constants.ExtensionType.psk_key_exchange_modes:
         _parsePskKeyExchangeModes,
-      tls_constants.ExtensionType.record_size_limit: _parseRecordSizeLimit,
-      tls_constants.ExtensionType.session_ticket: _parseSessionTicket,
-      tls_constants.ExtensionType.compress_certificate:
+    tls_constants.ExtensionType.record_size_limit: _parseRecordSizeLimit,
+    tls_constants.ExtensionType.session_ticket: _parseSessionTicket,
+    tls_constants.ExtensionType.compress_certificate:
         _parseCompressedCertificate,
-      tls_constants.ExtensionType.post_handshake_auth: _parsePostHandshakeAuth,
-      tls_constants.ExtensionType.cookie: _parseCookie,
-      tls_constants.ExtensionType.early_data: _parseEarlyData,
-      tls_constants.ExtensionType.client_hello_padding: _parsePadding,
+    tls_constants.ExtensionType.post_handshake_auth: _parsePostHandshakeAuth,
+    tls_constants.ExtensionType.signed_certificate_timestamp:
+        _parseSctExtension,
+    tls_constants.ExtensionType.renegotiation_info: _parseRenegotiationInfo,
+    tls_constants.ExtensionType.supports_npn: _parseNextProto,
+    tls_constants.ExtensionType.cookie: _parseCookie,
+    tls_constants.ExtensionType.early_data: _parseEarlyData,
+    tls_constants.ExtensionType.client_hello_padding: _parsePadding,
   };
 
   static TlsExtension parse(
@@ -240,6 +244,15 @@ class TlsExtensionRegistry {
     );
   }
 
+  static TlsExtension _parseStatusRequestV2(
+    Uint8List body,
+    TlsExtensionContext context,
+  ) {
+    // Preserve payload verbatim; clients/servers using OCSP multi-stapling
+    // can round-trip the bytes even if we don't interpret the structure.
+    return TlsStatusRequestV2Extension(body: body);
+  }
+
   static TlsExtension _parseSignatureAlgorithms(
     Uint8List body,
     TlsExtensionContext context,
@@ -388,7 +401,45 @@ class TlsExtensionRegistry {
   ) {
     return TlsPaddingExtension(length: body.length);
   }
-  
+
+  static TlsExtension _parseSctExtension(
+    Uint8List body,
+    TlsExtensionContext context,
+  ) {
+    // signed_certificate_timestamp extension carries an opaque sct_list
+    return TlsSctExtension(sctList: body);
+  }
+
+  static TlsExtension _parseRenegotiationInfo(
+    Uint8List body,
+    TlsExtensionContext context,
+  ) {
+    final parser = Parser(body);
+    if (parser.isDone) {
+      return TlsRenegotiationInfoExtension(
+          renegotiatedConnection: Uint8List(0));
+    }
+    final length = parser.get(1);
+    if (length > parser.getRemainingLength()) {
+      throw DecodeError('renegotiation_info truncado');
+    }
+    final data = parser.getFixBytes(length);
+    if (!parser.isDone) {
+      throw DecodeError('Dados extras após renegotiation_info');
+    }
+    return TlsRenegotiationInfoExtension(
+      renegotiatedConnection: data,
+    );
+  }
+
+  static TlsExtension _parseNextProto(
+    Uint8List body,
+    TlsExtensionContext context,
+  ) {
+    // Next Protocol Negotiation (NPN) is legacy; keep bytes as-is.
+    return TlsNextProtoNegotiationExtension(data: body);
+  }
+
   static TlsExtension _parsePreSharedKey(
     Uint8List body,
     TlsExtensionContext context,
@@ -637,7 +688,8 @@ class TlsSupportedVersionsExtension extends TlsExtension {
   @override
   Uint8List serializeBody() {
     if (selectedVersion != null) {
-      return Uint8List.fromList(<int>[selectedVersion!.major, selectedVersion!.minor]);
+      return Uint8List.fromList(
+          <int>[selectedVersion!.major, selectedVersion!.minor]);
     }
     final listWriter = Writer();
     for (final version in supportedVersions) {
@@ -732,10 +784,9 @@ class TlsStatusRequestExtension extends TlsExtension {
     required this.statusType,
     List<Uint8List>? responderIds,
     Uint8List? requestExtensions,
-  })  : responderIds =
-            (responderIds ?? const <Uint8List>[])
-                .map(Uint8List.fromList)
-                .toList(growable: false),
+  })  : responderIds = (responderIds ?? const <Uint8List>[])
+            .map(Uint8List.fromList)
+            .toList(growable: false),
         requestExtensions =
             Uint8List.fromList(requestExtensions ?? Uint8List(0)),
         _isAcknowledgement = false,
@@ -1097,4 +1148,56 @@ class TlsPaddingExtension extends TlsExtension {
 
   @override
   Uint8List serializeBody() => padding;
+}
+
+/// OCSP multi-stapling (RFC 6961) – kept opaque for round-trip fidelity.
+class TlsStatusRequestV2Extension extends TlsExtension {
+  TlsStatusRequestV2Extension({required List<int> body})
+      : body = Uint8List.fromList(body),
+        super(tls_constants.ExtensionType.status_request_v2);
+
+  final Uint8List body;
+
+  @override
+  Uint8List serializeBody() => Uint8List.fromList(body);
+}
+
+/// Signed Certificate Timestamp extension (RFC 6962).
+class TlsSctExtension extends TlsExtension {
+  TlsSctExtension({required List<int> sctList})
+      : sctList = Uint8List.fromList(sctList),
+        super(tls_constants.ExtensionType.signed_certificate_timestamp);
+
+  final Uint8List sctList;
+
+  @override
+  Uint8List serializeBody() => Uint8List.fromList(sctList);
+}
+
+/// Renegotiation Info (RFC 5746). Stores the renegotiated_connection bytes.
+class TlsRenegotiationInfoExtension extends TlsExtension {
+  const TlsRenegotiationInfoExtension({required this.renegotiatedConnection})
+      : super(tls_constants.ExtensionType.renegotiation_info);
+
+  final Uint8List renegotiatedConnection;
+
+  @override
+  Uint8List serializeBody() {
+    final writer = Writer();
+    writer.add(renegotiatedConnection.length, 1);
+    writer.addBytes(renegotiatedConnection);
+    return writer.bytes;
+  }
+}
+
+/// Legacy Next Protocol Negotiation (NPN). Payload kept opaque.
+class TlsNextProtoNegotiationExtension extends TlsExtension {
+  TlsNextProtoNegotiationExtension({required List<int> data})
+      : data = Uint8List.fromList(data),
+        super(tls_constants.ExtensionType.supports_npn);
+
+  final Uint8List data;
+
+  @override
+  Uint8List serializeBody() => Uint8List.fromList(data);
 }

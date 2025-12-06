@@ -319,12 +319,12 @@ class TlsConnection extends MessageSocket {
       if (fragment.isEmpty) {
         continue;
       }
-        final parsed = header is RecordHeader2
+      final parsed = header is RecordHeader2
           ? _parseSsl2HandshakeFragment(fragment)
           : TlsHandshakeMessage.parseFragment(
-            fragment,
-            recordVersion: recordVersion,
-          );
+              fragment,
+              recordVersion: recordVersion,
+            );
       if (parsed.isEmpty) {
         continue;
       }
@@ -341,7 +341,7 @@ class TlsConnection extends MessageSocket {
           _preClientHelloHandshakeHash = handshakeHashes.copy();
           await _maybeHandleInboundClientHelloPsk(message);
         }
-        _updateHandshakeTranscript(message);
+        _updateHandshakeTranscript(message, rawBytes: fragment);
         _handshakeQueue.addLast(message);
       }
     }
@@ -2051,7 +2051,14 @@ class TlsConnection extends MessageSocket {
     KeyExchange? keyExchange;
     
     if (isECDHE) {
-        keyExchange = ECDHE_RSAKeyExchange(selectedSuite, clientHello, serverHello, privateKey);
+        final acceptedCurves = _curveNamesToList(handshakeSettings);
+        keyExchange = ECDHE_RSAKeyExchange(
+          selectedSuite,
+          clientHello,
+          serverHello,
+          privateKey,
+          acceptedCurves: acceptedCurves.isNotEmpty ? acceptedCurves : null,
+        );
     } else if (isDHE) {
         keyExchange = DHE_RSAKeyExchange(selectedSuite, clientHello, serverHello, privateKey);
     } else if (suiteName.contains('_RSA_')) {
@@ -2143,7 +2150,14 @@ class TlsConnection extends MessageSocket {
     }
     
     // 8. Receive ClientKeyExchange
-    final ckeMsg = await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.clientKeyExchange]);
+    var ckeMsg = await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.clientKeyExchange]);
+    if (ckeMsg is RawTlsHandshakeMessage) {
+         ckeMsg = TlsClientKeyExchange.parse(
+             ckeMsg.serializeBody(),
+             session.cipherSuite,
+             [version.major, version.minor],
+         );
+    }
     if (ckeMsg is! TlsClientKeyExchange) {
          await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
          throw TLSUnexpectedMessage('Expected ClientKeyExchange');
@@ -2242,6 +2256,15 @@ class TlsConnection extends MessageSocket {
         );
         session.masterSecret = masterSecret;
     }
+    
+    // Prepare pending read/write states derived from the negotiated master secret
+    calcPendingStates(
+      session.cipherSuite,
+      Uint8List.fromList(session.masterSecret),
+      clientHello.random,
+      serverHello.random,
+      null,
+    );
     
     // 10. Receive ChangeCipherSpec
     final (header, _) = await recvMessage();
@@ -2970,11 +2993,17 @@ class TlsConnection extends MessageSocket {
     session.tls13Tickets = List<TlsNewSessionTicket>.from(tls13Tickets);
   }
 
-  void _updateHandshakeTranscript(TlsHandshakeMessage message) {
+  void _updateHandshakeTranscript(
+    TlsHandshakeMessage message, {
+    Uint8List? rawBytes,
+  }) {
     if (_shouldSkipTranscript(message)) {
       return;
     }
-    handshakeHashes.update(message.serialize());
+    // Use raw on-the-wire bytes when available to avoid re-serializing and
+    // potentially changing the transcript (e.g., dropping unknown extensions).
+    final bytes = rawBytes ?? message.serialize();
+    handshakeHashes.update(bytes);
   }
 
   bool _shouldSkipTranscript(TlsHandshakeMessage message) {

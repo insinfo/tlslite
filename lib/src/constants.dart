@@ -249,6 +249,7 @@ class ExtensionType {
   static const int signature_algorithms = 13; // RFC 5246
   static const int heartbeat = 15; // RFC 6520
   static const int alpn = 16; // RFC 7301
+  static const int signed_certificate_timestamp = 18; // RFC 6962
   static const int client_hello_padding = 21; // RFC 7685
   static const int encrypt_then_mac = 22; // RFC 7366
   static const int extended_master_secret = 23; // RFC 7627
@@ -265,6 +266,7 @@ class ExtensionType {
   static const int post_handshake_auth = 49; // TLS 1.3
   static const int signature_algorithms_cert = 50; // TLS 1.3
   static const int key_share = 51; // TLS 1.3
+  static const int status_request_v2 = 65; // RFC 6961
   static const int supports_npn = 13172;
   static const int tack = 0xF300;
   static const int renegotiation_info = 0xff01; // RFC 5746
@@ -280,6 +282,7 @@ class ExtensionType {
     signature_algorithms: 'signature_algorithms',
     heartbeat: 'heartbeat',
     alpn: 'alpn',
+    signed_certificate_timestamp: 'signed_certificate_timestamp',
     client_hello_padding: 'client_hello_padding',
     encrypt_then_mac: 'encrypt_then_mac',
     extended_master_secret: 'extended_master_secret',
@@ -295,6 +298,7 @@ class ExtensionType {
     post_handshake_auth: 'post_handshake_auth',
     signature_algorithms_cert: 'signature_algorithms_cert',
     key_share: 'key_share',
+    status_request_v2: 'status_request_v2',
     supports_npn: 'supports_npn',
     tack: 'tack',
     renegotiation_info: 'renegotiation_info',

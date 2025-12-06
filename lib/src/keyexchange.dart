@@ -849,9 +849,11 @@ class RSAKeyExchange extends KeyExchange {
       premasterSecret = randomPreMasterSecret;
     } else {
       final versionCheck = (premasterSecret[0], premasterSecret[1]);
-      if (versionCheck != clientHello.client_version) {
+      final clientVer = _clientVersion;
+      final serverVer = _serverVersion;
+      if (versionCheck != (clientVer[0], clientVer[1])) {
         // Tolerate buggy IE clients
-        if (versionCheck != serverHello.server_version) {
+        if (versionCheck != (serverVer[0], serverVer[1])) {
           premasterSecret = randomPreMasterSecret;
         }
       }
@@ -866,8 +868,9 @@ class RSAKeyExchange extends KeyExchange {
   ) {
     // Generate premaster secret for server
     final premasterSecret = getRandomBytes(48);
-    premasterSecret[0] = clientHello.client_version[0];
-    premasterSecret[1] = clientHello.client_version[1];
+    final clientVer = _clientVersion;
+    premasterSecret[0] = clientVer[0];
+    premasterSecret[1] = clientVer[1];
 
     encPremasterSecret = srvPublicKey.encrypt(premasterSecret);
     return premasterSecret;

@@ -217,5 +217,84 @@ void main() {
         await socket.close();
       }
     }, timeout: const Timeout(Duration(seconds: 30)));
+
+    test('raw TlsConnection handshake with cloudflare.com', () async {
+      final socket = await Socket.connect('www.cloudflare.com', 443);
+      final tls = TlsConnection(socket);
+
+      try {
+        await tls.handshakeClient(
+          settings: HandshakeSettings(minVersion: (3, 3)),
+          serverName: 'www.cloudflare.com',
+        );
+
+        print('✓ Direct TLS handshake (cloudflare.com) completed');
+        print('  Negotiated version: ${tls.version}');
+        print('  Cipher suite: 0x${tls.session.cipherSuite.toRadixString(16)}');
+
+        final request = 'GET / HTTP/1.1\r\n'
+            'Host: www.cloudflare.com\r\n'
+            'User-Agent: TlsLite-Dart/1.0\r\n'
+            'Connection: close\r\n'
+            '\r\n';
+        await tls.sendRecord(Message(
+          ContentType.application_data,
+          Uint8List.fromList(utf8.encode(request)),
+        ));
+
+        print('✓ HTTP request sent via direct TlsConnection (cloudflare.com)');
+
+        final (header, parser) = await tls.recvMessage();
+        final data = parser.getFixBytes(parser.getRemainingLength());
+        final responseStart = utf8.decode(data, allowMalformed: true);
+
+        print('✓ Response received (cloudflare.com, first 200 chars):');
+        print('  ${responseStart.substring(0, responseStart.length > 200 ? 200 : responseStart.length)}...');
+
+        expect(responseStart, contains('HTTP/1.'));
+      } finally {
+        await socket.close();
+      }
+    }, timeout: const Timeout(Duration(seconds: 30)));
+
+    test('raw TlsConnection handshake with api.github.com', () async {
+      final socket = await Socket.connect('api.github.com', 443);
+      final tls = TlsConnection(socket);
+
+      try {
+        await tls.handshakeClient(
+          settings: HandshakeSettings(minVersion: (3, 3)),
+          serverName: 'api.github.com',
+        );
+
+        print('✓ Direct TLS handshake (api.github.com) completed');
+        print('  Negotiated version: ${tls.version}');
+        print('  Cipher suite: 0x${tls.session.cipherSuite.toRadixString(16)}');
+
+        final request = 'GET /zen HTTP/1.1\r\n'
+            'Host: api.github.com\r\n'
+            'User-Agent: TlsLite-Dart/1.0\r\n'
+            'Accept: application/json\r\n'
+            'Connection: close\r\n'
+            '\r\n';
+        await tls.sendRecord(Message(
+          ContentType.application_data,
+          Uint8List.fromList(utf8.encode(request)),
+        ));
+
+        print('✓ HTTP request sent via direct TlsConnection (api.github.com)');
+
+        final (header, parser) = await tls.recvMessage();
+        final data = parser.getFixBytes(parser.getRemainingLength());
+        final responseStart = utf8.decode(data, allowMalformed: true);
+
+        print('✓ Response received (api.github.com, first 200 chars):');
+        print('  ${responseStart.substring(0, responseStart.length > 200 ? 200 : responseStart.length)}...');
+
+        expect(responseStart, contains('HTTP/1.'));
+      } finally {
+        await socket.close();
+      }
+    }, timeout: const Timeout(Duration(seconds: 30)));
   });
 }
