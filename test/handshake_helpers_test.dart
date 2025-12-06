@@ -114,43 +114,10 @@ void main() {
       expect(clientHello.extensions, isEmpty);
     });
     
-    test('initializes extensions list if null', () {
-      // If extensions is null, it adds 2 bytes for the list length overhead
-      // Let's say payload is 300 bytes (without extensions list overhead).
-      // Total 304.
-      // But wait, if extensions is null, the mock baseLength should represent that.
-      // The helper does: clientHelloLength += 2;
-      
-      // Mock behavior:
-      // If extensions is null, baseLength is X.
-      // If extensions becomes [], baseLength is still X, but helper thinks it grew by 2?
-      // No, the helper adds 2 to its *calculation* of the length.
-      // "Recalculate size after extension list addition (adds 2 bytes)"
-      
-      // So if we start with null extensions, and length 300 (payload).
-      // Helper sees 300.
-      // Sets extensions = [].
-      // Adds 2 -> 302.
-      // Target 512.
-      // Padding needed: 512 - 302 - 4 = 206.
-      // Extension size: 210.
-      // Final size: 300 + 2 (overhead) + 210 = 512.
-      
-      // We need our Mock to simulate the "add 2 bytes overhead" when extensions becomes not null.
-      // But our Mock `write` uses `baseLength`.
-      // If `extensions` becomes not null, we should probably add 2 to the output length in `write`?
-      // Or we assume `baseLength` was "without extensions".
-      
-      final clientHello = MockClientHello(304, extensions: null); 
-      // 304 total -> 300 payload.
-      
-      // We need to subclass or modify Mock to handle the "null extensions means smaller size" logic if we want to test this path.
-      // But `MockClientHello` `write` implementation above:
-      // `return Uint8List(totalLength + extContentLength);`
-      // It doesn't change based on extensions being null or not (other than content).
-      
-      // Let's skip this specific edge case for now or adjust the Mock if needed.
-      // The Python tests always initialize extensions to [].
-    });
+    test(
+      'initializes extensions list if null',
+      () {},
+      skip: 'MockClientHello does not emulate extensions=null header growth yet',
+    );
   });
 }

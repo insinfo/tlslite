@@ -62,7 +62,7 @@ class HttpTlsConnection {
       );
     } else {
       // Certificate based (or just server auth)
-      // FUTURE: Add client certificate support via certParams when needed
+      // TODO Add client certificate support via certParams when needed
       await _connection!.handshakeClient(
         settings: settings,
         serverName: host,

@@ -120,14 +120,20 @@ void main() {
 
     test('digestSSL calculates SSLv3 digest', () {
       final hashes = HandshakeHashes();
-      final data = Uint8List.fromList([0x42]);
-      hashes.update(data);
+      // Python test uses empty update
       
-      final masterSecret = Uint8List.fromList(List.filled(48, 0xAB));
-      final label = Uint8List.fromList([0x43, 0x4C, 0x4E, 0x54]); // "CLNT"
+      final masterSecret = Uint8List(48); // Zeros
+      final label = Uint8List(0); // Empty
       
       final digest = hashes.digestSSL(masterSecret, label);
-      expect(digest.length, equals(36)); // MD5(16) + SHA1(20)
+      
+      final expected = Uint8List.fromList([
+        0xb5, 0x51, 0x15, 0xa4, 0xcd, 0xff, 0xfd, 0x46, 0xa6, 0x9c, 0xe2, 0x0f, 0x83, 0x7e, 0x94, 0x38,
+        0xc3, 0xb5, 0xc1, 0x8d, 0xb6, 0x7c, 0x10, 0x6e, 0x40, 0x61, 0x97, 0xcc, 0x47, 0xfe, 0x49, 0xa8,
+        0x73, 0x20, 0x54, 0x5c
+      ]);
+      
+      expect(digest, equals(expected));
     });
 
     test('copy creates independent copy', () {

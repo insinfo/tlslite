@@ -3,7 +3,6 @@ import 'package:test/test.dart';
 import 'package:tlslite/tlslite.dart';
 import 'package:tlslite/src/messages.dart';
 import 'package:tlslite/src/recordlayer.dart';
-import 'package:tlslite/src/utils/binary_io.dart';
 import 'package:tlslite/src/tls_protocol.dart';
 
 void main() {

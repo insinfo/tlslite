@@ -65,50 +65,56 @@ class RecordSocket {
 
   /// Read record from socket
   Future<(dynamic, Uint8List)> recv() async {
-    // Read first byte
-    await _input.ensureBytes(1);
-    final firstByte = _input.readUint8();
-    var buf = <int>[firstByte];
-    
-    bool ssl2 = false;
-    if (ContentType.all.contains(firstByte)) {
-      ssl2 = false;
-      // SSLv3 record layer header is 5 bytes long, we already read 1
-      await _input.ensureBytes(4);
-      buf.addAll(_input.readBytes(4));
-    } else {
-      ssl2 = true;
-      // if header has no padding the header is 2 bytes long, 3 otherwise
-      // at the same time we already read 1 byte
-      final readLen = (firstByte & 0x80) != 0 ? 1 : 2;
-      await _input.ensureBytes(readLen);
-      buf.addAll(_input.readBytes(readLen));
-    }
-
-    dynamic header;
-    final headerBytes = Uint8List.fromList(buf);
-    if (ssl2) {
-      header = RecordHeader2().parse(Parser(headerBytes));
-      if ((header.padding > header.length) || (header.padding != 0 && header.length % 8 != 0)) {
-        throw TLSIllegalParameterException('Malformed record layer header');
+    try {
+      // Read first byte
+      await _input.ensureBytes(1);
+      final firstByte = _input.readUint8();
+      var buf = <int>[firstByte];
+      
+      bool ssl2 = false;
+      if (ContentType.all.contains(firstByte)) {
+        ssl2 = false;
+        // SSLv3 record layer header is 5 bytes long, we already read 1
+        await _input.ensureBytes(4);
+        buf.addAll(_input.readBytes(4));
+      } else {
+        ssl2 = true;
+        // if header has no padding the header is 2 bytes long, 3 otherwise
+        // at the same time we already read 1 byte
+        final readLen = (firstByte & 0x80) != 0 ? 1 : 2;
+        await _input.ensureBytes(readLen);
+        buf.addAll(_input.readBytes(readLen));
       }
-    } else {
-      header = RecordHeader3().parse(Parser(headerBytes));
-    }
 
-    // Check the record header fields
-    // 18432 = 2**14 (default record size limit) + 1024 (maximum compression
-    // overhead) + 1024 (maximum encryption overhead)
-    if (header.length > recvRecordLimit + 2048) {
-      throw TLSRecordOverflow();
-    }
-    if (tls13record && header.length > recvRecordLimit + 256) {
-      throw TLSRecordOverflow();
-    }
+      dynamic header;
+      final headerBytes = Uint8List.fromList(buf);
+      if (ssl2) {
+        header = RecordHeader2().parse(Parser(headerBytes));
+        if ((header.padding > header.length) || (header.padding != 0 && header.length % 8 != 0)) {
+          throw TLSIllegalParameterException('Malformed record layer header');
+        }
+      } else {
+        header = RecordHeader3().parse(Parser(headerBytes));
+      }
 
-    await _input.ensureBytes(header.length);
-    final data = Uint8List.fromList(_input.readBytes(header.length));
-    return (header, data);
+      // Check the record header fields
+      // 18432 = 2**14 (default record size limit) + 1024 (maximum compression
+      // overhead) + 1024 (maximum encryption overhead)
+      if (header.length > recvRecordLimit + 2048) {
+        throw TLSRecordOverflow();
+      }
+      if (tls13record && header.length > recvRecordLimit + 256) {
+        throw TLSRecordOverflow();
+      }
+
+      await _input.ensureBytes(header.length);
+      final data = Uint8List.fromList(_input.readBytes(header.length));
+      return (header, data);
+    } on StateError catch (error) {
+      throw TLSAbruptCloseError(error.message);
+    } on SocketException catch (error) {
+      throw TLSAbruptCloseError(error.message);
+    }
   }
 }
 

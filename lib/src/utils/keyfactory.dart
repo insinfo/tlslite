@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'asn1parser.dart';
+import 'codec.dart';
 import 'cryptomath.dart';
 import 'curve_oids.dart';
 import 'dsakey.dart';
@@ -41,11 +42,15 @@ Object parsePEMKey(
   if (!accepted) {
     throw ArgumentError('No acceptable implementations: $implementations');
   }
-  final key = _parsePemWithPurePython(
-    pemData,
-    passwordCallback: passwordCallback,
-  );
-  return _parseKeyHelper(key, private: private, public: public);
+  try {
+    final key = _parsePemWithPurePython(
+      pemData,
+      passwordCallback: passwordCallback,
+    );
+    return _parseKeyHelper(key, private: private, public: public);
+  } on DecodeError catch (error) {
+    throw FormatException(error.message);
+  }
 }
 
 /// Parse a PEM public key.
