@@ -19,7 +19,7 @@ const int _sslErrorWantRead = 2;
 const int _sslErrorWantWrite = 3;
 const int _sslErrorZeroReturn = 6;
 
-class SecureSocketOpenSSL implements SecureTransport {
+class SecureFFISocketOpenSSL implements SecureTransport {
   final RawTransport _transport;
   late final OpenSsl _openSsl;
   ffi.Pointer<ssl_ctx_st>? _ctx; // typedef SSL_CTX = ssl_ctx_st
@@ -32,7 +32,7 @@ class SecureSocketOpenSSL implements SecureTransport {
   final String? _certFile;
   final String? _keyFile;
 
-  SecureSocketOpenSSL._({
+  SecureFFISocketOpenSSL._({
     required RawTransport transport,
     required bool isServer,
     required bool ownsDataPath,
@@ -58,17 +58,17 @@ class SecureSocketOpenSSL implements SecureTransport {
   }
 
   /// Client-mode constructor that owns its underlying socket.
-  factory SecureSocketOpenSSL(int family, int type, int protocol) =>
-      SecureSocketOpenSSL._(
+  factory SecureFFISocketOpenSSL(int family, int type, int protocol) =>
+      SecureFFISocketOpenSSL._(
         transport: SocketNative(family, type, protocol),
         isServer: false,
         ownsDataPath: true,
       );
 
   /// Creates a TLS listener in server mode; each accept() yields a TLS session.
-  factory SecureSocketOpenSSL.server(
+  factory SecureFFISocketOpenSSL.server(
           int family, int type, int protocol, String certFile, String keyFile) =>
-      SecureSocketOpenSSL._(
+      SecureFFISocketOpenSSL._(
         transport: SocketNative(family, type, protocol),
         isServer: true,
         ownsDataPath: false,
@@ -77,18 +77,18 @@ class SecureSocketOpenSSL implements SecureTransport {
       );
 
   /// Wraps an already-established transport in client mode.
-  factory SecureSocketOpenSSL.fromTransport(RawTransport transport) =>
-      SecureSocketOpenSSL._(
+  factory SecureFFISocketOpenSSL.fromTransport(RawTransport transport) =>
+      SecureFFISocketOpenSSL._(
         transport: transport,
         isServer: false,
         ownsDataPath: true,
       );
 
   /// Wraps a transport accepted by the listener in server mode.
-  factory SecureSocketOpenSSL.fromServerTransport(
+  factory SecureFFISocketOpenSSL.fromServerTransport(
           RawTransport transport, String certFile, String keyFile,
           {bool eagerHandshake = true}) =>
-      SecureSocketOpenSSL._(
+      SecureFFISocketOpenSSL._(
         transport: transport,
         isServer: true,
         ownsDataPath: true,
@@ -261,7 +261,7 @@ class SecureSocketOpenSSL implements SecureTransport {
     }
     final certPath = _certFile;
     final keyPath = _keyFile;
-    return SecureSocketOpenSSL.fromServerTransport(child, certPath, keyPath);
+    return SecureFFISocketOpenSSL.fromServerTransport(child, certPath, keyPath);
   }
 
   @override
@@ -499,8 +499,8 @@ typedef CiphertextReader = Future<Uint8List?> Function(int preferredLength);
 
 /// Exposes a BIO-backed TLS engine that can be wired into async protocols such
 /// as SQL Server TDS, where TLS records must be encapsulated in custom frames.
-class SecureSocketOpenSSLAsync {
-  SecureSocketOpenSSLAsync._({
+class SecureFFISocketOpenSSLAsync {
+  SecureFFISocketOpenSSLAsync._({
     required bool isServer,
     String? certFile,
     String? keyFile,
@@ -516,23 +516,23 @@ class SecureSocketOpenSSLAsync {
     _attachSslObject();
   }
 
-  factory SecureSocketOpenSSLAsync.client({
+  factory SecureFFISocketOpenSSLAsync.client({
     required CiphertextWriter writer,
     required CiphertextReader reader,
   }) =>
-      SecureSocketOpenSSLAsync._(
+      SecureFFISocketOpenSSLAsync._(
         isServer: false,
         writer: writer,
         reader: reader,
       );
 
-  factory SecureSocketOpenSSLAsync.server({
+  factory SecureFFISocketOpenSSLAsync.server({
     required CiphertextWriter writer,
     required CiphertextReader reader,
     required String certFile,
     required String keyFile,
   }) =>
-      SecureSocketOpenSSLAsync._(
+      SecureFFISocketOpenSSLAsync._(
         isServer: true,
         certFile: certFile,
         keyFile: keyFile,

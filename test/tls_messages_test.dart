@@ -26,10 +26,10 @@ void main() {
     });
 
     test('build from PEM fixture', () {
-      final certPem =
-          io.File('tlslite-ng/tests/serverX509Cert.pem').readAsStringSync();
-      final keyPem =
-          io.File('tlslite-ng/tests/serverX509Key.pem').readAsStringSync();
+        final certPem =
+          io.File('test/certificates/serverX509Cert.pem').readAsStringSync();
+        final keyPem =
+          io.File('test/certificates/serverX509Key.pem').readAsStringSync();
 
       final config = PureDartTlsConfig(
         certificateChainPem: certPem,

@@ -12,9 +12,9 @@ import 'package:tlslite/src/tls_protocol.dart';
 void main() {
   test('uses negotiated TLS version hint for parsing', () {
     final certPem =
-        io.File('tlslite-ng/tests/serverX509Cert.pem').readAsStringSync();
+      io.File('test/certificates/serverX509Cert.pem').readAsStringSync();
     final keyPem =
-        io.File('tlslite-ng/tests/serverX509Key.pem').readAsStringSync();
+      io.File('test/certificates/serverX509Key.pem').readAsStringSync();
 
     final config = PureDartTlsConfig(
       certificateChainPem: certPem,
