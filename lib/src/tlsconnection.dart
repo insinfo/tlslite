@@ -1681,6 +1681,7 @@ class TlsConnection extends MessageSocket {
       );
       
       final handshakeSecret = secureHMAC(derivedSecret, sharedSecret!, hashName);
+      late Uint8List masterSecret;
       
       final helloHash = handshakeHashes.digest(hashName);
       
@@ -1840,10 +1841,45 @@ class TlsConnection extends MessageSocket {
       
       // 8. Send Finished
       final verifyData = buildFinishedVerifyData(forClient: false);
-      await sendHandshakeMessage(TlsFinished(verifyData: verifyData));
+        await sendHandshakeMessage(TlsFinished(verifyData: verifyData));
+
+        // After emitting the server's Finished we must be ready to encrypt
+        // application data immediately (clients may allow "short packets").
+        final trafficHandshakeHash = handshakeHashes.digest(hashName);
+        final derivedSecret2 = derive_secret(
+          handshakeSecret,
+          Uint8List.fromList('derived'.codeUnits),
+          null,
+          hashName);
+
+        masterSecret = secureHMAC(derivedSecret2, Uint8List(hashLen), hashName);
+        session.masterSecret = masterSecret;
+
+        final clientAppTrafficSecret = HKDF_expand_label(
+          masterSecret,
+          Uint8List.fromList('c ap traffic'.codeUnits),
+          trafficHandshakeHash,
+          hashLen,
+          hashName);
+
+        final serverAppTrafficSecret = HKDF_expand_label(
+          masterSecret,
+          Uint8List.fromList('s ap traffic'.codeUnits),
+          trafficHandshakeHash,
+          hashLen,
+          hashName);
+
+        session.clAppSecret = clientAppTrafficSecret;
+        session.srAppSecret = serverAppTrafficSecret;
+
+        calcTLS1_3PendingState(
+          session.cipherSuite,
+          clientAppTrafficSecret,
+          serverAppTrafficSecret,
+          null);
+        changeWriteState();
       
-      // 9. Derive Application Keys
-      // 10. Receive Client Messages (Certificate, CertificateVerify, Finished)
+      // 9. Receive Client Messages (Certificate, CertificateVerify, Finished)
       if (reqCert) {
           final certMsg = await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.certificate]);
           if (certMsg is! TlsCertificate) {
@@ -1935,55 +1971,19 @@ class TlsConnection extends MessageSocket {
           throw TLSHandshakeFailure('Finished verification failed');
       }
 
-      // Derive application traffic secrets now that the full handshake transcript
-      // (including the client's Finished) is known.
-      final derivedSecret2 = derive_secret(
-          handshakeSecret,
-          Uint8List.fromList('derived'.codeUnits),
-          null,
-          hashName);
-
-      final masterSecret =
-          secureHMAC(derivedSecret2, Uint8List(hashLen), hashName);
-      session.masterSecret = masterSecret;
-
-      final handshakeHash = handshakeHashes.digest(hashName);
-
-      final clientAppTrafficSecret = HKDF_expand_label(
-          masterSecret,
-          Uint8List.fromList('c ap traffic'.codeUnits),
-          handshakeHash,
-          hashLen,
-          hashName);
-
-      final serverAppTrafficSecret = HKDF_expand_label(
-          masterSecret,
-          Uint8List.fromList('s ap traffic'.codeUnits),
-          handshakeHash,
-          hashLen,
-          hashName);
-
-      session.clAppSecret = clientAppTrafficSecret;
-      session.srAppSecret = serverAppTrafficSecret;
-
-      // Calculate Resumption Master Secret
-      final resumptionMasterSecret = derive_secret(
+        // Calculate Resumption Master Secret using the complete transcript
+        // (which now also includes the client's Finished).
+        final fullHandshakeHash = handshakeHashes.digest(hashName);
+        final resumptionMasterSecret = derive_secret(
           masterSecret,
           Uint8List.fromList('res master'.codeUnits),
-          handshakeHash,
+          fullHandshakeHash,
           hashName);
-      session.resumptionMasterSecret = resumptionMasterSecret;
+        session.resumptionMasterSecret = resumptionMasterSecret;
 
-      // Switch to Application Keys
-      calcTLS1_3PendingState(
-          session.cipherSuite,
-          clientAppTrafficSecret,
-          serverAppTrafficSecret,
-          null);
-      changeReadState();
-      changeWriteState();
+        changeReadState();
 
-      handshakeEstablished = true;
+        handshakeEstablished = true;
   }
   
   Future<void> _serverHandshake12(TlsClientHello clientHello, X509CertChain? certChain, dynamic privateKey, {bool reqCert = false, List<String>? alpn}) async {
