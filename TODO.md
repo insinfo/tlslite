@@ -15,7 +15,7 @@
    - ✅ `_clientHandshake12` (RSA Key Exchange implemented, DHE/ECDHE pending)
    - ✅ `handshakeServer` entry point (Version negotiation implemented)
    - ✅ `_serverHandshake13` (Basic implementation: RSA auth, X25519 key exchange)
-   - ⬜ `_serverHandshake12`
+   - ✅ `_serverHandshake12` (Implemented: RSA/DHE/ECDHE key exchange)
 
 ### ✅ IMPORTANTE  
 4. **handshakesettings.py** → handshake_settings.dart (716 linhas) - ✅ COMPLETO

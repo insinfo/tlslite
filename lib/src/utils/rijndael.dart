@@ -1208,9 +1208,9 @@ class Rijndael {
       // Apply InvSubBytes (Si lookup) to the shifted state bytes and XOR with key bytes
       // The indexing t[(i+sX)%BC] implicitly performs InvShiftRows
       int resByte3 = (_si[(t[i] >> 24) & 0xFF] ^ ttByte3) & 0xFF;
-      int resByte2 = (_s[(t[(i + s1) % BC] >> 16) & 0xFF] ^ ttByte2) & 0xFF;
-      int resByte1 = (_s[(t[(i + s2) % BC] >> 8) & 0xFF] ^ ttByte1) & 0xFF;
-      int resByte0 = (_s[t[(i + s3) % BC] & 0xFF] ^ ttByte0) & 0xFF;
+      int resByte2 = (_si[(t[(i + s1) % BC] >> 16) & 0xFF] ^ ttByte2) & 0xFF;
+      int resByte1 = (_si[(t[(i + s2) % BC] >> 8) & 0xFF] ^ ttByte1) & 0xFF;
+      int resByte0 = (_si[t[(i + s3) % BC] & 0xFF] ^ ttByte0) & 0xFF;
 
       // Add the resulting bytes to the list in Big Endian order (byte 3, 2, 1, 0)
       resultBytes.add(resByte3);
