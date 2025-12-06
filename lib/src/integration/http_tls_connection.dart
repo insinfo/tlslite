@@ -62,11 +62,9 @@ class HttpTlsConnection {
       );
     } else {
       // Certificate based (or just server auth)
-      // TODO Add client certificate support via certParams when needed
       await _connection!.handshakeClient(
         settings: settings,
         serverName: host,
-        // certParams: ...
       );
     }
 
@@ -104,32 +102,19 @@ class HttpTlsConnection {
     if (_connection == null) {
       throw StateError('Not connected');
     }
-    
-    // Very basic HTTP parsing
     final buffer = <int>[];
     while (true) {
-      final chunk = await _read(1024);
-      if (chunk.isEmpty) break; // EOF
+      final chunk = await _read(4096);
+      if (chunk.isEmpty) {
+        break;
+      }
       buffer.addAll(chunk);
-      
-      // Check for header end
-      final headerEnd = _findHeaderEnd(buffer);
+      final headerEnd = HttpResponseMock.findHeaderEnd(buffer);
       if (headerEnd != -1) {
-        // Parse headers...
-        // For now just return the raw body
-        return HttpResponseMock(200, 'OK', Uint8List.fromList(buffer));
+        return HttpResponseMock.parse(buffer, headerEnd);
       }
     }
-    return HttpResponseMock(500, 'Error', Uint8List(0));
-  }
-
-  int _findHeaderEnd(List<int> data) {
-    for (var i = 0; i < data.length - 3; i++) {
-      if (data[i] == 13 && data[i+1] == 10 && data[i+2] == 13 && data[i+3] == 10) {
-        return i + 4;
-      }
-    }
-    return -1;
+    throw TLSInternalError('Failed to read HTTP response headers');
   }
 
   Future<void> close() async {
@@ -200,5 +185,59 @@ class HttpResponseMock {
   final int status;
   final String reason;
   final Uint8List body;
-  HttpResponseMock(this.status, this.reason, this.body);
+  final Map<String, String> headers;
+
+  HttpResponseMock(this.status, this.reason, this.body, this.headers);
+
+  static int findHeaderEnd(List<int> data) {
+    for (var i = 0; i < data.length - 3; i++) {
+      if (data[i] == 13 &&
+          data[i + 1] == 10 &&
+          data[i + 2] == 13 &&
+          data[i + 3] == 10) {
+        return i + 4;
+      }
+    }
+    return -1;
+  }
+
+  static HttpResponseMock parse(List<int> data, [int? headerEnd]) {
+    final terminator = headerEnd ?? findHeaderEnd(data);
+    if (terminator == -1) {
+      throw TLSInternalError('HTTP header terminator not found');
+    }
+    final headerBytes = Uint8List.fromList(data.sublist(0, terminator));
+    final bodyBytes =
+        data.length > terminator ? data.sublist(terminator) : const <int>[];
+    final headerText = utf8.decode(headerBytes);
+    final lines =
+        headerText.split('\r\n').where((line) => line.isNotEmpty).toList();
+    if (lines.isEmpty) {
+      throw TLSInternalError('Empty HTTP header block');
+    }
+    final statusLine = lines.first;
+    final match = RegExp(r'^HTTP/\S+\s+(?<code>\d{3})\s*(?<reason>.*)')
+        .firstMatch(statusLine);
+    if (match == null) {
+      throw TLSInternalError('Malformed HTTP status line: $statusLine');
+    }
+    final status = int.parse(match.namedGroup('code')!);
+    final reason = match.namedGroup('reason')!.trim();
+    final headers = <String, String>{};
+    for (final line in lines.skip(1)) {
+      final idx = line.indexOf(':');
+      if (idx == -1) {
+        continue;
+      }
+      final name = line.substring(0, idx).trim();
+      final value = line.substring(idx + 1).trim();
+      headers[name] = value;
+    }
+    return HttpResponseMock(
+      status,
+      reason,
+      Uint8List.fromList(bodyBytes),
+      headers,
+    );
+  }
 }

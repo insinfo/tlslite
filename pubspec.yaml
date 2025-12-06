@@ -13,12 +13,11 @@ dependencies:
   crypto: any
   fixnum: ^1.1.1
   collection: ^1.18.0
-  archive: ^4.0.7
+  #archive: ^4.0.7
 
 dev_dependencies:  
   test: any
-  hex: any  
-  #ffigen: ^12.0.0
+  hex: any    
   benchmark_harness: any
   ffigen: ^19.0.0
  

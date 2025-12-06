@@ -71,6 +71,40 @@ const _defaultProtocolVersions = <(int, int)>[
   (3, 1),
 ];
 
+List<(int, int)> _filterProtocolVersions(
+  List<(int, int)> source,
+  (int, int) minVersion,
+  (int, int) maxVersion,
+) {
+  bool ge((int, int) a, (int, int) b) =>
+      a.$1 > b.$1 || (a.$1 == b.$1 && a.$2 >= b.$2);
+  bool le((int, int) a, (int, int) b) =>
+      a.$1 < b.$1 || (a.$1 == b.$1 && a.$2 <= b.$2);
+
+  final filtered = <(int, int)>[];
+  for (final ver in source) {
+    if (ge(ver, minVersion) && le(ver, maxVersion)) {
+      if (!filtered.contains(ver)) {
+        filtered.add(ver);
+      }
+    }
+  }
+  if (filtered.isEmpty) {
+    filtered.add(maxVersion);
+  }
+  return filtered;
+}
+
+List<(int, int)> _resolveVersionPreference(
+  List<(int, int)>? primary,
+  List<(int, int)>? secondary,
+  (int, int) minVersion,
+  (int, int) maxVersion,
+) {
+  final seed = primary ?? secondary ?? _defaultProtocolVersions;
+  return _filterProtocolVersions(seed, minVersion, maxVersion);
+}
+
 const cipherImplementations = ['openssl', 'pycrypto', 'python'];
 const _certificateTypes = ['x509'];
 
@@ -273,7 +307,7 @@ class HandshakeSettings {
     this.heartbeatCiphersuites = const [],
     this.useLegacySignatureSchemeIDCombination = false,
   })  : minVersion = minVersion ?? const (3, 1),
-        maxVersion = maxVersion ?? const (3, 4),
+        maxVersion = maxVersion ?? const (3, 3),
         cipherNames = cipherNames ?? _cipherNames,
         macNames = macNames ?? _macNames,
         certificateTypes = certificateTypes ?? _certificateTypes,
@@ -285,10 +319,20 @@ class HandshakeSettings {
         eccCurves = eccCurves ?? curveNames,
         dhGroups = dhGroups ?? allDhGroupNames,
         supportedVersions = List<(int, int)>.unmodifiable(
-          supportedVersions ?? versions ?? _defaultProtocolVersions,
+          _resolveVersionPreference(
+            supportedVersions,
+            versions,
+            minVersion ?? const (3, 1),
+            maxVersion ?? const (3, 3),
+          ),
         ),
         versions = List<(int, int)>.unmodifiable(
-          versions ?? supportedVersions ?? _defaultProtocolVersions,
+          _resolveVersionPreference(
+            versions,
+            supportedVersions,
+            minVersion ?? const (3, 1),
+            maxVersion ?? const (3, 3),
+          ),
         ),
         pskModes = pskModes ?? _pskModes,
         ecPointFormats = ecPointFormats ?? _ecPointFormats,

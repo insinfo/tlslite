@@ -60,7 +60,10 @@ class TlsConnection extends MessageSocket {
   TlsConnection._(Socket socket,
       {SessionCache? sessionCache, required Defragmenter defragmenter})
       : _sessionCache = sessionCache,
-        super(socket, defragmenter);
+        super(socket, defragmenter) {
+    // Use 0x0303 as the legacy record version for initial ClientHello records.
+    version = const TlsProtocolVersion(3, 3);
+  }
 
   TlsConnection._custom(
     BinaryInput input,
@@ -68,7 +71,9 @@ class TlsConnection extends MessageSocket {
     SessionCache? sessionCache,
     required Defragmenter defragmenter,
   })  : _sessionCache = sessionCache,
-        super.custom(input, output, defragmenter);
+        super.custom(input, output, defragmenter) {
+    version = const TlsProtocolVersion(3, 3);
+  }
 
   Session session = Session();
   SessionCache? _sessionCache;
@@ -2083,22 +2088,38 @@ class TlsConnection extends MessageSocket {
     Uint8List? cookie,
     int? retryGroup,
   }) async {
-    // Initialize acceptable ciphersuites
+    // Initialize acceptable cipher suites
     var cipherSuites = <int>[CipherSuite.TLS_EMPTY_RENEGOTIATION_INFO_SCSV];
-    if (srpParams != null) {
+    final wantsSrp = srpParams != null;
+    final wantsAnon = anonParams != null;
+
+    if (wantsSrp) {
       cipherSuites.addAll(CipherSuite.getSrpAllSuites(settings));
-    } else if (certParams != null) {
+    }
+
+    if (wantsAnon) {
+      cipherSuites.addAll(CipherSuite.getEcdhAnonSuites(settings));
+      cipherSuites.addAll(CipherSuite.getAnonSuites(settings));
+    }
+
+    // Default TLS client behaviour: authenticate server via its certificate
+    // but do not present a client certificate unless requested.
+    if (!wantsSrp && !wantsAnon) {
       cipherSuites.addAll(CipherSuite.getTLS13Suites(settings));
       cipherSuites.addAll(CipherSuite.getEcdsaSuites(settings));
       cipherSuites.addAll(CipherSuite.getEcdheCertSuites(settings));
       cipherSuites.addAll(CipherSuite.getDheCertSuites(settings));
       cipherSuites.addAll(CipherSuite.getCertSuites(settings));
       cipherSuites.addAll(CipherSuite.getDheDsaSuites(settings));
-    } else if (anonParams != null) {
-      cipherSuites.addAll(CipherSuite.getEcdhAnonSuites(settings));
-      cipherSuites.addAll(CipherSuite.getAnonSuites(settings));
-    } else {
-      throw ArgumentError('No authentication parameters provided');
+    }
+
+    // If client-auth material is configured explicitly, reuse same cipher list
+    // (these suites already added above). Keep behaviour identical for legacy
+    // callers that previously passed certParams just to get the cipher list.
+
+    if (cipherSuites.length == 1) {
+      // Only TLS_EMPTY_RENEGOTIATION_INFO_SCSV present → unsupported config.
+      throw ArgumentError('No compatible cipher suites available for client');
     }
 
     if (settings.sendFallbackSCSV) {
@@ -2141,6 +2162,10 @@ class TlsConnection extends MessageSocket {
         extensions
             .add(TlsSignatureAlgorithmsExtension(signatureSchemes: sigList));
       }
+    }
+
+    if (serverName.isNotEmpty) {
+      extensions.add(TlsServerNameExtension(hostNames: [serverName]));
     }
 
     if (alpn.isNotEmpty) {
@@ -2324,8 +2349,58 @@ class TlsConnection extends MessageSocket {
         if (val != null) schemes.add(val);
       }
     } else {
-      // TLS 1.2
-      // ... (Simplified for now)
+      // TLS 1.2 signature_algorithms
+      for (final hashName in settings.rsaSigHashes) {
+        final schemeName = 'rsa_pkcs1_$hashName';
+        final val = SignatureScheme.valueOf(schemeName);
+        if (val != null && !schemes.contains(val)) {
+          schemes.add(val);
+        }
+      }
+      for (final hashName in settings.ecdsaSigHashes) {
+        String? schemeName;
+        switch (hashName) {
+          case 'sha1':
+            schemeName = 'ecdsa_sha1';
+            break;
+          case 'sha224':
+            schemeName = 'ecdsa_sha224';
+            break;
+          case 'sha256':
+            schemeName = 'ecdsa_secp256r1_sha256';
+            break;
+          case 'sha384':
+            schemeName = 'ecdsa_secp384r1_sha384';
+            break;
+          case 'sha512':
+            schemeName = 'ecdsa_secp521r1_sha512';
+            break;
+        }
+        if (schemeName != null) {
+          final val = SignatureScheme.valueOf(schemeName);
+          if (val != null && !schemes.contains(val)) {
+            schemes.add(val);
+          }
+        }
+      }
+      for (final hashName in settings.dsaSigHashes) {
+        final schemeName = 'dsa_$hashName';
+        final val = SignatureScheme.valueOf(schemeName);
+        if (val != null && !schemes.contains(val)) {
+          schemes.add(val);
+        }
+      }
+
+      // As a safety net, include SHA256-based RSA/ECDSA if the lists end up empty.
+      if (schemes.isEmpty) {
+        const fallbacks = ['rsa_pkcs1_sha256', 'ecdsa_secp256r1_sha256'];
+        for (final name in fallbacks) {
+          final val = SignatureScheme.valueOf(name);
+          if (val != null && !schemes.contains(val)) {
+            schemes.add(val);
+          }
+        }
+      }
     }
     return schemes;
   }
