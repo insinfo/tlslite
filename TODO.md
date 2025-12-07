@@ -326,4 +326,10 @@ Acumula operações BigInt
 Soluções possíveis:
 Otimizar _counterUpdate(): Incrementar diretamente os bytes do contador sem BigInt
 Otimizar _mul(): Usar tabelas lookup maiores ou operações em Uint64
-Usar FFI para AES: Chamar libcrypto/OpenSSL para operações AES-GCM
+
+
+implemente testes com vetores para a classe C:\MyDartProjects\tlslite\lib\src\utils\rijndael.dart C:\MyDartProjects\tlslite\test\utils\rijndael_test.dart referencia podem ser encontradas aqui C:\MyDartProjects\tlslite\referencias
+
+tem referencias aqui C:\MyDartProjects\tlslite\referencias\openssl-master e C:\MyDartProjects\tlslite\referencias\pointycastle
+
+use assim vai aparecer um monte veja C:\MyDartProjects\tlslite\referencias> rg -n "AES" C:\MyDartProjects\tlslite\referencias\openssl-master

@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 import 'dart:math';
 import 'aes.dart'; // Contém a classe base AES
-import 'rijndael.dart'; // Contém a implementação do bloco Rijndael/AES
+import 'rijndael_slow.dart'; // Contém a implementação do bloco Rijndael/AES
 import 'cryptomath.dart'; // Contém bytesToNumber e numberToByteArray
 
 /// Factory function to create a new dart AES cipher instance.

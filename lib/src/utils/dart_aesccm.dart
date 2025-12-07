@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 import 'aesccm.dart';
-import 'rijndael.dart';
+import 'rijndael_slow.dart';
 
 AESCCM newAESCCM(Uint8List key, {int tagLength = 16}) {
   final internalKey = Uint8List.fromList(key);

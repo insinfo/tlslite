@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:tlslite/src/utils/aesgcm.dart';
 import 'package:tlslite/src/utils/dart_aesgcm.dart' as dart_aesgcm;
-import 'package:tlslite/src/utils/rijndael.dart';
+import 'package:tlslite/src/utils/rijndael_slow.dart';
 
 void main() {
   group('AESGCM', () {

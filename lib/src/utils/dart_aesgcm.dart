@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 import 'aesgcm.dart';
-import 'rijndael.dart';
+import 'rijndael_slow.dart';
 
 AESGCM newAESGCM(Uint8List key) {
   final rijndael = Rijndael(Uint8List.fromList(key), blockSize: 16);
