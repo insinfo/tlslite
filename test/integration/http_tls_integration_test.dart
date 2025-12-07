@@ -28,20 +28,20 @@ void main() {
 
       try {
         await conn.connect();
-        print('✓ TLS handshake completed with www.google.com');
+        // print('✓ TLS handshake completed with www.google.com');
 
         await conn.request('GET', '/', headers: {
           'User-Agent': 'TlsLite-Dart/1.0',
           'Accept': '*/*',
           'Connection': 'close',
         });
-        print('✓ HTTP GET request sent');
+        // print('✓ HTTP GET request sent');
 
         final response = await conn.getResponse();
-        print('✓ HTTP response received');
-        print('  Status: ${response.status} ${response.reason}');
-        print('  Headers: ${response.headers.keys.join(", ")}');
-        print('  Body length: ${response.body.length} bytes');
+        // print('✓ HTTP response received');
+        // print('  Status: ${response.status} ${response.reason}');
+        // print('  Headers: ${response.headers.keys.join(", ")}');
+        // print('  Body length: ${response.body.length} bytes');
 
         expect(response.status, anyOf(equals(200), equals(301), equals(302)));
       } finally {
@@ -60,18 +60,18 @@ void main() {
 
       try {
         await conn.connect();
-        print('✓ TLS handshake completed with www.cloudflare.com');
+        // print('✓ TLS handshake completed with www.cloudflare.com');
 
         await conn.request('GET', '/', headers: {
           'User-Agent': 'TlsLite-Dart/1.0',
           'Accept': '*/*',
           'Connection': 'close',
         });
-        print('✓ HTTP GET request sent');
+        // print('✓ HTTP GET request sent');
 
         final response = await conn.getResponse();
-        print('✓ HTTP response received');
-        print('  Status: ${response.status} ${response.reason}');
+        // print('✓ HTTP response received');
+        // print('  Status: ${response.status} ${response.reason}');
 
         expect(response.status,
             anyOf(equals(200), equals(301), equals(302), equals(403)));
@@ -91,22 +91,22 @@ void main() {
 
       try {
         await conn.connect();
-        print('✓ TLS handshake completed with api.github.com');
+        // print('✓ TLS handshake completed with api.github.com');
 
         await conn.request('GET', '/zen', headers: {
           'User-Agent': 'TlsLite-Dart/1.0',
           'Accept': 'application/json',
           'Connection': 'close',
         });
-        print('✓ HTTP GET request sent to /zen');
+        // print('✓ HTTP GET request sent to /zen');
 
         final response = await conn.getResponse();
-        print('✓ HTTP response received');
-        print('  Status: ${response.status} ${response.reason}');
+        // print('✓ HTTP response received');
+        // print('  Status: ${response.status} ${response.reason}');
 
         if (response.status == 200 && response.body.isNotEmpty) {
-          final bodyText = utf8.decode(response.body, allowMalformed: true);
-          print('  Zen: $bodyText');
+          // final bodyText = utf8.decode(response.body, allowMalformed: true);
+          // print('  Zen: $bodyText');
         }
 
         expect(response.status, equals(200));
@@ -127,7 +127,7 @@ void main() {
 
       try {
         await conn.connect();
-        print('✓ TLS 1.2 handshake completed with www.google.com');
+        // print('✓ TLS 1.2 handshake completed with www.google.com');
 
         await conn.request('GET', '/', headers: {
           'User-Agent': 'TlsLite-Dart/1.0 (TLS 1.2)',
@@ -136,7 +136,7 @@ void main() {
         });
 
         final response = await conn.getResponse();
-        print('✓ HTTP response: ${response.status} ${response.reason}');
+        // print('✓ HTTP response: ${response.status} ${response.reason}');
 
         expect(response.status, anyOf(equals(200), equals(301), equals(302)));
       } finally {
@@ -156,7 +156,7 @@ void main() {
 
       try {
         await conn.connect();
-        print('✓ TLS 1.3 handshake completed with www.google.com');
+        // print('✓ TLS 1.3 handshake completed with www.google.com');
 
         await conn.request('GET', '/', headers: {
           'User-Agent': 'TlsLite-Dart/1.0 (TLS 1.3)',
@@ -165,7 +165,7 @@ void main() {
         });
 
         final response = await conn.getResponse();
-        print('✓ HTTP response: ${response.status} ${response.reason}');
+        // print('✓ HTTP response: ${response.status} ${response.reason}');
 
         expect(response.status, anyOf(equals(200), equals(301), equals(302)));
       } finally {
@@ -187,9 +187,9 @@ void main() {
           serverName: 'www.google.com',
         );
 
-        print('✓ Direct TLS handshake completed');
-        print('  Negotiated version: ${tls.version}');
-        print('  Cipher suite: 0x${tls.session.cipherSuite.toRadixString(16)}');
+        // print('✓ Direct TLS handshake completed');
+        // print('  Negotiated version: ${tls.version}');
+        // print('  Cipher suite: 0x${tls.session.cipherSuite.toRadixString(16)}');
 
         // Send HTTP request
         final request = 'GET / HTTP/1.1\r\n'
@@ -202,16 +202,16 @@ void main() {
           Uint8List.fromList(utf8.encode(request)),
         ));
 
-        print('✓ HTTP request sent via direct TlsConnection');
+        // print('✓ HTTP request sent via direct TlsConnection');
 
         // Read response
         final (header, parser) = await tls.recvMessage();
         final data = parser.getFixBytes(parser.getRemainingLength());
         final responseStart = utf8.decode(data, allowMalformed: true);
 
-        print('✓ Response received (first 200 chars):');
-        print(
-            '  ${responseStart.substring(0, responseStart.length > 200 ? 200 : responseStart.length)}...');
+        // print('✓ Response received (first 200 chars):');
+        // print(
+        //     '  ${responseStart.substring(0, responseStart.length > 200 ? 200 : responseStart.length)}...');
 
         expect(responseStart, contains('HTTP/1.1'));
       } finally {
@@ -229,9 +229,9 @@ void main() {
           serverName: 'www.cloudflare.com',
         );
 
-        print('✓ Direct TLS handshake (cloudflare.com) completed');
-        print('  Negotiated version: ${tls.version}');
-        print('  Cipher suite: 0x${tls.session.cipherSuite.toRadixString(16)}');
+        // print('✓ Direct TLS handshake (cloudflare.com) completed');
+        // print('  Negotiated version: ${tls.version}');
+        // print('  Cipher suite: 0x${tls.session.cipherSuite.toRadixString(16)}');
 
         final request = 'GET / HTTP/1.1\r\n'
             'Host: www.cloudflare.com\r\n'
@@ -243,15 +243,15 @@ void main() {
           Uint8List.fromList(utf8.encode(request)),
         ));
 
-        print('✓ HTTP request sent via direct TlsConnection (cloudflare.com)');
+        // print('✓ HTTP request sent via direct TlsConnection (cloudflare.com)');
 
         final (header, parser) = await tls.recvMessage();
         final data = parser.getFixBytes(parser.getRemainingLength());
         final responseStart = utf8.decode(data, allowMalformed: true);
 
-        print('✓ Response received (cloudflare.com, first 200 chars):');
-        print(
-            '  ${responseStart.substring(0, responseStart.length > 200 ? 200 : responseStart.length)}...');
+        // print('✓ Response received (cloudflare.com, first 200 chars):');
+        // print(
+        //     '  ${responseStart.substring(0, responseStart.length > 200 ? 200 : responseStart.length)}...');
 
         expect(responseStart, contains('HTTP/1.'));
       } finally {
@@ -269,9 +269,9 @@ void main() {
           serverName: 'api.github.com',
         );
 
-        print('✓ Direct TLS handshake (api.github.com) completed');
-        print('  Negotiated version: ${tls.version}');
-        print('  Cipher suite: 0x${tls.session.cipherSuite.toRadixString(16)}');
+        // print('✓ Direct TLS handshake (api.github.com) completed');
+        // print('  Negotiated version: ${tls.version}');
+        // print('  Cipher suite: 0x${tls.session.cipherSuite.toRadixString(16)}');
 
         final request = 'GET /zen HTTP/1.1\r\n'
             'Host: api.github.com\r\n'
@@ -284,15 +284,15 @@ void main() {
           Uint8List.fromList(utf8.encode(request)),
         ));
 
-        print('✓ HTTP request sent via direct TlsConnection (api.github.com)');
+        // print('✓ HTTP request sent via direct TlsConnection (api.github.com)');
 
         final (header, parser) = await tls.recvMessage();
         final data = parser.getFixBytes(parser.getRemainingLength());
         final responseStart = utf8.decode(data, allowMalformed: true);
 
-        print('✓ Response received (api.github.com, first 200 chars):');
-        print(
-            '  ${responseStart.substring(0, responseStart.length > 200 ? 200 : responseStart.length)}...');
+        // print('✓ Response received (api.github.com, first 200 chars):');
+        // print(
+        //     '  ${responseStart.substring(0, responseStart.length > 200 ? 200 : responseStart.length)}...');
 
         expect(responseStart, contains('HTTP/1.'));
       } finally {
@@ -317,7 +317,7 @@ void main() {
 
       try {
         await conn.connect();
-        print('✓ TLS 1.2 handshake completed with www.riodasostras.rj.gov.br');
+        // print('✓ TLS 1.2 handshake completed with www.riodasostras.rj.gov.br');
 
         await conn.request('GET', '/', headers: {
           'Host': 'www.riodasostras.rj.gov.br',
@@ -327,7 +327,7 @@ void main() {
         });
 
         final response = await conn.getResponse();
-        print('✓ HTTP response: ${response.status} ${response.reason}');
+        // print('✓ HTTP response: ${response.status} ${response.reason}');
 
         // Accept 400 - the TLS handshake worked, HTTP layer may reject for other reasons
         expect(
@@ -357,7 +357,7 @@ void main() {
               e.toString().contains('protocol_version') ||
               e.toString().contains('handshake_failure'))),
         );
-        print('✓ Server correctly rejected TLS 1.3 (does not support it)');
+        // print('✓ Server correctly rejected TLS 1.3 (does not support it)');
       } finally {
         await conn.close();
       }
@@ -376,8 +376,8 @@ void main() {
 
       try {
         await conn.connect();
-        print(
-            '✓ TLS handshake completed with www.riodasostras.rj.gov.br (auto-negotiate)');
+        // print(
+        //     '✓ TLS handshake completed with www.riodasostras.rj.gov.br (auto-negotiate)');
 
         await conn.request('GET', '/', headers: {
           'Host': 'www.riodasostras.rj.gov.br',
@@ -387,7 +387,7 @@ void main() {
         });
 
         final response = await conn.getResponse();
-        print('✓ HTTP response: ${response.status} ${response.reason}');
+        // print('✓ HTTP response: ${response.status} ${response.reason}');
 
         // Accept 400 - the TLS handshake worked, HTTP layer may reject for other reasons
         expect(
@@ -412,9 +412,9 @@ void main() {
           serverName: 'www.riodasostras.rj.gov.br',
         );
 
-        print('✓ Direct TLS handshake (www.riodasostras.rj.gov.br) completed');
-        print('  Negotiated version: ${tls.version}');
-        print('  Cipher suite: 0x${tls.session.cipherSuite.toRadixString(16)}');
+        // print('✓ Direct TLS handshake (www.riodasostras.rj.gov.br) completed');
+        // print('  Negotiated version: ${tls.version}');
+        // print('  Cipher suite: 0x${tls.session.cipherSuite.toRadixString(16)}');
 
         final request = 'GET / HTTP/1.1\r\n'
             'Host: www.riodasostras.rj.gov.br\r\n'
@@ -427,15 +427,15 @@ void main() {
           Uint8List.fromList(utf8.encode(request)),
         ));
 
-        print('✓ HTTP request sent via direct TlsConnection');
+        // print('✓ HTTP request sent via direct TlsConnection');
 
         final (header, parser) = await tls.recvMessage();
         final data = parser.getFixBytes(parser.getRemainingLength());
         final responseStart = utf8.decode(data, allowMalformed: true);
 
-        print('✓ Response received (first 200 chars):');
-        print(
-            '  ${responseStart.substring(0, responseStart.length > 200 ? 200 : responseStart.length)}...');
+        // print('✓ Response received (first 200 chars):');
+        // print(
+        //     '  ${responseStart.substring(0, responseStart.length > 200 ? 200 : responseStart.length)}...');
 
         expect(responseStart, contains('HTTP/1.'));
       } finally {
@@ -460,7 +460,7 @@ void main() {
 
       try {
         await conn.connect();
-        print('✓ TLS 1.0 handshake completed with tls-v1-0.badssl.com:1010');
+        // print('✓ TLS 1.0 handshake completed with tls-v1-0.badssl.com:1010');
 
         await conn.request('GET', '/', headers: {
           'Host': 'tls-v1-0.badssl.com',
@@ -470,7 +470,7 @@ void main() {
         });
 
         final response = await conn.getResponse();
-        print('✓ HTTP response: ${response.status} ${response.reason}');
+        // print('✓ HTTP response: ${response.status} ${response.reason}');
 
         expect(response.status,
             anyOf(equals(200), equals(301), equals(302), equals(400)));
@@ -491,7 +491,7 @@ void main() {
 
       try {
         await conn.connect();
-        print('✓ TLS 1.1 handshake completed with tls-v1-1.badssl.com:1011');
+        // print('✓ TLS 1.1 handshake completed with tls-v1-1.badssl.com:1011');
 
         await conn.request('GET', '/', headers: {
           'Host': 'tls-v1-1.badssl.com',
@@ -501,7 +501,7 @@ void main() {
         });
 
         final response = await conn.getResponse();
-        print('✓ HTTP response: ${response.status} ${response.reason}');
+        // print('✓ HTTP response: ${response.status} ${response.reason}');
 
         expect(response.status,
             anyOf(equals(200), equals(301), equals(302), equals(400)));
@@ -522,7 +522,7 @@ void main() {
 
       try {
         await conn.connect();
-        print('✓ TLS 1.2 handshake completed with tls-v1-2.badssl.com:1012');
+        // print('✓ TLS 1.2 handshake completed with tls-v1-2.badssl.com:1012');
 
         await conn.request('GET', '/', headers: {
           'Host': 'tls-v1-2.badssl.com',
@@ -532,7 +532,7 @@ void main() {
         });
 
         final response = await conn.getResponse();
-        print('✓ HTTP response: ${response.status} ${response.reason}');
+        // print('✓ HTTP response: ${response.status} ${response.reason}');
 
         expect(response.status,
             anyOf(equals(200), equals(301), equals(302), equals(400)));
@@ -560,7 +560,7 @@ void main() {
               e.toString().contains('handshake_failure') ||
               e.toString().contains('alert'))),
         );
-        print('✓ Correctly rejected TLS 1.0 server (client requires >= 1.2)');
+        // print('✓ Correctly rejected TLS 1.0 server (client requires >= 1.2)');
       } finally {
         await conn.close();
       }
@@ -585,7 +585,7 @@ void main() {
               e.toString().contains('handshake_failure') ||
               e.toString().contains('alert'))),
         );
-        print('✓ Correctly rejected TLS 1.1 server (client requires >= 1.2)');
+        // print('✓ Correctly rejected TLS 1.1 server (client requires >= 1.2)');
       } finally {
         await conn.close();
       }
@@ -609,7 +609,7 @@ void main() {
 
       try {
         await conn.connect();
-        print('✓ Handshake OK with mozilla-old.badssl.com (old config)');
+        // print('✓ Handshake OK with mozilla-old.badssl.com (old config)');
 
         await conn.request('GET', '/', headers: {
           'Host': 'mozilla-old.badssl.com',
@@ -619,7 +619,7 @@ void main() {
         });
 
         final response = await conn.getResponse();
-        print('✓ HTTP response: ${response.status} ${response.reason}');
+        // print('✓ HTTP response: ${response.status} ${response.reason}');
 
         expect(response.status,
             anyOf(equals(200), equals(301), equals(302), equals(400)));
@@ -640,7 +640,7 @@ void main() {
 
       try {
         await conn.connect();
-        print('✓ Handshake OK with cbc.badssl.com (CBC ciphers)');
+        // print('✓ Handshake OK with cbc.badssl.com (CBC ciphers)');
 
         await conn.request('GET', '/', headers: {
           'Host': 'cbc.badssl.com',
@@ -650,7 +650,7 @@ void main() {
         });
 
         final response = await conn.getResponse();
-        print('✓ HTTP response: ${response.status} ${response.reason}');
+        // print('✓ HTTP response: ${response.status} ${response.reason}');
 
         expect(response.status,
             anyOf(equals(200), equals(301), equals(302), equals(400)));
@@ -671,7 +671,7 @@ void main() {
 
       try {
         await conn.connect();
-        print('✓ Handshake OK with sha256.badssl.com');
+        // print('✓ Handshake OK with sha256.badssl.com');
 
         await conn.request('GET', '/', headers: {
           'Host': 'sha256.badssl.com',
@@ -681,7 +681,7 @@ void main() {
         });
 
         final response = await conn.getResponse();
-        print('✓ HTTP response: ${response.status} ${response.reason}');
+        // print('✓ HTTP response: ${response.status} ${response.reason}');
 
         expect(response.status,
             anyOf(equals(200), equals(301), equals(302), equals(400)));
@@ -702,7 +702,7 @@ void main() {
 
       try {
         await conn.connect();
-        print('✓ Handshake OK with rsa2048.badssl.com');
+        // print('✓ Handshake OK with rsa2048.badssl.com');
 
         await conn.request('GET', '/', headers: {
           'Host': 'rsa2048.badssl.com',
@@ -712,7 +712,7 @@ void main() {
         });
 
         final response = await conn.getResponse();
-        print('✓ HTTP response: ${response.status} ${response.reason}');
+        // print('✓ HTTP response: ${response.status} ${response.reason}');
 
         expect(response.status,
             anyOf(equals(200), equals(301), equals(302), equals(400)));
@@ -733,7 +733,7 @@ void main() {
 
       try {
         await conn.connect();
-        print('✓ Handshake OK with ecc256.badssl.com (ECDSA P-256)');
+        // print('✓ Handshake OK with ecc256.badssl.com (ECDSA P-256)');
 
         await conn.request('GET', '/', headers: {
           'Host': 'ecc256.badssl.com',
@@ -743,7 +743,7 @@ void main() {
         });
 
         final response = await conn.getResponse();
-        print('✓ HTTP response: ${response.status} ${response.reason}');
+        // print('✓ HTTP response: ${response.status} ${response.reason}');
 
         expect(response.status,
             anyOf(equals(200), equals(301), equals(302), equals(400)));
@@ -764,7 +764,7 @@ void main() {
 
       try {
         await conn.connect();
-        print('✓ Handshake OK with ecc384.badssl.com (ECDSA P-384)');
+        // print('✓ Handshake OK with ecc384.badssl.com (ECDSA P-384)');
 
         await conn.request('GET', '/', headers: {
           'Host': 'ecc384.badssl.com',
@@ -774,7 +774,7 @@ void main() {
         });
 
         final response = await conn.getResponse();
-        print('✓ HTTP response: ${response.status} ${response.reason}');
+        // print('✓ HTTP response: ${response.status} ${response.reason}');
 
         expect(response.status,
             anyOf(equals(200), equals(301), equals(302), equals(400)));

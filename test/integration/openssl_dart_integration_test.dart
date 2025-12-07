@@ -34,8 +34,7 @@ class OpenSSLServer {
     bool verbose = false,
     String protocolFlag = '-tls1_2',
     String? tls13Cipher,
-  })
-      : _port = port,
+  })  : _port = port,
         _cipher = cipher,
         _verbose = verbose,
         _protocolFlag = protocolFlag,
@@ -56,19 +55,28 @@ class OpenSSLServer {
     _keyLogFile = '${_tempDir!.path}/sslkeylog.log';
 
     // Generate RSA key and self-signed certificate
-    final genKeyResult = await Process.run('openssl', [
-      'req',
-      '-x509',
-      '-newkey', 'rsa:2048',
-      '-keyout', _keyFile!,
-      '-out', _certFile!,
-      '-days', '1',
-      '-nodes',
-      '-subj', '/CN=localhost',
-    ], environment: processEnv);
-    
+    final genKeyResult = await Process.run(
+        'openssl',
+        [
+          'req',
+          '-x509',
+          '-newkey',
+          'rsa:2048',
+          '-keyout',
+          _keyFile!,
+          '-out',
+          _certFile!,
+          '-days',
+          '1',
+          '-nodes',
+          '-subj',
+          '/CN=localhost',
+        ],
+        environment: processEnv);
+
     if (genKeyResult.exitCode != 0) {
-      throw Exception('Failed to generate test certificate: ${genKeyResult.stderr}');
+      throw Exception(
+          'Failed to generate test certificate: ${genKeyResult.stderr}');
     }
 
     // Start OpenSSL s_server
@@ -79,7 +87,7 @@ class OpenSSLServer {
       '-cert', _certFile!,
       _protocolFlag,
       '-cipher', _cipher,
-      '-no_dhe',  // Disable DHE to force ECDHE
+      '-no_dhe', // Disable DHE to force ECDHE
       '-keylogfile',
       _keyLogFile!,
     ];
@@ -102,7 +110,7 @@ class OpenSSLServer {
         .transform(const LineSplitter())
         .listen((line) {
       _stdout.add(line);
-      if (_verbose) print('[OpenSSL OUT] $line');
+      // if (_verbose) print('[OpenSSL OUT] $line');
       if (line.contains('ACCEPT')) {
         _ready = true;
       }
@@ -114,7 +122,7 @@ class OpenSSLServer {
         .transform(const LineSplitter())
         .listen((line) {
       _stderr.add(line);
-      if (_verbose) print('[OpenSSL ERR] $line');
+      // if (_verbose) print('[OpenSSL ERR] $line');
       // OpenSSL prints "Using default temp DH parameters" and other info to stderr
       if (line.contains('ACCEPT') || line.contains('Using')) {
         _ready = true;
@@ -129,7 +137,7 @@ class OpenSSLServer {
         throw Exception('OpenSSL server did not start in time');
       }
     }
-    
+
     // Extra delay for server to fully bind
     await Future.delayed(const Duration(milliseconds: 300));
   }
@@ -137,7 +145,7 @@ class OpenSSLServer {
   Future<void> stop() async {
     _process?.kill();
     await _process?.exitCode;
-    
+
     // Cleanup temp files
     try {
       if (_tempDir != null) {
@@ -179,6 +187,7 @@ class _OpenSslScenario {
 }
 
 Future<void> _printServerDiagnostics(OpenSSLServer server) async {
+  /*
   print('\n=== OpenSSL Server Output ===');
   for (final line in server.stdout) {
     print(line);
@@ -196,6 +205,7 @@ Future<void> _printServerDiagnostics(OpenSSLServer server) async {
       print(await keyLog.readAsString());
     }
   }
+  */
 }
 
 void main() {
@@ -385,7 +395,7 @@ void main() {
           try {
             await server.start();
           } catch (e) {
-            print('Failed to start OpenSSL for ${scenario.name}: $e');
+            // print('Failed to start OpenSSL for ${scenario.name}: $e');
             await _printServerDiagnostics(server);
             rethrow;
           }
@@ -406,7 +416,7 @@ void main() {
             expect(true, isTrue,
                 reason: 'Handshake completed: ${scenario.name}');
           } catch (e) {
-            print('TLS handshake FAILED (${scenario.name}): $e');
+            // print('TLS handshake FAILED (${scenario.name}): $e');
             await _printServerDiagnostics(server);
             rethrow;
           }
@@ -426,69 +436,53 @@ void main() {
 
       Socket? socket;
       try {
-        print('Starting OpenSSL server...');
         await server.start();
-        print('OpenSSL server started on port ${server.port}');
 
-        // Connect with Dart TLS client
-        print('Connecting Dart TLS client...');
         socket = await Socket.connect('127.0.0.1', server.port);
-        print('TCP connection established');
 
         // Create TLS connection
         final settings = HandshakeSettings(
-          minVersion: (3, 3),  // TLS 1.2
-          maxVersion: (3, 3),  // TLS 1.2
+          minVersion: (3, 3), // TLS 1.2
+          maxVersion: (3, 3), // TLS 1.2
           cipherNames: ['chacha20-poly1305'],
         );
-        
-        final tlsConn = TlsConnection(socket);
 
-        print('\n=== Starting TLS handshake ===');
-        print('Settings:');
-        print('  minVersion: ${settings.minVersion}');
-        print('  maxVersion: ${settings.maxVersion}');
-        print('  cipherNames: ${settings.cipherNames}');
+        final tlsConn = TlsConnection(socket);
 
         try {
           await tlsConn.handshakeClient(settings: settings);
-          
-          print('\n=== Handshake SUCCESSFUL ===');
-          print('Negotiated cipher: ${tlsConn.session.cipherSuite}');
-          print('Negotiated version: ${tlsConn.version}');
-          
+
           // Send and receive data
           final testMessage = 'Test message from Dart client';
-          print('\nSending: $testMessage');
+          // print('\nSending: $testMessage');
           tlsConn.write(utf8.encode(testMessage));
           await tlsConn.flush();
-          
+
           // Wait a bit
           await Future.delayed(const Duration(milliseconds: 500));
-          
+
           expect(true, isTrue);
-        } catch (e, stack) {
-          print('\n=== Handshake FAILED ===');
-          print('Error: $e');
-          print('Stack: $stack');
-          
+        } catch (e) {
+          // print('\n=== Handshake FAILED ===');
+          // print('Error: $e');
+          // print('Stack: $stack');
+
           // Print all server output
-          print('\n=== OpenSSL Server Stdout ===');
-          for (final line in server.stdout) {
-            print('  $line');
-          }
-          print('\n=== OpenSSL Server Stderr ===');
-          for (final line in server.stderr) {
-            print('  $line');
-          }
-          if (server.keyLogFile != null) {
-            final keyLog = File(server.keyLogFile!);
-            if (await keyLog.exists()) {
-              print('\n=== OpenSSL KeyLog ===');
-              print(await keyLog.readAsString());
-            }
-          }
-          
+          // print('\n=== OpenSSL Server Stdout ===');
+          // for (final line in server.stdout) {
+          //   print('  $line');
+          // }
+          // print('\n=== OpenSSL Server Stderr ===');
+          // for (final line in server.stderr) {
+          //   print('  $line');
+          // }
+          // if (server.keyLogFile != null) {
+          //   final keyLog = File(server.keyLogFile!);
+          //   if (await keyLog.exists()) {
+          //     print('\n=== OpenSSL KeyLog ===');
+          //     print(await keyLog.readAsString());
+          //   }}
+
           rethrow;
         }
       } finally {
@@ -497,7 +491,7 @@ void main() {
       }
     });
   });
-  
+
   group('Record Layer Encryption Test', () {
     test('Send encrypted data after handshake', () async {
       final server = OpenSSLServer(
@@ -510,37 +504,37 @@ void main() {
       try {
         await server.start();
         socket = await Socket.connect('127.0.0.1', server.port);
-        
+
         final settings = HandshakeSettings(
-          minVersion: (3, 3),  // TLS 1.2
-          maxVersion: (3, 3),  // TLS 1.2
+          minVersion: (3, 3), // TLS 1.2
+          maxVersion: (3, 3), // TLS 1.2
           cipherNames: ['chacha20-poly1305'],
         );
-        
+
         final tlsConn = TlsConnection(socket);
 
         try {
           await tlsConn.handshakeClient(settings: settings);
-          print('Handshake completed!');
-          
+          // print('Handshake completed!');
+
           // Send multiple messages to test sequence number increment
           for (var i = 0; i < 3; i++) {
             final msg = 'Message $i from Dart';
-            print('Sending: $msg');
+            // print('Sending: $msg');
             tlsConn.write(utf8.encode(msg + '\n'));
             await tlsConn.flush();
             await Future.delayed(const Duration(milliseconds: 100));
           }
-          
-          print('All messages sent successfully!');
-          
+
+          // print('All messages sent successfully!');
+
           // If we get here without bad_record_mac, the encryption is working
           expect(true, isTrue);
         } catch (e) {
           print('Error during data exchange: $e');
-          
+
           // Check if it's bad_record_mac
-          if (e.toString().contains('bad_record_mac') || 
+          if (e.toString().contains('bad_record_mac') ||
               e.toString().contains('TLSBadRecordMAC')) {
             print('\n*** FOUND THE BUG: bad_record_mac error ***');
             print('This means record layer encryption/decryption is failing.');
@@ -552,7 +546,7 @@ void main() {
               print(await keyLog.readAsString());
             }
           }
-          
+
           rethrow;
         }
       } finally {

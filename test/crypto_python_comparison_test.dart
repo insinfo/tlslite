@@ -74,7 +74,7 @@ void main() {
       final result = await Process.run(pythonPath, ['--version']);
       if (result.exitCode == 0) {
         pythonAvailable = true;
-        print('Python available: ${result.stdout.toString().trim()}');
+        // print('Python available: ${result.stdout.toString().trim()}');
         
         // Check if tlslite-ng is importable
         final testImport = await Process.run(
@@ -82,21 +82,21 @@ void main() {
           ['-c', 'import sys; sys.path.insert(0, "$tlsliteNgPath"); from tlslite.utils.chacha20_poly1305 import CHACHA20_POLY1305; print("OK")'],
         );
         if (testImport.exitCode != 0) {
-          print('Warning: tlslite-ng import failed: ${testImport.stderr}');
+          // print('Warning: tlslite-ng import failed: ${testImport.stderr}');
           pythonAvailable = false;
         } else {
-          print('tlslite-ng is importable');
+          // print('tlslite-ng is importable');
         }
       }
     } catch (e) {
-      print('Python not available: $e');
+      // print('Python not available: $e');
     }
   });
 
   group('ChaCha20 cipher comparison with Python', () {
     test('ChaCha20 encrypt matches Python', () async {
       if (!pythonAvailable) {
-        print('Skipping - Python not available');
+        // // print('Skipping - Python not available');
         return;
       }
 
@@ -129,7 +129,7 @@ print(ciphertext.hex())
 
     test('ChaCha20 decrypt matches Python', () async {
       if (!pythonAvailable) {
-        print('Skipping - Python not available');
+        // // print('Skipping - Python not available');
         return;
       }
 
@@ -164,7 +164,7 @@ print(plaintext.hex())
   group('Poly1305 comparison with Python', () {
     test('Poly1305 createTag matches Python', () async {
       if (!pythonAvailable) {
-        print('Skipping - Python not available');
+        // print('Skipping - Python not available');
         return;
       }
 
@@ -197,7 +197,7 @@ print(tag.hex())
   group('ChaCha20-Poly1305 AEAD comparison with Python', () {
     test('ChaCha20-Poly1305 seal matches Python (RFC 7539 vector)', () async {
       if (!pythonAvailable) {
-        print('Skipping - Python not available');
+        // print('Skipping - Python not available');
         return;
       }
 
@@ -232,7 +232,7 @@ print(result.hex())
 
     test('ChaCha20-Poly1305 open matches Python', () async {
       if (!pythonAvailable) {
-        print('Skipping - Python not available');
+        // print('Skipping - Python not available');
         return;
       }
 
@@ -268,7 +268,7 @@ print(result.hex() if result else "None")
 
     test('ChaCha20-Poly1305 with empty plaintext matches Python', () async {
       if (!pythonAvailable) {
-        print('Skipping - Python not available');
+        // print('Skipping - Python not available');
         return;
       }
 
@@ -305,7 +305,7 @@ print(result.hex())
   group('AES-GCM comparison with Python', () {
     test('AES-GCM seal matches Python', () async {
       if (!pythonAvailable) {
-        print('Skipping - Python not available');
+        // print('Skipping - Python not available');
         return;
       }
 
@@ -340,7 +340,7 @@ print(result.hex())
 
     test('AES-GCM open matches Python', () async {
       if (!pythonAvailable) {
-        print('Skipping - Python not available');
+        // print('Skipping - Python not available');
         return;
       }
 
@@ -378,7 +378,7 @@ print(result.hex() if result else "None")
   group('TLS PRF comparison with Python', () {
     test('PRF (TLS 1.2) matches Python', () async {
       if (!pythonAvailable) {
-        print('Skipping - Python not available');
+        // print('Skipping - Python not available');
         return;
       }
 
@@ -410,7 +410,7 @@ print(bytearray(result).hex())
 
     test('Master secret derivation matches Python', () async {
       if (!pythonAvailable) {
-        print('Skipping - Python not available');
+        // print('Skipping - Python not available');
         return;
       }
 
@@ -448,7 +448,7 @@ print(bytearray(result).hex())
 
     test('Key expansion matches Python', () async {
       if (!pythonAvailable) {
-        print('Skipping - Python not available');
+        // print('Skipping - Python not available');
         return;
       }
 
@@ -482,7 +482,7 @@ print(bytearray(keyBlock).hex())
 
     test('Finished verify_data matches Python', () async {
       if (!pythonAvailable) {
-        print('Skipping - Python not available');
+        // print('Skipping - Python not available');
         return;
       }
 
@@ -514,7 +514,7 @@ print(bytearray(verifyData).hex())
   group('HMAC comparison with Python', () {
     test('HMAC-SHA256 matches Python', () async {
       if (!pythonAvailable) {
-        print('Skipping - Python not available');
+        // print('Skipping - Python not available');
         return;
       }
 
@@ -546,7 +546,7 @@ print(result.hex())
 
     test('HMAC-SHA384 matches Python', () async {
       if (!pythonAvailable) {
-        print('Skipping - Python not available');
+        // print('Skipping - Python not available');
         return;
       }
 
@@ -580,7 +580,7 @@ print(result.hex())
   group('Hash comparison with Python', () {
     test('SHA-256 matches Python', () async {
       if (!pythonAvailable) {
-        print('Skipping - Python not available');
+        // print('Skipping - Python not available');
         return;
       }
 
@@ -607,7 +607,7 @@ print(result.hex())
 
     test('SHA-384 matches Python', () async {
       if (!pythonAvailable) {
-        print('Skipping - Python not available');
+        // print('Skipping - Python not available');
         return;
       }
 
@@ -635,7 +635,7 @@ print(result.hex())
   group('Random data comparison with Python (stress test)', () {
     test('ChaCha20-Poly1305 with various sizes matches Python', () async {
       if (!pythonAvailable) {
-        print('Skipping - Python not available');
+        // print('Skipping - Python not available');
         return;
       }
 

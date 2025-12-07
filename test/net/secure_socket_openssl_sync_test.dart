@@ -57,7 +57,7 @@ void main() {
     );
 
     final port = await serverReady.future;
-    print('test: server listening on $port');
+    // print('test: server listening on $port');
 
     final errorSubscription = errorPort.listen((dynamic message) {
       fail('server isolate error: $message');
@@ -81,9 +81,9 @@ void main() {
     final clientErrorSubscription = clientErrorPort.listen((dynamic message) {
       fail('client isolate error: $message');
     });
-    print('test: waiting for client result...');
+    // print('test: waiting for client result...');
     final clientResult = await clientResultFuture;
-    print('test: got client result $clientResult');
+    // print('test: got client result $clientResult');
     clientResultPort.close();
     if (clientResult is Map && clientResult.containsKey('error')) {
       fail('client isolate error: ${clientResult['error']}');
@@ -114,29 +114,29 @@ class _SecureServerArgs {
 
 Future<void> _runSecureServer(_SecureServerArgs args) async {
   final server = await io.ServerSocket.bind('127.0.0.1', 0);
-  print('secure server listening on ${server.port}');
+  // print('secure server listening on ${server.port}');
   args.controlPort.send({'event': 'listening', 'port': server.port});
   try {
     await for (final socket in server) {
       try {
-        print('server: accepted client');
+        // print('server: accepted client');
         final secureServer = SecureSocketOpenSSLAsync.serverFromSocket(
           socket,
           certFile: args.certPath,
           keyFile: args.keyPath,
         );
-        print('server: starting TLS handshake');
+        // print('server: starting TLS handshake');
         await secureServer.ensureHandshakeCompleted();
-        print('server: handshake complete, reading request');
+        // print('server: handshake complete, reading request');
         final request = await secureServer.recv(4);
-        print('server: got ${String.fromCharCodes(request)}');
+        // print('server: got ${String.fromCharCodes(request)}');
         if (String.fromCharCodes(request) != 'ping') {
           throw StateError('unexpected handshake payload');
         }
-        print('server: sending pong');
+        // print('server: sending pong');
         await secureServer.send(Uint8List.fromList('pong'.codeUnits));
         await secureServer.close();
-        print('server: notify done');
+        // print('server: notify done');
         args.controlPort.send({'event': 'done'});
       } catch (error, stackTrace) {
         args.controlPort.send({
@@ -168,14 +168,14 @@ Future<void> _runSecureClient(_SecureClientArgs args) async {
       '127.0.0.1',
       args.port,
     );
-    print('client isolate: connected to ${args.port}');
+    // print('client isolate: connected to ${args.port}');
     try {
       await client.ensureHandshakeCompleted();
-      print('client isolate: handshake complete');
+      // print('client isolate: handshake complete');
       await client.send(Uint8List.fromList('ping'.codeUnits));
-      print('client isolate: sent ping');
+      // print('client isolate: sent ping');
       final response = await client.recv(4);
-      print('client isolate: got ${String.fromCharCodes(response)}');
+      // print('client isolate: got ${String.fromCharCodes(response)}');
       args.resultPort.send(String.fromCharCodes(response));
     } finally {
       await client.close();

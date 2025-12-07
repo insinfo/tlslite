@@ -44,9 +44,9 @@ class OpenSslCrypto {
       final bindings = OpenSslBindings.load();
       _crypto = bindings.crypto;
       _initialized = true;
-      print('OpenSSL version: ${_crypto.OPENSSL_version_major()}.${_crypto.OPENSSL_version_minor()}.${_crypto.OPENSSL_version_patch()}');
+      // print('OpenSSL version: ${_crypto.OPENSSL_version_major()}.${_crypto.OPENSSL_version_minor()}.${_crypto.OPENSSL_version_patch()}');
     } catch (e) {
-      print('Failed to load OpenSSL: $e');
+      // print('Failed to load OpenSSL: $e');
       rethrow;
     }
   }
@@ -333,10 +333,10 @@ void main() {
     try {
       openssl.init();
       opensslAvailable = true;
-      print('OpenSSL is available for comparison tests');
+      // print('OpenSSL is available for comparison tests');
     } catch (e) {
-      print('OpenSSL not available: $e');
-      print('Tests will only run pure Dart implementations');
+      // print('OpenSSL not available: $e');
+      // print('Tests will only run pure Dart implementations');
     }
   });
 

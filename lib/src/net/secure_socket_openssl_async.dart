@@ -6,6 +6,7 @@ import 'dart:ffi' as ffi;
 import 'dart:io' as io;
 import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
+import 'package:logging/logging.dart';
 
 import '../net_ffi/native_buffer_utils.dart';
 import '../openssl/generated/ffi.dart';
@@ -28,11 +29,13 @@ class SecureSocketOpenSSLAsync {
     String? certFile,
     String? keyFile,
     bool eagerHandshake = false,
+    Logger? logger,
   })  : _socket = socket,
         _ciphertextWriter = writer,
         _ciphertextReader = reader,
         _useCallbacks = writer != null && reader != null,
-        _isServer = isServer {
+        _isServer = isServer,
+        _logger = logger ?? Logger('SecureSocketOpenSSLAsync') {
     final socket = _socket;
     if (socket != null) {
       _subscription = socket.listen(
@@ -55,29 +58,34 @@ class SecureSocketOpenSSLAsync {
     int port, {
     Duration? timeout,
     bool eagerHandshake = true,
+    Logger? logger,
   }) async {
     final socket = await io.Socket.connect(host, port, timeout: timeout);
     return SecureSocketOpenSSLAsync._(
       socket: socket,
       isServer: false,
       eagerHandshake: eagerHandshake,
+      logger: logger,
     );
   }
 
   factory SecureSocketOpenSSLAsync.clientFromSocket(
     io.Socket socket, {
     bool eagerHandshake = true,
+    Logger? logger,
   }) =>
       SecureSocketOpenSSLAsync._(
         socket: socket,
         isServer: false,
         eagerHandshake: eagerHandshake,
+        logger: logger,
       );
 
   factory SecureSocketOpenSSLAsync.clientWithCallbacks({
     required CiphertextWriterAsync writer,
     required CiphertextReaderAsync reader,
     bool eagerHandshake = true,
+    Logger? logger,
   }) =>
       SecureSocketOpenSSLAsync._(
         socket: null,
@@ -85,6 +93,7 @@ class SecureSocketOpenSSLAsync {
         reader: reader,
         isServer: false,
         eagerHandshake: eagerHandshake,
+        logger: logger,
       );
 
   factory SecureSocketOpenSSLAsync.serverFromSocket(
@@ -92,6 +101,7 @@ class SecureSocketOpenSSLAsync {
     required String certFile,
     required String keyFile,
     bool eagerHandshake = true,
+    Logger? logger,
   }) =>
       SecureSocketOpenSSLAsync._(
         socket: socket,
@@ -99,6 +109,7 @@ class SecureSocketOpenSSLAsync {
         certFile: certFile,
         keyFile: keyFile,
         eagerHandshake: eagerHandshake,
+        logger: logger,
       );
 
   final io.Socket? _socket;
@@ -106,6 +117,7 @@ class SecureSocketOpenSSLAsync {
   final CiphertextReaderAsync? _ciphertextReader;
   final bool _useCallbacks;
   final bool _isServer;
+  final Logger _logger;
   late final OpenSsl _openSsl;
   late final OpenSsl _openSslCrypto;
   ffi.Pointer<ssl_ctx_st>? _ctx;
@@ -131,19 +143,26 @@ class SecureSocketOpenSSLAsync {
 
   Future<void> _performHandshake() async {
     if (_sslInitialized) {
+      _debug('Handshake already completed, skipping.');
       return;
     }
+    _debug('Starting TLS handshake (mode=${_isServer ? 'server' : 'client'}).');
     while (true) {
+      _debug('Calling SSL_do_handshake');
       final result = _openSsl.SSL_do_handshake(_sslPtr);
       await _drainWriteBio();
       if (result == 1) {
         _sslInitialized = true;
+        _debug('TLS handshake completed successfully.');
         return;
       }
       final error = _openSsl.SSL_get_error(_sslPtr, result);
+      _debug('SSL_do_handshake result=$result error=$error');
       if (error == _sslErrorWantRead) {
+        _debug('Handshake wants read; filling BIO...');
         final filled = await _fillReadBio();
         if (!filled) {
+          _debug('Handshake aborting because no data arrived.');
           throw io.SocketException(
             'TLS handshake aborted: socket closed before completion.',
           );
@@ -151,8 +170,10 @@ class SecureSocketOpenSSLAsync {
         continue;
       }
       if (error == _sslErrorWantWrite) {
+        _debug('Handshake wants write; continuing.');
         continue;
       }
+      _debug('Handshake failed with OpenSSL error $error.');
       throw io.SocketException(
         'TLS handshake failed (OpenSSL code $error, mode ${_isServer ? 'server' : 'client'}).',
       );
@@ -205,36 +226,70 @@ class SecureSocketOpenSSLAsync {
       throw ArgumentError.value(bufferSize, 'bufferSize', 'must be positive');
     }
     await ensureHandshakeCompleted();
-    final buffer = NativeUint8Buffer.pooled(bufferSize);
+
+    final builder = BytesBuilder(copy: false);
+    final tempBuffer = NativeUint8Buffer.pooled(_defaultCiphertextChunk);
+
     try {
-      while (true) {
-        final received =
-            _openSsl.SSL_read(_sslPtr, buffer.pointer.cast(), bufferSize);
+      while (builder.length < bufferSize) {
+        final remaining = bufferSize - builder.length;
+        final toRead = remaining < tempBuffer.length ? remaining : tempBuffer.length;
+        _debug('SSL_read attempt bufferSize=$toRead');
+        final received = _openSsl.SSL_read(
+          _sslPtr,
+          tempBuffer.pointer.cast(),
+          toRead,
+        );
+
         if (received > 0) {
-          return buffer.copyToDart(received);
-        }
-        final error = _openSsl.SSL_get_error(_sslPtr, received);
-        if (error == _sslErrorWantRead) {
-          final filled = await _fillReadBio(
-            preferredSize: bufferSize,
-          );
-          if (!filled) {
-            return Uint8List(0);
+          _debug('SSL_read produced $received bytes');
+          final data = tempBuffer.copyToDart(received);
+          builder.add(data);
+
+          if (builder.length >= bufferSize) {
+            break;
           }
           continue;
         }
+
+        final error = _openSsl.SSL_get_error(_sslPtr, received);
+        _debug('SSL_read result=$received error=$error');
+
+        if (error == _sslErrorWantRead) {
+          if (builder.length > 0) {
+            break;
+          }
+
+          final filled =
+              await _fillReadBio(preferredSize: _defaultCiphertextChunk);
+          if (!filled) {
+            if (builder.length == 0) {
+              return Uint8List(0);
+            }
+            break;
+          }
+          continue;
+        }
+
         if (error == _sslErrorWantWrite) {
           await _drainWriteBio();
           continue;
         }
+
         if (error == _sslErrorZeroReturn) {
-          return Uint8List(0);
+          if (builder.length == 0) {
+            return Uint8List(0);
+          }
+          break;
         }
+
         throw io.SocketException('SSL read failed (OpenSSL code $error).');
       }
     } finally {
-      buffer.release();
+      tempBuffer.release();
     }
+
+    return builder.takeBytes();
   }
 
   Future<void> shutdown() async {
@@ -283,12 +338,14 @@ class SecureSocketOpenSSLAsync {
   }
 
   Future<bool> _fillReadBio({int? preferredSize}) async {
+    _debug('Filling read BIO (preferredSize=${preferredSize ?? -1}).');
     final bio = _networkReadBio;
     if (bio == null || bio == ffi.nullptr) {
       throw io.SocketException('TLS read BIO is unavailable.');
     }
     final ciphertext = await _dequeueCiphertextChunk(preferredSize);
     if (ciphertext == null || ciphertext.isEmpty) {
+      _debug('No ciphertext available for read BIO.');
       return false;
     }
     final buffer = NativeUint8Buffer.fromBytes(
@@ -307,6 +364,7 @@ class SecureSocketOpenSSLAsync {
     } finally {
       buffer.release();
     }
+    _debug('Fed ${ciphertext.length} bytes into read BIO.');
     return true;
   }
 
@@ -342,9 +400,12 @@ class SecureSocketOpenSSLAsync {
         if (ciphertext.isEmpty) {
           break;
         }
+        _debug('Draining write BIO chunk of ${ciphertext.length} bytes.');
         if (_useCallbacks) {
+          _debug('Sending ciphertext via callback.');
           await _ciphertextWriter!(ciphertext);
         } else {
+          _debug('Sending ciphertext via socket.add (len=${ciphertext.length}).');
           _socket!.add(ciphertext);
           wroteAny = true;
         }
@@ -354,6 +415,7 @@ class SecureSocketOpenSSLAsync {
     }
     final socket = _socket;
     if (wroteAny && socket != null) {
+      _debug('Flushing underlying socket after BIO drain.');
       await socket.flush();
     }
   }
@@ -361,13 +423,17 @@ class SecureSocketOpenSSLAsync {
   Future<Uint8List?> _dequeueCiphertextChunk(int? preferredSize) async {
     if (_useCallbacks) {
       final size = preferredSize ?? _defaultCiphertextChunk;
+      _debug('Requesting ciphertext via callback (size=$size).');
       return await _ciphertextReader!(size);
     }
     while (true) {
       if (_ciphertextQueue.isNotEmpty) {
-        return _ciphertextQueue.removeFirst();
+        final chunk = _ciphertextQueue.removeFirst();
+        _debug('Dequeued ${chunk.length} bytes from ciphertext queue.');
+        return chunk;
       }
       if (_socketError != null) {
+        _debug('Dequeue aborting due to socket error: $_socketError');
         final error = _socketError!;
         if (error is io.SocketException) {
           throw error;
@@ -375,9 +441,11 @@ class SecureSocketOpenSSLAsync {
         throw io.SocketException(error.toString());
       }
       if (_socketClosed) {
+        _debug('Dequeue saw closed socket; returning null.');
         return null;
       }
       _ciphertextSignal ??= Completer<void>();
+      _debug('Waiting for ciphertext signal...');
       await _ciphertextSignal!.future;
     }
   }
@@ -387,6 +455,7 @@ class SecureSocketOpenSSLAsync {
       return;
     }
     _ciphertextQueue.addLast(Uint8List.fromList(data));
+    _debug('Received ${data.length} bytes from socket.');
     final signal = _ciphertextSignal;
     if (signal != null && !signal.isCompleted) {
       _ciphertextSignal = null;
@@ -395,6 +464,7 @@ class SecureSocketOpenSSLAsync {
   }
 
   void _handleSocketError(Object error, StackTrace stackTrace) {
+    _debug('Socket error: $error');
     _socketError = error;
     _socketClosed = true;
     final signal = _ciphertextSignal;
@@ -405,6 +475,7 @@ class SecureSocketOpenSSLAsync {
   }
 
   void _handleSocketDone() {
+    _debug('Socket done/closed notification received.');
     _socketClosed = true;
     final signal = _ciphertextSignal;
     if (signal != null && !signal.isCompleted) {
@@ -506,4 +577,9 @@ class SecureSocketOpenSSLAsync {
     }
     return bio;
   }
+
+  void _debug(String message) {
+    _logger.fine('[#${identityHashCode(this)}] $message');
+  }
+
 }

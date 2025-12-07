@@ -46,6 +46,12 @@
 ### 🔵 BAIXA (pode esperar)
 7. integration/ (asyncstatemachine, httptlsconnection ported) - ✅ Fixed & Ported
 
+### 🐛 BUG FIXES & NOTES
+- **2025-12-07: OpenSSL Integration Fix (Dart vs Python Behavior)**
+  - **Issue:** `SecureSocketOpenSSLAsync.recv` in Dart was reading more data from OpenSSL (fixed 16KB buffer) than requested by the caller (e.g., 8 bytes). The excess decrypted data was discarded because `recv` was stateless regarding the buffer. This caused subsequent reads to hang waiting for data that had already been consumed and lost.
+  - **Python Difference:** Python's `EncryptedSocket.recv` passes the requested `bufsize` directly to `OpenSSL.SSL.Connection.recv`. OpenSSL handles the buffering of excess decrypted data internally, so no data is lost.
+  - **Fix:** Updated `SecureSocketOpenSSLAsync.recv` to limit `SSL_read` to the exact number of bytes requested (`bufferSize - builder.length`). Added `recvAvailable` to transport interfaces to support `TdsTlsIoBridge` requirements properly.
+
 ---
 
 ## COMPLETO ✅

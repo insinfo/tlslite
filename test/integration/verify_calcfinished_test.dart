@@ -36,12 +36,14 @@ void main() {
     // Calculate verify_data
     final verifyData = calcFinished(version, masterSecret, cipherSuite, fakeHashes, true);
     
+    /*
     print('Master Secret: ${bytesToHex(masterSecret)}');
     print('Handshake Hash: ${bytesToHex(handshakeHash)}');
     print('Cipher Suite: 0x${cipherSuite.toRadixString(16).padLeft(4, '0')}');
     print('Expected Verify Data (Python): ${bytesToHex(expectedVerifyData)}');
     print('Actual Verify Data (Dart): ${bytesToHex(verifyData)}');
     print('Match: ${bytesToHex(verifyData) == bytesToHex(expectedVerifyData)}');
+    */
     
     expect(verifyData, equals(expectedVerifyData));
   });

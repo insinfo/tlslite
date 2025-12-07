@@ -31,10 +31,12 @@ void main() {
         nonce[i] = paddedSeq[i] ^ fixedNonce[i];
       }
       
-      print('fixedNonce: ${bytesToHex(fixedNonce)}');
-      print('seqNum: ${bytesToHex(seqNum)}');
-      print('paddedSeq: ${bytesToHex(paddedSeq)}');
-      print('nonce: ${bytesToHex(nonce)}');
+      /*
+      // print('fixedNonce: ${bytesToHex(fixedNonce)}');
+      // print('seqNum: ${bytesToHex(seqNum)}');
+      // print('paddedSeq: ${bytesToHex(paddedSeq)}');
+      // print('nonce: ${bytesToHex(nonce)}');
+      */
       
       // For seqnum=0, nonce should equal fixedNonce
       expect(nonce, equals(fixedNonce));
@@ -60,8 +62,8 @@ void main() {
         plaintextLength & 0xff
       ]);
       
-      print('AAD: ${bytesToHex(aad)}');
-      print('AAD length: ${aad.length}');
+      // print('AAD: ${bytesToHex(aad)}');
+      // print('AAD length: ${aad.length}');
       
       // Expected: 13 bytes (8 seqnum + 1 type + 2 version + 2 length)
       expect(aad.length, equals(13));
@@ -102,13 +104,15 @@ void main() {
       // Seal
       final ciphertext = cipher.seal(nonce, plaintext, aad);
       
-      print('Key: ${bytesToHex(key)}');
-      print('Nonce: ${bytesToHex(nonce)}');
-      print('AAD: ${bytesToHex(aad)}');
-      print('Plaintext length: ${plaintext.length}');
-      print('Ciphertext length: ${ciphertext.length}');
-      print('Ciphertext (first 32): ${bytesToHex(ciphertext.sublist(0, 32))}');
-      print('Tag (last 16): ${bytesToHex(ciphertext.sublist(ciphertext.length - 16))}');
+      /*
+      // print('Key: ${bytesToHex(key)}');
+      // print('Nonce: ${bytesToHex(nonce)}');
+      // print('AAD: ${bytesToHex(aad)}');
+      // print('Plaintext length: ${plaintext.length}');
+      // print('Ciphertext length: ${ciphertext.length}');
+      // print('Ciphertext (first 32): ${bytesToHex(ciphertext.sublist(0, 32))}');
+      // print('Tag (last 16): ${bytesToHex(ciphertext.sublist(ciphertext.length - 16))}');
+      */
       
       // Expected ciphertext + tag from RFC 8439
       // This test verifies our ChaCha20-Poly1305 implementation
@@ -124,9 +128,11 @@ void main() {
       ));
       final clientIV = Uint8List.fromList(hexToBytes('3841a059177685ab3c526005'));
       
-      print('=== Simulating first encrypted record (Finished) ===');
-      print('Client Key: ${bytesToHex(clientKey)}');
-      print('Client IV (fixedNonce): ${bytesToHex(clientIV)}');
+      /*
+      // print('=== Simulating first encrypted record (Finished) ===');
+      // print('Client Key: ${bytesToHex(clientKey)}');
+      // print('Client IV (fixedNonce): ${bytesToHex(clientIV)}');
+      */
       
       // Sequence number for first encrypted record is 0
       final seqNum = Uint8List.fromList([0, 0, 0, 0, 0, 0, 0, 0]);
@@ -139,9 +145,11 @@ void main() {
         nonce[i] = paddedSeq[i] ^ clientIV[i];
       }
       
-      print('Sequence number: ${bytesToHex(seqNum)}');
-      print('Padded seqnum: ${bytesToHex(paddedSeq)}');
-      print('Nonce: ${bytesToHex(nonce)}');
+      /*
+      // print('Sequence number: ${bytesToHex(seqNum)}');
+      // print('Padded seqnum: ${bytesToHex(paddedSeq)}');
+      // print('Nonce: ${bytesToHex(nonce)}');
+      */
       
       // AAD for TLS 1.2 Finished
       // Finished message: handshake type (20) + length (12) + verify_data (12 bytes)
@@ -153,8 +161,8 @@ void main() {
         ...finishedVerifyData
       ]);
       
-      print('Finished message: ${bytesToHex(finishedMessage)}');
-      print('Finished message length: ${finishedMessage.length}');
+      // print('Finished message: ${bytesToHex(finishedMessage)}');
+      // print('Finished message length: ${finishedMessage.length}');
       
       // AAD = seqnum + content_type + version + length
       const contentType = 22; // handshake
@@ -166,18 +174,19 @@ void main() {
         finishedMessage.length & 0xff
       ]);
       
-      print('AAD: ${bytesToHex(aad)}');
+      // print('AAD: ${bytesToHex(aad)}');
       
       // Create cipher and seal
       final cipher = createCHACHA20(clientKey);
-      final ciphertext = cipher.seal(nonce, finishedMessage, aad);
+      cipher.seal(nonce, finishedMessage, aad);
       
-      print('Ciphertext length: ${ciphertext.length}');
-      print('Ciphertext: ${bytesToHex(ciphertext)}');
+      // print('Ciphertext length: ${ciphertext.length}');
+      // print('Ciphertext: ${bytesToHex(ciphertext)}');
       
       // The TLS record sent should be:
       // - Record header: 5 bytes (type=22, version=0x0303, length)
       // - Ciphertext: ciphertext + tag
+      /*
       final recordLength = ciphertext.length;
       final record = Uint8List.fromList([
         22, // content type: handshake
@@ -187,9 +196,10 @@ void main() {
         ...ciphertext
       ]);
       
-      print('\n=== Full TLS Record ===');
-      print('Record: ${bytesToHex(record)}');
-      print('Record length: ${record.length}');
+      // print('\n=== Full TLS Record ===');
+      // print('Record: ${bytesToHex(record)}');
+      // print('Record length: ${record.length}');
+      */
     });
   });
 }

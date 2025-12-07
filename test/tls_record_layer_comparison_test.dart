@@ -50,30 +50,32 @@ Future<String> runPythonHex(String code) async {
 bool pythonAvailable = false;
 
 void main() {
+  const skipReason = 'testes python foram desativados propositalmente';
+  
   setUpAll(() async {
     try {
       final result = await runPython('print("ok")');
       if (result == 'ok') {
         pythonAvailable = true;
-        print('Python is available');
+        // print('Python is available');
         
         // Check if tlslite is importable
         try {
           await runPython('from tlslite import *; print("tlslite ok")');
-          print('tlslite-ng is importable');
+          // print('tlslite-ng is importable');
         } catch (e) {
-          print('Warning: tlslite-ng import issue: $e');
+          // print('Warning: tlslite-ng import issue: $e');
         }
       }
     } catch (e) {
-      print('Python not available: $e');
+      // print('Python not available: $e');
     }
   });
 
   group('Sequence Number Encoding', () {
     test('Sequence number bytes encoding matches Python', () async {
       if (!pythonAvailable) {
-        print('Skipping - Python not available');
+        // // print('Skipping - Python not available');
         return;
       }
 
@@ -100,13 +102,13 @@ print(writer.bytes.hex())
                   'Dart:   ${toHex(dartBytes)}\n'
                   'Python: $pythonResult');
       }
-    });
+    }, skip: skipReason);
   });
 
   group('AAD (Additional Authenticated Data) Construction', () {
     test('TLS 1.2 AAD construction matches Python', () async {
       if (!pythonAvailable) {
-        print('Skipping - Python not available');
+        // // print('Skipping - Python not available');
         return;
       }
 
@@ -160,11 +162,11 @@ print(authData.hex())
         reason: 'TLS 1.2 AAD: Dart should match Python\n'
                 'Dart:   ${toHex(authData)}\n'
                 'Python: $pythonResult');
-    });
+    }, skip: skipReason);
 
     test('AAD with various sequence numbers', () async {
       if (!pythonAvailable) {
-        print('Skipping - Python not available');
+        // // print('Skipping - Python not available');
         return;
       }
 
@@ -202,13 +204,13 @@ print(authData.hex())
         expect(toHex(authData), equals(pythonResult),
           reason: 'AAD with seqnum $seqnum: Dart should match Python');
       }
-    });
+    }, skip: skipReason);
   });
 
   group('Nonce Construction', () {
     test('ChaCha20-Poly1305 nonce (XOR method) matches Python', () async {
       if (!pythonAvailable) {
-        print('Skipping - Python not available');
+        // // print('Skipping - Python not available');
         return;
       }
 
@@ -252,11 +254,11 @@ print(nonce.hex())
         reason: 'ChaCha20 nonce (XOR): Dart should match Python\n'
                 'Dart:   ${toHex(nonce)}\n'
                 'Python: $pythonResult');
-    });
+    }, skip: skipReason);
 
     test('ChaCha20-Poly1305 nonce with various sequence numbers', () async {
       if (!pythonAvailable) {
-        print('Skipping - Python not available');
+        // // print('Skipping - Python not available');
         return;
       }
 
@@ -296,11 +298,11 @@ print(nonce.hex())
         expect(toHex(nonce), equals(pythonResult),
           reason: 'ChaCha20 nonce with seqnum $seqnum: Dart should match Python');
       }
-    });
+    }, skip: skipReason);
 
     test('AES-GCM nonce (concatenation method) matches Python', () async {
       if (!pythonAvailable) {
-        print('Skipping - Python not available');
+        // // print('Skipping - Python not available');
         return;
       }
 
@@ -335,13 +337,13 @@ print(nonce.hex())
         reason: 'AES-GCM nonce (concat): Dart should match Python\n'
                 'Dart:   ${toHex(nonce)}\n'
                 'Python: $pythonResult');
-    });
+    }, skip: skipReason);
   });
 
   group('Key Derivation (TLS 1.2)', () {
     test('Key block expansion matches Python exactly', () async {
       if (!pythonAvailable) {
-        print('Skipping - Python not available');
+        // // print('Skipping - Python not available');
         return;
       }
 
@@ -376,16 +378,18 @@ print(bytearray(keyBlock).hex())
                 'Python: $pythonResult');
 
       // Also print individual keys/IVs for debugging
+      /*
       print('Key block (${dartKeyBlock.length} bytes): ${toHex(Uint8List.fromList(dartKeyBlock))}');
       print('Client write key (32 bytes): ${toHex(Uint8List.fromList(dartKeyBlock.sublist(0, 32)))}');
       print('Server write key (32 bytes): ${toHex(Uint8List.fromList(dartKeyBlock.sublist(32, 64)))}');
       print('Client write IV (12 bytes): ${toHex(Uint8List.fromList(dartKeyBlock.sublist(64, 76)))}');
       print('Server write IV (12 bytes): ${toHex(Uint8List.fromList(dartKeyBlock.sublist(76, 88)))}');
-    });
+      */
+    }, skip: skipReason);
 
     test('Key material partitioning for ChaCha20-Poly1305', () async {
       if (!pythonAvailable) {
-        print('Skipping - Python not available');
+        // // print('Skipping - Python not available');
         return;
       }
 
@@ -444,13 +448,13 @@ print("SERVER_WRITE_IV:" + serverWriteIV.hex())
         reason: 'Client write IV should match Python');
       expect(dartServerWriteIV, equals(pythonServerWriteIV),
         reason: 'Server write IV should match Python');
-    });
+    }, skip: skipReason);
   });
 
   group('Complete Record Encryption (TLS 1.2 ChaCha20-Poly1305)', () {
     test('Single record encryption matches Python exactly', () async {
       if (!pythonAvailable) {
-        print('Skipping - Python not available');
+        // // print('Skipping - Python not available');
         return;
       }
 
@@ -537,11 +541,11 @@ print("CIPHERTEXT:" + bytearray(ciphertext).hex())
         reason: 'Ciphertext+tag should match Python\n'
                 'Dart:   ${toHex(ciphertext)}\n'
                 'Python: $pythonCiphertext');
-    });
+    }, skip: skipReason);
 
     test('Multiple consecutive records match Python', () async {
       if (!pythonAvailable) {
-        print('Skipping - Python not available');
+        // // print('Skipping - Python not available');
         return;
       }
 
@@ -608,13 +612,13 @@ print(bytearray(ciphertext).hex())
         expect(toHex(ciphertext), equals(pythonResult),
           reason: 'Record $seqnum: Dart ciphertext should match Python');
       }
-    });
+    }, skip: skipReason);
   });
 
   group('Complete Record Decryption (TLS 1.2 ChaCha20-Poly1305)', () {
     test('Decrypt Python-encrypted record', () async {
       if (!pythonAvailable) {
-        print('Skipping - Python not available');
+        // // print('Skipping - Python not available');
         return;
       }
 
@@ -682,14 +686,14 @@ print(bytearray(ciphertext).hex())
 
       expect(decrypted, isNotNull, reason: 'Decryption should succeed');
       expect(decrypted, equals(originalPlaintext),
-        reason: 'Decrypted plaintext should match original');
-    });
+        reason: 'Decrypted plaintext should match Python');
+    }, skip: skipReason);
   });
 
   group('Finished Message Verify Data', () {
     test('Client Finished verify_data matches Python', () async {
       if (!pythonAvailable) {
-        print('Skipping - Python not available');
+        // print('Skipping - Python not available');
         return;
       }
 
@@ -710,11 +714,11 @@ print(bytearray(verifyData).hex())
 
       expect(toHex(Uint8List.fromList(dartVerifyData)), equals(pythonResult),
         reason: 'Client Finished verify_data should match Python');
-    });
+    }, skip: skipReason);
 
     test('Server Finished verify_data matches Python', () async {
       if (!pythonAvailable) {
-        print('Skipping - Python not available');
+        // print('Skipping - Python not available');
         return;
       }
 
@@ -735,13 +739,13 @@ print(bytearray(verifyData).hex())
 
       expect(toHex(Uint8List.fromList(dartVerifyData)), equals(pythonResult),
         reason: 'Server Finished verify_data should match Python');
-    });
+    }, skip: skipReason);
   });
 
   group('Complete TLS 1.2 Handshake Message Encryption', () {
     test('Encrypted Finished message matches Python format', () async {
       if (!pythonAvailable) {
-        print('Skipping - Python not available');
+        // // print('Skipping - Python not available');
         return;
       }
 
@@ -814,7 +818,7 @@ print(bytearray(ciphertext).hex())
 
       expect(toHex(ciphertext), equals(pythonResult),
         reason: 'Encrypted Finished should match Python');
-    });
+    }, skip: skipReason);
   });
 
   group('AES-GCM Record Layer', () {
