@@ -60,3 +60,14 @@ O BigInt._mul() atual é extremamente lento
 A instrução PCLMULQDQ é amplamente suportada (desde 2010)
 O shell code é relativamente simples (~50 bytes)
 Quer que eu implemente o PCLMULQDQ para AES-GCM GHASH?
+
+esumo das otimizações concluídas:
+
+Algoritmo	Speedup	Técnica
+AES (Rijndael)	16.7x	AES-NI shell code
+AES-GCM GHASH	28-62x	PCLMULQDQ shell code
+SHA-256	3x	Software otimizado (SHA-NI não disponível)
+Poly1305	32x	Base 2^32 limbs (evita BigInt)
+ChaCha20	N/A	JIT do Dart já é ótimo
+
+ continue para X25519/Ed25519 ou RSA Montgomery
