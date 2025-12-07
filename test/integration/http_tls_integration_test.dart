@@ -296,4 +296,139 @@ void main() {
       }
     }, timeout: const Timeout(Duration(seconds: 30)));
   });
+
+  group('Rio das Ostras Government Site Tests', () {
+    test('TLS 1.2 connection to www.riodasostras.rj.gov.br', () async {
+      final conn = HttpTlsConnection(
+        'www.riodasostras.rj.gov.br',
+        port: 443,
+        settings: HandshakeSettings(
+          minVersion: (3, 3), // TLS 1.2
+          maxVersion: (3, 3), // TLS 1.2 only
+        ),
+      );
+
+      try {
+        await conn.connect();
+        print('✓ TLS 1.2 handshake completed with www.riodasostras.rj.gov.br');
+
+        await conn.request('GET', '/', headers: {
+          'Host': 'www.riodasostras.rj.gov.br',
+          'User-Agent': 'TlsLite-Dart/1.0 (TLS 1.2)',
+          'Accept': 'text/html,application/xhtml+xml',
+          'Connection': 'close',
+        });
+
+        final response = await conn.getResponse();
+        print('✓ HTTP response: ${response.status} ${response.reason}');
+
+        expect(response.status, anyOf(equals(200), equals(301), equals(302), equals(403)));
+      } finally {
+        await conn.close();
+      }
+    }, timeout: const Timeout(Duration(seconds: 30)));
+
+    test('TLS 1.3 connection to www.riodasostras.rj.gov.br', () async {
+      final conn = HttpTlsConnection(
+        'www.riodasostras.rj.gov.br',
+        port: 443,
+        settings: HandshakeSettings(
+          minVersion: (3, 4), // TLS 1.3
+          maxVersion: (3, 4), // TLS 1.3 only
+        ),
+      );
+
+      try {
+        await conn.connect();
+        print('✓ TLS 1.3 handshake completed with www.riodasostras.rj.gov.br');
+
+        await conn.request('GET', '/', headers: {
+          'Host': 'www.riodasostras.rj.gov.br',
+          'User-Agent': 'TlsLite-Dart/1.0 (TLS 1.3)',
+          'Accept': 'text/html,application/xhtml+xml',
+          'Connection': 'close',
+        });
+
+        final response = await conn.getResponse();
+        print('✓ HTTP response: ${response.status} ${response.reason}');
+
+        expect(response.status, anyOf(equals(200), equals(301), equals(302), equals(403)));
+      } finally {
+        await conn.close();
+      }
+    }, timeout: const Timeout(Duration(seconds: 30)));
+
+    test('Auto-negotiate TLS version with www.riodasostras.rj.gov.br', () async {
+      final conn = HttpTlsConnection(
+        'www.riodasostras.rj.gov.br',
+        port: 443,
+        settings: HandshakeSettings(
+          minVersion: (3, 1), // TLS 1.0
+          maxVersion: (3, 4), // TLS 1.3
+        ),
+      );
+
+      try {
+        await conn.connect();
+        print('✓ TLS handshake completed with www.riodasostras.rj.gov.br (auto-negotiate)');
+
+        await conn.request('GET', '/', headers: {
+          'Host': 'www.riodasostras.rj.gov.br',
+          'User-Agent': 'TlsLite-Dart/1.0 (Auto TLS)',
+          'Accept': 'text/html,application/xhtml+xml',
+          'Connection': 'close',
+        });
+
+        final response = await conn.getResponse();
+        print('✓ HTTP response: ${response.status} ${response.reason}');
+
+        expect(response.status, anyOf(equals(200), equals(301), equals(302), equals(403)));
+      } finally {
+        await conn.close();
+      }
+    }, timeout: const Timeout(Duration(seconds: 30)));
+
+    test('Direct TlsConnection with www.riodasostras.rj.gov.br', () async {
+      final socket = await Socket.connect('www.riodasostras.rj.gov.br', 443);
+      final tls = TlsConnection(socket);
+
+      try {
+        await tls.handshakeClient(
+          settings: HandshakeSettings(
+            minVersion: (3, 3), // TLS 1.2 minimum
+            maxVersion: (3, 4), // Allow TLS 1.3
+          ),
+          serverName: 'www.riodasostras.rj.gov.br',
+        );
+
+        print('✓ Direct TLS handshake (www.riodasostras.rj.gov.br) completed');
+        print('  Negotiated version: ${tls.version}');
+        print('  Cipher suite: 0x${tls.session.cipherSuite.toRadixString(16)}');
+
+        final request = 'GET / HTTP/1.1\r\n'
+            'Host: www.riodasostras.rj.gov.br\r\n'
+            'User-Agent: TlsLite-Dart/1.0\r\n'
+            'Accept: text/html\r\n'
+            'Connection: close\r\n'
+            '\r\n';
+        await tls.sendRecord(Message(
+          ContentType.application_data,
+          Uint8List.fromList(utf8.encode(request)),
+        ));
+
+        print('✓ HTTP request sent via direct TlsConnection');
+
+        final (header, parser) = await tls.recvMessage();
+        final data = parser.getFixBytes(parser.getRemainingLength());
+        final responseStart = utf8.decode(data, allowMalformed: true);
+
+        print('✓ Response received (first 200 chars):');
+        print('  ${responseStart.substring(0, responseStart.length > 200 ? 200 : responseStart.length)}...');
+
+        expect(responseStart, contains('HTTP/1.'));
+      } finally {
+        await socket.close();
+      }
+    }, timeout: const Timeout(Duration(seconds: 30)));
+  });
 }

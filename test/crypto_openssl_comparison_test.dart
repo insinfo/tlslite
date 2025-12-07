@@ -119,7 +119,7 @@ class OpenSslCrypto {
 
       // Finalize
       final tmpOutLen = calloc<ffi.Int>();
-      result = _crypto.EVP_EncryptFinal_ex(ctx, ciphertextPtr.elementAt(ciphertextLen), tmpOutLen);
+      result = _crypto.EVP_EncryptFinal_ex(ctx, ciphertextPtr + ciphertextLen, tmpOutLen);
       ciphertextLen += tmpOutLen.value;
       calloc.free(tmpOutLen);
       if (result != 1) throw StateError('EVP_EncryptFinal_ex failed');
@@ -210,7 +210,7 @@ class OpenSslCrypto {
       int ciphertextLen = outLen.value;
 
       final tmpOutLen = calloc<ffi.Int>();
-      result = _crypto.EVP_EncryptFinal_ex(ctx, ciphertextPtr.elementAt(ciphertextLen), tmpOutLen);
+      result = _crypto.EVP_EncryptFinal_ex(ctx, ciphertextPtr + ciphertextLen, tmpOutLen);
       ciphertextLen += tmpOutLen.value;
       calloc.free(tmpOutLen);
       if (result != 1) throw StateError('EVP_EncryptFinal_ex failed');

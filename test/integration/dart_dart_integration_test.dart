@@ -74,13 +74,52 @@ void main() {
         'kx': const ['ecdhe_rsa'],
         'curves': const ['secp256r1', 'x25519'],
       },
+      // Post-Quantum Hybrid Tests (ML-KEM + ECDH)
+      {
+        'name': 'TLS 1.3 X25519+ML-KEM-768 Hybrid + AES256-GCM',
+        'minVer': (3, 4),
+        'maxVer': (3, 4),
+        'ciphers': const ['aes256gcm'],
+        'kx': const ['ecdhe_rsa'],
+        'curves': const ['x25519mlkem768', 'x25519'],
+      },
+      {
+        'name': 'TLS 1.3 P-256+ML-KEM-768 Hybrid + AES256-GCM',
+        'minVer': (3, 4),
+        'maxVer': (3, 4),
+        'ciphers': const ['aes256gcm'],
+        'kx': const ['ecdhe_rsa'],
+        'curves': const ['secp256r1mlkem768', 'secp256r1'],
+      },
+      {
+        'name': 'TLS 1.3 P-384+ML-KEM-1024 Hybrid + AES256-GCM',
+        'minVer': (3, 4),
+        'maxVer': (3, 4),
+        'ciphers': const ['aes256gcm'],
+        'kx': const ['ecdhe_rsa'],
+        'curves': const ['secp384r1mlkem1024', 'secp384r1'],
+      },
+      // Ed448 Signature Test
+      {
+        'name': 'TLS 1.3 Ed448 Signature + AES256-GCM',
+        'minVer': (3, 4),
+        'maxVer': (3, 4),
+        'ciphers': const ['aes256gcm'],
+        'kx': const ['ecdhe_ecdsa'],  // Ed448 uses ECDHE key exchange
+        'curves': const ['x25519'],
+        'certFile': 'test/certificates/serverEd448Cert.pem',
+        'keyFile': 'test/certificates/serverEd448Key.pem',
+        'sigSchemes': const ['Ed448'],
+      },
     ];
 
     for (final variant in variants) {
       test('Handshake (${variant['name']})', () async {
-        // Certificados do nginx local (já presentes no repo).
-        final certPem = await File('scripts/nginx/server.crt').readAsString();
-        final keyPem = await File('scripts/nginx/server.key').readAsString();
+        // Certificados - use custom se especificado, senão usa nginx padrão
+        final certPath = (variant['certFile'] as String?) ?? 'scripts/nginx/server.crt';
+        final keyPath = (variant['keyFile'] as String?) ?? 'scripts/nginx/server.key';
+        final certPem = await File(certPath).readAsString();
+        final keyPem = await File(keyPath).readAsString();
         final certChain = X509CertChain()..parsePemList(certPem);
         final privateKey = parsePrivateKey(keyPem);
 
@@ -106,6 +145,7 @@ void main() {
                     : null,
                 useEncryptThenMAC:
                   (variant['useEtm'] as bool?) ?? true,
+                moreSigSchemes: variant['sigSchemes'] as List<String>?,
               ),
               certChain: certChain,
               privateKey: privateKey,
@@ -146,6 +186,7 @@ void main() {
                 ? (variant['curves'] as List<String>).cast<String>()
                 : null,
             useEncryptThenMAC: (variant['useEtm'] as bool?) ?? true,
+            moreSigSchemes: variant['sigSchemes'] as List<String>?,
           ),
           serverName: 'localhost',
           alpn: const ['dart-test'],

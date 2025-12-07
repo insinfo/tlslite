@@ -63,7 +63,12 @@ class _FakeHandshakeHashes implements HandshakeHashes {
   HandshakeHashes copy() => this;
   
   @override
-  Uint8List digestSSL(List<int> masterSecret, Uint8List senderStr) {
+  Uint8List digestSSL(Uint8List masterSecret, Uint8List senderStr) {
     throw UnimplementedError();
+  }
+  
+  @override
+  void replaceWith(HandshakeHashes other) {
+    // No-op for fake implementation
   }
 }

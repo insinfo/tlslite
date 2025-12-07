@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import '../ed448/ed448.dart' as ed448;
 import 'asn1parser.dart';
 import 'codec.dart';
 import 'cryptomath.dart';
@@ -547,9 +548,17 @@ Ed448PrivateKey _parseEd448PrivateKey(
     Uint8List data, Uint8List? publicKeyBytes) {
   final seed = _extractEdPrivateSeed(data, _ed448KeyLengthBytes,
       error: 'Ed448 private keys must be 57 bytes');
+  
+  // If no public key provided, derive it from the seed
   if (publicKeyBytes == null) {
-    throw const FormatException('Ed448 PKCS#8 keys must include public key');
+    // Import the Ed448 implementation to derive the public key
+    final privImpl = ed448.Ed448PrivateKeyImpl.fromSeed(
+      seed,
+      generator: ed448.Ed448Generator.rfc8032,
+    );
+    publicKeyBytes = privImpl.publicKeyBytes;
   }
+  
   if (publicKeyBytes.length != _ed448KeyLengthBytes) {
     throw const FormatException('Ed448 public keys must be 57 bytes');
   }

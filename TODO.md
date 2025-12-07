@@ -17,6 +17,14 @@
    - ✅ `_serverHandshake13` (Full flow implemented: RSA/ECDSA auth, Client Auth, ALPN, Resumption, X25519)
    - ✅ `_serverHandshake12` (Full flow implemented: RSA/DHE/ECDHE, Client Auth, ALPN, Session ID, SigAlgs)
 
+### ✅ HelloRetryRequest (HRR) Support
+- ✅ **HRR Detection**: `TlsServerHello.isHelloRetryRequest` flag based on RFC 8446 special random value
+- ✅ **KeyShare Extension**: Correct parsing with `TlsExtensionContext.helloRetryRequest` context (2-byte group only)
+- ✅ **Transcript Replacement**: RFC 8446 Section 4.4.1 compliant message_hash substitution
+- ✅ **ML-KEM Support**: HRR triggers ML-KEM-768 key share generation when Google requests it (group 0x11ec)
+- ✅ **HandshakeHashes.replaceWith()**: New method for transcript state replacement during HRR
+- ✅ **Integration Test**: `TLS 1.3 only connection to google.com` now passes with full HRR flow
+
 ### ✅ IMPORTANTE  
 4. **handshakesettings.py** → handshake_settings.dart (716 linhas) - ✅ COMPLETO
 5. **tlsrecordlayer.py** → tls_record_layer.dart (1.345 linhas) - ✅ COMPLETO
@@ -37,7 +45,7 @@
 
 **Crypto**: AES (CBC/CTR/GCM/CCM/CCM8), ChaCha20-Poly1305, TripleDES, RC4, **Ed448**, **ML-KEM (FIPS 203)**
 
-**Features**: TLS 1.3 (HRR, Resumption, Client Auth, ALPN), TLS 1.2 (Full Handshake, Client Auth, ALPN)
+**Features**: TLS 1.3 (HRR, Resumption, Client Auth, ALPN, ML-KEM), TLS 1.2 (Full Handshake, Client Auth, ALPN)
 
 ---
 
@@ -65,6 +73,12 @@ dart analyze                 # análise estática
   - `ed448_impl.dart`: Assinatura/verificação Ed448 conforme RFC 8032
 - ✅ `Ed448PublicKey` e `Ed448PrivateKey` agora usam implementação real em `eddsakey.dart`.
 - ✅ Integração com `keyfactory.dart` para parsing de chaves Ed448.
+- ✅ **INTEGRAÇÃO TLS 1.3 COMPLETA**:
+  - ✅ `TlsConnection` suporta assinaturas Ed448 em CertificateVerify (cliente e servidor)
+  - ✅ Seleção automática de signature scheme (0x0808) quando chave Ed448 é usada
+  - ✅ Verificação de assinaturas Ed448 em certificados recebidos
+  - ✅ Parser Ed448 agora deriva chave pública automaticamente se não incluída no PKCS#8
+- ✅ Teste de integração TLS 1.3 com Ed448 passando (`dart_dart_integration_test.dart`)
 - 🔜 Adicionar testes de vetores RFC 8032 para Ed448.
 
 ### SignedObject / OCSP
@@ -174,8 +188,9 @@ permitindo verificar `decaps(dk, c) == k` sem dependência de DRBG.
 2️⃣ Connect `PskSelectionResult` to actual handshake flow for resumptions
 3️⃣ ~~Port Ed448 math from ed448goldilocks for full EdDSA support~~ ✅ DONE
 4️⃣ ~~Implement ML-KEM for post-quantum support~~ ✅ DONE
-5️⃣ Complete TLSConnection handshake flow
-6️⃣ Add RFC/NIST test vectors for Ed448 and ML-KEM
+5️⃣ ~~Integrate Ed448 signatures into TLS 1.3 handshake~~ ✅ DONE
+6️⃣ Complete TLSConnection handshake flow
+7️⃣ Add RFC/NIST test vectors for Ed448 and ML-KEM
 
 tem que ver isso sessionCache do SimpleTlsServer por enquanto (já que não está suportado no handshakeServer):
 

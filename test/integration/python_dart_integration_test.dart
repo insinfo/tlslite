@@ -247,6 +247,7 @@ String _toHex(List<int> bytes) {
   return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ');
 }
 
+// ignore: unused_element
 void _analyzeTlsRecords(Uint8List data, String direction) {
   print('\n=== TLS Records ($direction) ===');
   

@@ -28,6 +28,19 @@ class HandshakeHashes {
     _handshakeSHA512 = _HashWrapper(() => crypto.sha512);
   }
 
+  /// Reset all hashes and replace with the state from another HandshakeHashes.
+  /// Used for HelloRetryRequest transcript replacement (RFC 8446 Section 4.4.1).
+  void replaceWith(HandshakeHashes other) {
+    _handshakeMD5 = other._handshakeMD5.copy();
+    _handshakeSHA = other._handshakeSHA.copy();
+    _handshakeSHA224 = other._handshakeSHA224.copy();
+    _handshakeSHA256 = other._handshakeSHA256.copy();
+    _handshakeSHA384 = other._handshakeSHA384.copy();
+    _handshakeSHA512 = other._handshakeSHA512.copy();
+    _handshakeBuffer.clear();
+    _handshakeBuffer.addAll(other._handshakeBuffer);
+  }
+
   /// Add [data] to hash input.
   ///
   /// [data] - serialized TLS handshake message

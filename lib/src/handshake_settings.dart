@@ -140,6 +140,10 @@ const curveNames = [
   'brainpoolP256r1tls13',
   'brainpoolP384r1tls13',
   'brainpoolP512r1tls13',
+  // Post-Quantum Hybrid Groups (ML-KEM + ECDH)
+  'x25519mlkem768',
+  'secp256r1mlkem768',
+  'secp384r1mlkem1024',
 ];
 
 const allCurveNames = [...curveNames, 'secp256k1', 'secp224r1', 'secp192r1'];
@@ -178,6 +182,10 @@ const tls13PermittedGroups = [
   'brainpoolP256r1tls13',
   'brainpoolP384r1tls13',
   'brainpoolP512r1tls13',
+  // Post-Quantum Hybrid Groups (ML-KEM + ECDH)
+  'x25519mlkem768',
+  'secp256r1mlkem768',
+  'secp384r1mlkem1024',
 ];
 
 const knownVersions = [(3, 0), (3, 1), (3, 2), (3, 3), (3, 4)];

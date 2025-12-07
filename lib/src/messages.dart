@@ -306,6 +306,17 @@ abstract class TlsHandshakeMessage extends TlsMessage {
     return parsed;
   }
 
+  /// Check if the random field indicates this is a HelloRetryRequest.
+  /// HRR uses a special constant random value defined in RFC 8446.
+  static bool _isHelloRetryRequest(Uint8List random) {
+    final hrr = tls_constants.TLS_1_3_HRR;
+    if (random.length != hrr.length) return false;
+    for (int i = 0; i < random.length; i++) {
+      if (random[i] != hrr[i]) return false;
+    }
+    return true;
+  }
+
   static TlsHandshakeMessage _parseTyped(
     TlsHandshakeType type,
     Uint8List body,
@@ -315,6 +326,15 @@ abstract class TlsHandshakeMessage extends TlsMessage {
       case TlsHandshakeType.clientHello:
         return TlsClientHello.parseBody(body);
       case TlsHandshakeType.serverHello:
+        // ServerHello and HelloRetryRequest share the same handshake type (0x02).
+        // We need to check the random field to distinguish them.
+        // The random starts at offset 2 (after 2-byte version) and is 32 bytes.
+        if (body.length >= 34) {
+          final random = Uint8List.sublistView(body, 2, 34);
+          if (_isHelloRetryRequest(random)) {
+            return TlsServerHello.parseBody(body, isHelloRetryRequest: true);
+          }
+        }
         return TlsServerHello.parseBody(body);
       case TlsHandshakeType.certificate:
         return TlsCertificate.parseBody(body, version: recordVersion);
@@ -632,6 +652,8 @@ class TlsServerHello extends TlsHandshakeMessage {
     List<String>? applicationProtocols,
     TlsKeyShareEntry? keyShare,
     List<int>? ecPointFormats,
+    this.isHelloRetryRequest = false,
+    this.selectedGroup,
   })  : random = Uint8List.fromList(random),
         sessionId = Uint8List.fromList(sessionId),
         extensions = extensions,
@@ -668,10 +690,18 @@ class TlsServerHello extends TlsHandshakeMessage {
   final List<String> applicationProtocols;
   final TlsKeyShareEntry? keyShare;
   final List<int> ecPointFormats;
+  
+  /// Indicates if this ServerHello is actually a HelloRetryRequest.
+  /// HRR has a special random value defined in RFC 8446.
+  final bool isHelloRetryRequest;
+  
+  /// The group selected by the server in a HelloRetryRequest.
+  /// Only valid when [isHelloRetryRequest] is true.
+  final int? selectedGroup;
 
   TlsExtension? getExtension(int type) => extensions?.byType(type);
 
-  static TlsServerHello parseBody(Uint8List body) {
+  static TlsServerHello parseBody(Uint8List body, {bool isHelloRetryRequest = false}) {
     final parser = Parser(body);
     final version = TlsProtocolVersion.parse(parser);
     final random = parser.getFixBytes(32);
@@ -683,19 +713,29 @@ class TlsServerHello extends TlsHandshakeMessage {
     TlsProtocolVersion? selectedSupportedVersion;
     List<String> applicationProtocols = const <String>[];
     TlsKeyShareEntry? keyShare;
+    int? selectedGroup;
     if (!parser.isDone) {
       final extensionsLength = parser.get(2);
       final bytes = parser.getFixBytes(extensionsLength);
+      // Use helloRetryRequest context for HRR to parse KeyShare correctly
+      final context = isHelloRetryRequest 
+          ? TlsExtensionContext.helloRetryRequest 
+          : TlsExtensionContext.serverHello;
       extensions = TlsExtensionBlock.fromBytes(
         bytes,
-        context: TlsExtensionContext.serverHello,
+        context: context,
       );
       selectedSupportedVersion = extensions
           .first<TlsSupportedVersionsExtension>()
           ?.selectedVersion;
       applicationProtocols =
           extensions.first<TlsAlpnExtension>()?.protocols ?? const <String>[];
-      keyShare = extensions.first<TlsKeyShareExtension>()?.serverShare;
+      final keyShareExt = extensions.first<TlsKeyShareExtension>();
+      if (isHelloRetryRequest) {
+        selectedGroup = keyShareExt?.selectedGroup;
+      } else {
+        keyShare = keyShareExt?.serverShare;
+      }
     }
     if (!parser.isDone) {
       throw DecodeError('Sobrou payload após ServerHello');
@@ -710,6 +750,8 @@ class TlsServerHello extends TlsHandshakeMessage {
       selectedSupportedVersion: selectedSupportedVersion,
       applicationProtocols: applicationProtocols,
       keyShare: keyShare,
+      isHelloRetryRequest: isHelloRetryRequest,
+      selectedGroup: selectedGroup,
     );
   }
 

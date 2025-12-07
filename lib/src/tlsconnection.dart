@@ -587,6 +587,9 @@ class TlsConnection extends MessageSocket {
       alpn,
     );
 
+    // Save transcript snapshot after ClientHello1 for potential HRR handling
+    final clientHello1Snapshot = handshakeHashes.copy();
+
     // Receive ServerHello
     var message = await recvHandshakeMessage(
         allowedTypes: [TlsHandshakeType.serverHello]);
@@ -597,19 +600,53 @@ class TlsConnection extends MessageSocket {
     }
 
     // Check for HelloRetryRequest (TLS 1.3)
-    if (_bytesEqual(message.random, TLS_1_3_HRR)) {
-        // Handle HRR
+    if (message.isHelloRetryRequest) {
+        // Handle HRR - According to RFC 8446, we need to replace ClientHello1 
+        // in the transcript with message_hash
+        
+        // Determine the hash algorithm to use based on selected cipher suite
+        final cipherSuite = message.cipherSuite;
+        String hashName = 'sha256';  // Default for most TLS 1.3 suites
+        if (cipherSuite == CipherSuite.TLS_AES_256_GCM_SHA384 ||
+            cipherSuite == CipherSuite.TLS_CHACHA20_POLY1305_SHA256) {
+          // SHA384 for AES_256_GCM
+          if (cipherSuite == CipherSuite.TLS_AES_256_GCM_SHA384) {
+            hashName = 'sha384';
+          }
+        }
+        
+        // Calculate Hash(ClientHello1) from the snapshot taken BEFORE receiving HRR
+        final clientHello1Hash = clientHello1Snapshot.digest(hashName);
+        
+        // Create synthetic message_hash handshake message
+        // Format: msg_type (1) || length (3) || Hash(ClientHello1)
+        final messageHashMsg = Uint8List(4 + clientHello1Hash.length);
+        messageHashMsg[0] = HandshakeType.message_hash; // 254
+        messageHashMsg[1] = 0;
+        messageHashMsg[2] = 0;
+        messageHashMsg[3] = clientHello1Hash.length;
+        messageHashMsg.setRange(4, 4 + clientHello1Hash.length, clientHello1Hash);
+        
+        // Replace the transcript: clear and add message_hash + HelloRetryRequest
+        // We need a new HandshakeHashes instance
+        final newHashes = HandshakeHashes();
+        newHashes.update(messageHashMsg);
+        
+        // Copy internal state - we'll serialize the HRR and add it
+        final hrrBytes = message.serialize();
+        newHashes.update(hrrBytes);
+        
+        // Replace the handshake hashes (we need to copy values back)
+        handshakeHashes.replaceWith(newHashes);
+
         final cookieExt = message.extensions?.byType(ExtensionType.cookie);
         Uint8List? cookie;
         if (cookieExt is TlsCookieExtension) {
             cookie = cookieExt.cookie;
         }
 
-        final keyShareExt = message.extensions?.byType(ExtensionType.key_share);
-        int? retryGroup;
-        if (keyShareExt is TlsKeyShareExtension) {
-            retryGroup = keyShareExt.serverShare?.group;
-        }
+        // For HRR, use the selectedGroup field instead of serverShare
+        int? retryGroup = message.selectedGroup;
 
         // Send ClientHello2
         await _clientSendClientHello(
@@ -636,7 +673,7 @@ class TlsConnection extends MessageSocket {
             throw TLSUnexpectedMessage('Expected ServerHello after HRR, got ${message.handshakeType.name}');
         }
         
-        if (_bytesEqual(message.random, TLS_1_3_HRR)) {
+        if (message.isHelloRetryRequest) {
              await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
              throw TLSUnexpectedMessage('Second HelloRetryRequest received');
         }
@@ -1307,6 +1344,10 @@ class TlsConnection extends MessageSocket {
           keyType = 'rsa';
       } else if (pubKey is ECDSAKey) {
           keyType = 'ecdsa';
+      } else if (pubKey is Ed448PublicKey) {
+          keyType = 'ed448';
+      } else if (pubKey is EdDSAKey && pubKey.bitLength == 256) {
+          keyType = 'ed25519';
       } else {
           throw UnimplementedError('Unsupported key type: ${pubKey.runtimeType}');
       }
@@ -1324,12 +1365,10 @@ class TlsConnection extends MessageSocket {
           throw TLSHandshakeFailure('Unknown signature scheme: ${certVerifyMsg.signatureScheme}');
       }
 
-      String? padding;
-      String hash;
-      int? saltLen;
-
+      bool signatureValid;
       if (schemeName.startsWith('rsa_pss')) {
-          padding = 'pss';
+          String hash;
+          int saltLen;
           if (schemeName.endsWith('sha256')) {
               hash = 'sha256';
               saltLen = 32;
@@ -1342,25 +1381,31 @@ class TlsConnection extends MessageSocket {
           } else {
               throw TLSHandshakeFailure('Unsupported hash for PSS: $schemeName');
           }
+          signatureValid = (pubKey as RSAKey).verify(certVerifyMsg.signature, verifyBytes, padding: 'pss', hashAlg: hash, saltLen: saltLen);
       } else if (schemeName.startsWith('rsa_pkcs1')) {
-          padding = 'pkcs1';
+          String hash;
           if (schemeName.endsWith('sha256')) hash = 'sha256';
           else if (schemeName.endsWith('sha384')) hash = 'sha384';
           else if (schemeName.endsWith('sha512')) hash = 'sha512';
           else if (schemeName.endsWith('sha1')) hash = 'sha1';
           else throw TLSHandshakeFailure('Unsupported hash for PKCS1: $schemeName');
+          signatureValid = (pubKey as RSAKey).verify(certVerifyMsg.signature, verifyBytes, padding: 'pkcs1', hashAlg: hash, saltLen: 0);
       } else if (schemeName.startsWith('ecdsa')) {
-          padding = null;
+          String hash;
           if (schemeName.endsWith('sha256')) hash = 'sha256';
           else if (schemeName.endsWith('sha384')) hash = 'sha384';
           else if (schemeName.endsWith('sha512')) hash = 'sha512';
           else if (schemeName.endsWith('sha1')) hash = 'sha1';
           else throw TLSHandshakeFailure('Unsupported hash for ECDSA: $schemeName');
+          signatureValid = (pubKey as ECDSAKey).verify(certVerifyMsg.signature, verifyBytes, hashAlg: hash);
+      } else if (schemeName == 'ed448' || schemeName == 'ed25519') {
+          // EdDSA (Ed448/Ed25519) uses pure signatures without pre-hashing
+          signatureValid = (pubKey as EdDSAKey).hashAndVerify(certVerifyMsg.signature, verifyBytes);
       } else {
-           throw TLSHandshakeFailure('Mismatch between key type and signature scheme: $schemeName');
+           throw TLSHandshakeFailure('Unsupported signature scheme: $schemeName');
       }
 
-      if (!(pubKey as dynamic).verify(certVerifyMsg.signature, verifyBytes, padding: padding, hashAlg: hash, saltLen: saltLen ?? 0)) {
+      if (!signatureValid) {
            await _sendAlert(AlertLevel.fatal, AlertDescription.decrypt_error);
            throw TLSHandshakeFailure('Invalid signature');
       }
@@ -1631,21 +1676,59 @@ class TlsConnection extends MessageSocket {
       TlsKeyShareEntry? serverShare;
       Uint8List? sharedSecret;
       
-      // Try to find a match in client's shares
-      for (final share in keyShareExt.clientShares) {
-          if (share.group == GroupName.x25519) {
-               final kex = ECDHKeyExchange(GroupName.x25519, (3, 4));
-               final serverPrivateKey = kex.getRandomPrivateKey();
-               final pubKey = kex.calcPublicValue(serverPrivateKey);
-               serverShare = TlsKeyShareEntry(group: GroupName.x25519, keyExchange: pubKey);
-               sharedSecret = kex.calcSharedKey(serverPrivateKey, share.keyExchange);
-               break;
+      // Get accepted groups from settings
+      final acceptedGroups = _curveNamesToList(handshakeSettings);
+      
+      // Try to find a match in client's shares (prefer server's order)
+      for (final preferredGroup in acceptedGroups) {
+          for (final share in keyShareExt.clientShares) {
+              if (share.group == preferredGroup) {
+                  if (GroupName.allKEM.contains(share.group)) {
+                      // Post-Quantum Hybrid (ML-KEM + ECDH)
+                      final kem = KEMKeyExchange(share.group);
+                      final (ss, ct) = kem.encapsulateKey(share.keyExchange);
+                      serverShare = TlsKeyShareEntry(group: share.group, keyExchange: ct);
+                      sharedSecret = ss;
+                  } else {
+                      // Classical ECDH (X25519, P-256, etc.)
+                      final kex = ECDHKeyExchange(share.group, (3, 4));
+                      final serverPrivateKey = kex.getRandomPrivateKey();
+                      final pubKey = kex.calcPublicValue(serverPrivateKey);
+                      serverShare = TlsKeyShareEntry(group: share.group, keyExchange: pubKey);
+                      sharedSecret = kex.calcSharedKey(serverPrivateKey, share.keyExchange);
+                  }
+                  break;
+              }
+          }
+          if (serverShare != null) break;
+      }
+      
+      // Fallback: try any client share we can handle
+      if (serverShare == null) {
+          for (final share in keyShareExt.clientShares) {
+              if (GroupName.allKEM.contains(share.group)) {
+                  final kem = KEMKeyExchange(share.group);
+                  final (ss, ct) = kem.encapsulateKey(share.keyExchange);
+                  serverShare = TlsKeyShareEntry(group: share.group, keyExchange: ct);
+                  sharedSecret = ss;
+                  break;
+              } else if (share.group == GroupName.x25519 || 
+                         share.group == GroupName.secp256r1 ||
+                         share.group == GroupName.secp384r1 ||
+                         share.group == GroupName.secp521r1) {
+                  final kex = ECDHKeyExchange(share.group, (3, 4));
+                  final serverPrivateKey = kex.getRandomPrivateKey();
+                  final pubKey = kex.calcPublicValue(serverPrivateKey);
+                  serverShare = TlsKeyShareEntry(group: share.group, keyExchange: pubKey);
+                  sharedSecret = kex.calcSharedKey(serverPrivateKey, share.keyExchange);
+                  break;
+              }
           }
       }
       
       if (serverShare == null) {
            await _sendAlert(AlertLevel.fatal, AlertDescription.handshake_failure);
-           throw TLSHandshakeFailure('No supported key share (only X25519 supported for now)');
+           throw TLSHandshakeFailure('No supported key share');
       }
       
       serverRandom = getRandomBytes(32);
@@ -1764,6 +1847,10 @@ class TlsConnection extends MessageSocket {
       
       if (privateKey is ECDSAKey) {
           keyType = 'ecdsa';
+      } else if (privateKey is Ed448PrivateKey) {
+          keyType = 'ed448';
+      } else if (privateKey is EdDSAKey && privateKey.bitLength == 256) {
+          keyType = 'ed25519';
       }
 
       if (sigAlgsExt is TlsSignatureAlgorithmsExtension) {
@@ -1781,6 +1868,14 @@ class TlsConnection extends MessageSocket {
               } else if (sigAlgsExt.signatureSchemes.contains(SignatureScheme.ecdsa_secp384r1_sha384.value)) {
                   selectedScheme = SignatureScheme.ecdsa_secp384r1_sha384.value;
               }
+          } else if (privateKey is Ed448PrivateKey) {
+              if (sigAlgsExt.signatureSchemes.contains(SignatureScheme.ed448.value)) {
+                  selectedScheme = SignatureScheme.ed448.value;
+              }
+          } else if (privateKey is EdDSAKey && privateKey.bitLength == 256) {
+              if (sigAlgsExt.signatureSchemes.contains(SignatureScheme.ed25519.value)) {
+                  selectedScheme = SignatureScheme.ed25519.value;
+              }
           }
       }
       
@@ -1789,6 +1884,10 @@ class TlsConnection extends MessageSocket {
                selectedScheme = SignatureScheme.rsa_pss_rsae_sha256.value;
            } else if (privateKey is ECDSAKey) {
                selectedScheme = SignatureScheme.ecdsa_secp256r1_sha256.value;
+           } else if (privateKey is Ed448PrivateKey) {
+               selectedScheme = SignatureScheme.ed448.value;
+           } else if (privateKey is EdDSAKey && privateKey.bitLength == 256) {
+               selectedScheme = SignatureScheme.ed25519.value;
            } else {
                throw UnimplementedError('Unsupported key type: ${privateKey.runtimeType}');
            }
@@ -1829,6 +1928,9 @@ class TlsConnection extends MessageSocket {
           else if (schemeName.endsWith('sha512')) hash = 'sha512';
           
           signature = privateKey.sign(verifyBytes, hashAlg: hash);
+      } else if (privateKey is EdDSAKey) {
+          // Ed448 and Ed25519 use pure EdDSA signatures (no pre-hashing)
+          signature = privateKey.hashAndSign(verifyBytes);
       } else {
           throw UnimplementedError('Unsupported signing key');
       }
