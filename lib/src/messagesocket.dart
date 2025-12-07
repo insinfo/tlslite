@@ -2,7 +2,6 @@
 /// Wrapper of TLS RecordLayer providing message-level abstraction
 
 import 'dart:typed_data';
-import 'package:logging/logging.dart';
 
 import 'recordlayer.dart';
 import 'constants.dart';
@@ -22,15 +21,13 @@ import 'utils/binary_io.dart';
 /// 
 /// This class provides abstraction for handling Handshake protocol messages.
 class MessageSocket extends RecordLayer {
-  MessageSocket(super.sock, this.defragmenter, {Logger? logger})
-      : super(logger: logger);
+  MessageSocket(super.sock, this.defragmenter);
 
   MessageSocket.custom(
     BinaryInput input,
     BinaryOutput output,
-    this.defragmenter, {
-    Logger? logger,
-  }) : super.custom(input, output, logger: logger);
+    this.defragmenter,
+  ) : super.custom(input, output);
 
   /// Defragmenter used for read records
   final Defragmenter defragmenter;

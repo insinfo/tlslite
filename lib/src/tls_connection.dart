@@ -1,7 +1,6 @@
 import 'dart:collection';
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:logging/logging.dart';
 
 import 'constants.dart';
 import 'defragmenter.dart';
@@ -34,21 +33,18 @@ import 'utils/binary_io.dart';
 /// TlsConnection with full TLS 1.0/1.3 handshake support,
 /// session caching, PSK resumption, and SSLv2/SSLv3 record interoperability.
 class TlsConnection extends MessageSocket {
-  TlsConnection(Socket socket, {SessionCache? sessionCache, Logger? logger})
+  TlsConnection(Socket socket, {SessionCache? sessionCache})
       : this._(socket,
             sessionCache: sessionCache,
-            defragmenter: _createHandshakeDefragmenter(),
-            logger: logger);
+            defragmenter: _createHandshakeDefragmenter());
 
   /// Visible for tests so we can inject custom defragmenters or stub sockets.
   TlsConnection.testing(Socket socket,
       {SessionCache? sessionCache,
-      required Defragmenter defragmenter,
-      Logger? logger})
+      required Defragmenter defragmenter})
       : this._(socket,
             sessionCache: sessionCache,
-            defragmenter: defragmenter,
-            logger: logger);
+            defragmenter: defragmenter);
 
   /// Creates a TlsConnection over a custom transport (BinaryInput/BinaryOutput).
   /// This allows running TLS over non-socket streams, such as encapsulated protocols.
@@ -56,22 +52,18 @@ class TlsConnection extends MessageSocket {
     BinaryInput input,
     BinaryOutput output, {
     SessionCache? sessionCache,
-    Logger? logger,
   }) : this._custom(
           input,
           output,
           sessionCache: sessionCache,
           defragmenter: _createHandshakeDefragmenter(),
-          logger: logger,
         );
 
   TlsConnection._(Socket socket,
       {SessionCache? sessionCache,
-      required Defragmenter defragmenter,
-      Logger? logger})
+      required Defragmenter defragmenter})
       : _sessionCache = sessionCache,
-        _logger = logger ?? Logger('TlsConnection'),
-        super(socket, defragmenter, logger: logger) {
+        super(socket, defragmenter) {
     // Use 0x0303 as the legacy record version for initial ClientHello records.
     version = const TlsProtocolVersion(3, 3);
   }
@@ -81,19 +73,13 @@ class TlsConnection extends MessageSocket {
     BinaryOutput output, {
     SessionCache? sessionCache,
     required Defragmenter defragmenter,
-    Logger? logger,
   })  : _sessionCache = sessionCache,
-        _logger = logger ?? Logger('TlsConnection'),
-        super.custom(input, output, defragmenter, logger: logger) {
+        super.custom(input, output, defragmenter) {
     version = const TlsProtocolVersion(3, 3);
   }
 
-  final Logger _logger;
   Session session = Session();
 
-  void _debug(String message) {
-    _logger.fine('[#${identityHashCode(this)}] $message');
-  }
   SessionCache? _sessionCache;
   final Queue<(dynamic, Parser)> _pendingMessages = Queue();
   final Queue<TlsHandshakeMessage> _handshakeQueue = Queue();
@@ -866,17 +852,13 @@ class TlsConnection extends MessageSocket {
 
     while (true) {
       var message = await recvHandshakeMessage();
-      _debug(
-          'Received message: ${message.runtimeType}, handshakeType: ${message.handshakeType.name}');
 
       // Handle RawTlsHandshakeMessage by parsing into specific types
       if (message is RawTlsHandshakeMessage) {
-        _debug('Message is RawTlsHandshakeMessage, converting...');
         final rawBody = message.serializeBody();
         switch (message.handshakeType) {
           case TlsHandshakeType.serverHelloDone:
             message = TlsServerHelloDone();
-            _debug('Converted to TlsServerHelloDone');
             break;
           case TlsHandshakeType.serverKeyExchange:
             message = TlsServerKeyExchange.parse(
@@ -884,21 +866,14 @@ class TlsConnection extends MessageSocket {
               session.cipherSuite,
               [version.major, version.minor],
             );
-            _debug('Converted to TlsServerKeyExchange');
             break;
           case TlsHandshakeType.certificateStatus:
             message = TlsCertificateStatus.parse(rawBody);
-            _debug('Converted to TlsCertificateStatus');
             break;
           default:
-            _debug(
-                'Unknown type, keeping as RawTlsHandshakeMessage');
             // Keep as RawTlsHandshakeMessage, will be caught below
             break;
         }
-      } else {
-        _debug(
-            'Message is NOT RawTlsHandshakeMessage, type: ${message.runtimeType}');
       }
 
       if (message is TlsServerHelloDone) {
@@ -1152,7 +1127,6 @@ class TlsConnection extends MessageSocket {
     }
 
     // Derive master secret now that all pre-CCS handshake messages are hashed
-    _debug('extendedMasterSecret: ${session.extendedMasterSecret}');
     if (session.extendedMasterSecret) {
       session.masterSecret = calcKey(
         [version.major, version.minor],
@@ -1165,20 +1139,11 @@ class TlsConnection extends MessageSocket {
       session.masterSecret = calcMasterSecret([version.major, version.minor],
           session.cipherSuite, premasterSecret, clientRandom, serverRandom);
     }
-    _debug(
-        'masterSecret=${session.masterSecret.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
 
     // Send ChangeCipherSpec
     await queueMessageBlocking(
         Message(ContentType.change_cipher_spec, Uint8List.fromList([1])));
     await flushBlocking();
-
-    _debug('About to calcPendingStates');
-    _debug('cipherSuite: 0x${session.cipherSuite.toRadixString(16)}');
-    _debug('masterSecret length: ${session.masterSecret.length}');
-    _debug('clientRandom length: ${clientRandom.length}');
-    _debug('serverRandom length: ${serverRandom.length}');
-    _debug('version: ${version.major}.${version.minor}');
 
     // Calculate pending states for encryption (keys derived from master secret)
     calcPendingStates(
@@ -1189,46 +1154,20 @@ class TlsConnection extends MessageSocket {
       null, // implementations
     );
 
-    _debug('calcPendingStates done');
-    _debug('BEFORE changeWriteState - encContext: ${getCipherName()}');
-
     // Switch to Application Keys (Write) - MUST be done BEFORE sending Finished
     changeWriteState();
 
-    _debug('AFTER changeWriteState - encContext: ${getCipherName()}');
-
-    _debug('changeWriteState done, about to send Finished');
-
-    // Debug: print handshake hash before building verifyData
-    final hashForDebug = handshakeHashes.digest('sha256');
-    _debug(
-        'handshakeHash (sha256 before Finished): ${hashForDebug.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
-
     // Send Finished (now encrypted)
     final verifyData = buildFinishedVerifyData(forClient: true);
-    _debug(
-        'verifyData: ${verifyData.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
-    _debug('verifyData length: ${verifyData.length}');
     await sendHandshakeMessage(TlsFinished(verifyData: verifyData));
 
-    _debug('Finished sent');
     // Receive ChangeCipherSpec
-    _debug(
-        'About to receive CCS. _pendingMessages.length=${_pendingMessages.length}');
-    if (_pendingMessages.isNotEmpty) {
-      final firstPending = _pendingMessages.first;
-      _debug('First pending message type: ${firstPending.$1.type}');
-    }
     final pendingEncryptedHandshakes = <(dynamic, Uint8List)>[];
     while (true) {
       final (header, parser) = await recvRecord();
-      _debug('Received message type: ${header.type}'
-          '${header is RecordHeader3 ? ', length=${header.length}' : ''}');
 
       if (header.type == ContentType.alert) {
         final alertBytes = parser.getFixBytes(parser.getRemainingLength());
-        _debug(
-            'Alert received: level=${alertBytes.isNotEmpty ? alertBytes[0] : "?"} desc=${alertBytes.length > 1 ? alertBytes[1] : "?"}');
         final alert = TlsAlert.parse(alertBytes);
         throw TLSRemoteAlert(alert.description.code, alert.level.code);
       }
@@ -1255,11 +1194,7 @@ class TlsConnection extends MessageSocket {
               recordVersion: recordVersion,
             );
             defragmenter.addData(ContentType.handshake, fragment);
-            _debug('Queued plaintext handshake before CCS '
-                '(len=${fragment.length})');
           } catch (_) {
-            _debug('Stashed encrypted handshake fragment (hex): '
-                '${fragment.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
             pendingEncryptedHandshakes.add((header, fragment));
           }
           continue;
@@ -1267,8 +1202,6 @@ class TlsConnection extends MessageSocket {
 
         // Otherwise, decrypt the encrypted handshake using the pending keys.
         changeReadState();
-        _debug('Encrypted handshake record (hex): '
-            '${fragment.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
         final (_, plaintext) = decryptRecordPayload(header, fragment);
         defragmenter.addData(ContentType.handshake, plaintext);
         break;
@@ -1299,9 +1232,6 @@ class TlsConnection extends MessageSocket {
           masterSecret: session.masterSecret,
           cipherSuite: session.cipherSuite,
         ));
-        final hh = handshakeHashes.digest('sha256');
-        _debug('processed NST before Finished, handshakeHash='
-            '${hh.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
         finishedHandshakeSnapshot = handshakeHashes.copy();
       } else {
         await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
@@ -1310,8 +1240,6 @@ class TlsConnection extends MessageSocket {
     }
 
     // Verify Finished
-    _debug('received server Finished verifyData: '
-        '${finishedMsg.verifyData.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
     final expectedVerifyData = calcFinished(
       [version.major, version.minor],
       session.masterSecret,
@@ -1319,17 +1247,6 @@ class TlsConnection extends MessageSocket {
       finishedHandshakeSnapshot,
       false,
     );
-    _debug('expected server Finished verifyData: '
-        '${expectedVerifyData.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
-    final altVerifyData = calcFinished(
-      [version.major, version.minor],
-      session.masterSecret,
-      session.cipherSuite,
-      initialFinishedSnapshot,
-      false,
-    );
-    _debug('expected (without NST) verifyData: '
-        '${altVerifyData.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
     if (!_bytesEqual(finishedMsg.verifyData, expectedVerifyData)) {
       await _sendAlert(AlertLevel.fatal, AlertDescription.decrypt_error);
       throw TLSHandshakeFailure('Finished verification failed');

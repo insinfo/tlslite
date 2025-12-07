@@ -3,7 +3,6 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:logging/logging.dart';
 
 
 import 'constants.dart';
@@ -22,8 +21,7 @@ import 'utils/binary_io.dart';
 
 /// Socket wrapper for reading and writing TLS Records
 class RecordSocket {
-  RecordSocket.fromSocket(this.socket, {Logger? logger})
-      : _logger = logger ?? Logger('RecordSocket') {
+  RecordSocket.fromSocket(this.socket) {
     _input = SocketBinaryInput(socket!);
     _output = SocketBinaryOutput(socket!);
   }
@@ -31,14 +29,11 @@ class RecordSocket {
   RecordSocket.fromTransport({
     required BinaryInput input,
     required BinaryOutput output,
-    Logger? logger,
   })  : socket = null,
         _input = input,
-        _output = output,
-        _logger = logger ?? Logger('RecordSocket');
+        _output = output;
 
   final Socket? socket;
-  final Logger _logger;
   late final BinaryInput _input;
   late final BinaryOutput _output;
 
@@ -64,15 +59,6 @@ class RecordSocket {
       final header = RecordHeader3().create(version, msg.contentType, data.length);
       headerBytes = header.write();
     }
-
-    _logger.fine('RecordSocket.send');
-    _logger.fine('  contentType=${msg.contentType}');
-    _logger.fine('  version=${version.major}.${version.minor}');
-    _logger.fine('  data.length=${data.length}');
-    _logger.fine('  headerBytes=${headerBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
-    _logger.fine('  data=${data.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
-    final fullRecord = Uint8List.fromList([...headerBytes, ...data]);
-    _logger.fine('  fullRecord=${fullRecord.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
 
     _output.writeBytes(headerBytes);
     _output.writeBytes(data);
@@ -123,16 +109,6 @@ class RecordSocket {
         throw TLSRecordOverflow();
       }
 
-      final headerVersion = header is RecordHeader3
-          ? header.version
-          : header is RecordHeader2
-              ? header.version
-              : const TlsProtocolVersion(0, 0);
-      _logger.fine('[DART-DEBUG-RECV] type=${header.type} '
-          'version=${headerVersion.major}.${headerVersion.minor} '
-          'length=${header.length} '
-          'headerBytes=${headerBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
-
       await _input.ensureBytes(header.length);
       final data = Uint8List.fromList(_input.readBytes(header.length));
       return (header, data);
@@ -178,18 +154,15 @@ class ConnectionState {
 
 /// Implementation of TLS record layer protocol
 class RecordLayer {
-  RecordLayer(this.sock, {Logger? logger})
-      : _logger = logger ?? Logger('RecordLayer') {
-    _recordSocket = RecordSocket.fromSocket(sock!, logger: _logger);
+  RecordLayer(this.sock) {
+    _recordSocket = RecordSocket.fromSocket(sock!);
   }
 
-  RecordLayer.custom(BinaryInput input, BinaryOutput output, {Logger? logger})
-      : sock = null,
-        _logger = logger ?? Logger('RecordLayer') {
-    _recordSocket = RecordSocket.fromTransport(input: input, output: output, logger: _logger);
+  RecordLayer.custom(BinaryInput input, BinaryOutput output)
+      : sock = null {
+    _recordSocket = RecordSocket.fromTransport(input: input, output: output);
   }
 
-  final Logger _logger;
   final Socket? sock;
   late RecordSocket _recordSocket;
   TlsProtocolVersion _version = const TlsProtocolVersion(0, 0);
@@ -448,14 +421,6 @@ class RecordLayer {
   Uint8List _encryptThenSeal(Uint8List buf, int contentType) {
     final seqNumBytes = _writeState.getSeqNumBytes();
     
-    _logger.fine('\n[DART-DEBUG-ENCRYPT] _encryptThenSeal called');
-    _logger.fine('[DART-DEBUG-ENCRYPT]   seqNumBytes=${seqNumBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
-    _logger.fine('[DART-DEBUG-ENCRYPT]   contentType=$contentType');
-    _logger.fine('[DART-DEBUG-ENCRYPT]   version=${version.major}.${version.minor}');
-    _logger.fine('[DART-DEBUG-ENCRYPT]   plaintext length=${buf.length}');
-    _logger.fine('[DART-DEBUG-ENCRYPT]   plaintext=${buf.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
-    _logger.fine('[DART-DEBUG-ENCRYPT]   fixedNonce=${_writeState.fixedNonce?.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
-    
     Uint8List authData;
     
     if (!_isTls13Plus()) {
@@ -480,18 +445,11 @@ class RecordLayer {
     
     final nonce = _getNonce(_writeState, seqNumBytes);
     
-    _logger.fine('[DART-DEBUG-ENCRYPT]   nonce=${nonce.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
-    _logger.fine('[DART-DEBUG-ENCRYPT]   authData=${authData.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
-    
     // Assuming seal returns ciphertext + tag
     buf = _writeState.encContext.seal(nonce, buf, authData);
     
-    _logger.fine('[DART-DEBUG-ENCRYPT]   ciphertext length=${buf.length}');
-    _logger.fine('[DART-DEBUG-ENCRYPT]   ciphertext=${buf.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
-    
     if (_writeState.encContext.name.contains("aes") && !_isTls13Plus()) {
       buf = Uint8List.fromList([...seqNumBytes, ...buf]);
-      _logger.fine('[DART-DEBUG-ENCRYPT]   (AES) prepended seqNumBytes, final length=${buf.length}');
     }
     
     return buf;
@@ -678,13 +636,6 @@ class RecordLayer {
   Uint8List _decryptAndUnseal(dynamic header, Uint8List buf) {
     final seqnumBytes = _readState.getSeqNumBytes();
     Uint8List nonce;
-    
-    _logger.fine('\n[DART-DEBUG-DECRYPT] _decryptAndUnseal called');
-    _logger.fine('[DART-DEBUG-DECRYPT]   seqNumBytes=${seqnumBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
-    _logger.fine('[DART-DEBUG-DECRYPT]   contentType=${header.type}');
-    _logger.fine('[DART-DEBUG-DECRYPT]   version=${version.major}.${version.minor}');
-    _logger.fine('[DART-DEBUG-DECRYPT]   ciphertext length=${buf.length}');
-    _logger.fine('[DART-DEBUG-DECRYPT]   fixedNonce=${_readState.fixedNonce?.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
 
     if (_readState.encContext.name.contains("aes") && !_isTls13Plus()) {
       final explicitNonceLength = 8;
@@ -696,8 +647,6 @@ class RecordLayer {
     } else {
       nonce = _getNonce(_readState, seqnumBytes);
     }
-    
-    _logger.fine('[DART-DEBUG-DECRYPT]   nonce=${nonce.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
 
     if ((_readState.encContext.tagLength as int) > buf.length) {
       throw TLSBadRecordMAC("Truncated tag");
@@ -726,8 +675,6 @@ class RecordLayer {
       }
       authData = header.write();
     }
-    
-    _logger.fine('[DART-DEBUG-DECRYPT]   authData=${authData.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
     
     final result = _readState.encContext.open(nonce, buf, authData);
     if (result == null) {
@@ -946,17 +893,9 @@ class RecordLayer {
 
   void calcPendingStates(int cipherSuite, Uint8List masterSecret, Uint8List clientRandom,
       Uint8List serverRandom, List<String>? implementations) {
-    _logger.fine('\n[DART-DEBUG-RL] calcPendingStates called');
-    _logger.fine('[DART-DEBUG-RL]   cipherSuite=0x${cipherSuite.toRadixString(16).padLeft(4, '0')}');
-    _logger.fine('[DART-DEBUG-RL]   masterSecret=${masterSecret.sublist(0, 16).map((b) => b.toRadixString(16).padLeft(2, '0')).join()}...');
-    _logger.fine('[DART-DEBUG-RL]   clientRandom=${clientRandom.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
-    _logger.fine('[DART-DEBUG-RL]   serverRandom=${serverRandom.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
-    
     final (keyLength, ivLength, createCipherFunc) = _getCipherSettings(cipherSuite);
-    _logger.fine('[DART-DEBUG-RL]   keyLength=$keyLength, ivLength=$ivLength');
     
     final (macLength, digestmod) = _getMacSettings(cipherSuite);
-    _logger.fine('[DART-DEBUG-RL]   macLength=$macLength, digestmod=$digestmod');
     
     Function? createMACFunc;
     if (digestmod != null) {
@@ -964,12 +903,10 @@ class RecordLayer {
     }
 
     final outputLength = (macLength * 2) + (keyLength * 2) + (ivLength * 2);
-    _logger.fine('[DART-DEBUG-RL]   outputLength=$outputLength');
     
     final keyBlock = calcKey([version.major, version.minor], masterSecret, cipherSuite,
         Uint8List.fromList('key expansion'.codeUnits),
         clientRandom: clientRandom, serverRandom: serverRandom, outputLength: outputLength);
-    _logger.fine('[DART-DEBUG-RL]   keyBlock=${keyBlock.sublist(0, 32).map((b) => b.toRadixString(16).padLeft(2, '0')).join()}...');
 
     final clientPendingState = ConnectionState();
     final serverPendingState = ConnectionState();
@@ -980,11 +917,6 @@ class RecordLayer {
     final serverKeyBlock = parser.getFixBytes(keyLength);
     final clientIVBlock = parser.getFixBytes(ivLength);
     final serverIVBlock = parser.getFixBytes(ivLength);
-    
-    _logger.fine('[DART-DEBUG-RL]   clientKeyBlock=${clientKeyBlock.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
-    _logger.fine('[DART-DEBUG-RL]   serverKeyBlock=${serverKeyBlock.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
-    _logger.fine('[DART-DEBUG-RL]   clientIVBlock=${clientIVBlock.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
-    _logger.fine('[DART-DEBUG-RL]   serverIVBlock=${serverIVBlock.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
 
     if (digestmod != null) {
       clientPendingState.macContext = createMACFunc!(clientMACBlock, digestmod);

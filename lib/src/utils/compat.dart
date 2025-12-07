@@ -27,15 +27,7 @@ String bytesToAscii(Uint8List val) {
   }
 }
 
-/// In Dart, crypto libraries like package:crypto expect List<int> (which
-/// Uint8List implements). No special conversion like dart's compatHMAC needed.
-/// Just pass the Uint8List key/message directly.
-// void exampleHmacUsage(Uint8List key, Uint8List message) {
-//   // Requires package:crypto
-//   final hmac = Hmac(sha256, key); // sha256 is an example hash
-//   final digest = hmac.convert(message);
-//   print(hex.encode(digest.bytes));
-// }
+
 
 // --- Base16 / Base64 Encoding ---
 
