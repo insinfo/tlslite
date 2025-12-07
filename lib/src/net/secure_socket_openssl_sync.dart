@@ -147,10 +147,7 @@ class SecureSocketOpenSSLSync {
       return 0;
     }
     await ensureHandshakeCompleted();
-    final buffer = NativeUint8Buffer.fromBytes(
-      data,
-      pool: NativeUint8BufferPool.global,
-    );
+    final buffer = NativeUint8Buffer.fromBytes(data);
     var written = 0;
     try {
       while (written < data.length) {
@@ -188,7 +185,7 @@ class SecureSocketOpenSSLSync {
       throw ArgumentError.value(bufferSize, 'bufferSize', 'must be positive');
     }
     await ensureHandshakeCompleted();
-    final buffer = NativeUint8Buffer.pooled(bufferSize);
+    final buffer = NativeUint8Buffer.allocate(bufferSize);
     try {
       while (true) {
         final received =
@@ -290,10 +287,7 @@ class SecureSocketOpenSSLSync {
       _socketClosed = true;
       return false;
     }
-    final buffer = NativeUint8Buffer.fromBytes(
-      bytes,
-      pool: NativeUint8BufferPool.global,
-    );
+    final buffer = NativeUint8Buffer.fromBytes(bytes);
     try {
       final written = _openSslCrypto.BIO_write(
         bio,
@@ -326,10 +320,7 @@ class SecureSocketOpenSSLSync {
       }
       final chunkSize =
           pending < _defaultCiphertextChunk ? pending : _defaultCiphertextChunk;
-      final buffer = NativeUint8Buffer.pooled(
-        chunkSize,
-        pool: NativeUint8BufferPool.global,
-      );
+      final buffer = NativeUint8Buffer.allocate(chunkSize);
       try {
         final read =
             _openSslCrypto.BIO_read(bio, buffer.pointer.cast(), chunkSize);

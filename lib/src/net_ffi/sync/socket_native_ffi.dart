@@ -373,7 +373,7 @@ class SocketNative implements RawTransport {
     if (_type != SOCK_DGRAM) {
       throw SocketException('recvfrom is only for UDP sockets');
     }
-    final buffer = NativeUint8Buffer.pooled(bufferSize);
+    final buffer = NativeUint8Buffer.allocate(bufferSize);
     final addr =
         _family == AF_INET ? calloc<SockaddrIn>() : calloc<SockAddrIn6>();
     final addrLen = calloc<Int32>()
@@ -478,10 +478,7 @@ class SocketNative implements RawTransport {
       addrSize = sizeOf<SockAddrIn6>();
     }
 
-    final buffer = NativeUint8Buffer.fromBytes(
-      data,
-      pool: NativeUint8BufferPool.global,
-    );
+    final buffer = NativeUint8Buffer.fromBytes(data);
     try {
       while (true) {
         _maybeWaitForEvent(TransportEvent.write);
@@ -700,10 +697,7 @@ class SocketNative implements RawTransport {
     if (data.isEmpty) {
       return 0;
     }
-    final nativeBuffer = NativeUint8Buffer.fromBytes(
-      data,
-      pool: NativeUint8BufferPool.global,
-    );
+    final nativeBuffer = NativeUint8Buffer.fromBytes(data);
     var offset = 0;
     try {
       while (offset < data.length) {
@@ -742,7 +736,7 @@ class SocketNative implements RawTransport {
     if (bufferSize <= 0) {
       throw ArgumentError.value(bufferSize, 'bufferSize', 'must be positive');
     }
-    final buffer = NativeUint8Buffer.pooled(bufferSize);
+    final buffer = NativeUint8Buffer.allocate(bufferSize);
     try {
       while (true) {
         _maybeWaitForEvent(TransportEvent.read);

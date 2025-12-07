@@ -3,6 +3,12 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
+/// A native buffer that wraps a pointer to native memory.
+/// 
+/// IMPORTANT: This class is NOT thread-safe and should NOT be shared across
+/// isolates or used with a global pool when multiple connections run concurrently.
+/// Always allocate fresh buffers or use a per-connection pool to avoid
+/// memory corruption issues.
 class NativeUint8Buffer {
   final ffi.Pointer<ffi.Uint8> pointer;
   final int length;
@@ -11,6 +17,8 @@ class NativeUint8Buffer {
 
   NativeUint8Buffer._(this.pointer, this.length, [this._pool]);
 
+  /// Allocates a new native buffer of the given length.
+  /// This buffer is NOT pooled and will be freed when [release] is called.
   factory NativeUint8Buffer.allocate(int length) {
     if (length < 0) {
       throw ArgumentError.value(length, 'length', 'must be non-negative');
@@ -18,14 +26,22 @@ class NativeUint8Buffer {
     return NativeUint8Buffer._(calloc<ffi.Uint8>(length), length);
   }
 
-  factory NativeUint8Buffer.pooled(int length,
-      {NativeUint8BufferPool? pool}) {
-    final selectedPool = pool ?? NativeUint8BufferPool.global;
-    return selectedPool.acquire(length);
+  /// Acquires a buffer from the given pool, or allocates a new one if no pool is provided.
+  /// 
+  /// If no pool is provided, a fresh buffer is allocated to avoid concurrency issues.
+  factory NativeUint8Buffer.pooled(int length, {NativeUint8BufferPool? pool}) {
+    // If no pool is provided, allocate a fresh buffer to avoid concurrency issues
+    if (pool == null) {
+      return NativeUint8Buffer.allocate(length);
+    }
+    return pool.acquire(length);
   }
 
-  factory NativeUint8Buffer.fromBytes(Uint8List data,
-      {NativeUint8BufferPool? pool}) {
+  /// Creates a native buffer from Dart bytes.
+  /// 
+  /// If no pool is provided, a fresh buffer is allocated to avoid concurrency issues.
+  factory NativeUint8Buffer.fromBytes(Uint8List data, {NativeUint8BufferPool? pool}) {
+    // If no pool is provided, allocate a fresh buffer to avoid concurrency issues
     final buffer = pool == null
         ? NativeUint8Buffer.allocate(data.length)
         : pool.acquire(data.length);
@@ -73,10 +89,14 @@ class NativeUint8Buffer {
   }
 }
 
+/// A pool for reusing native buffers.
+/// 
+/// WARNING: This pool is NOT thread-safe. Do NOT share a single pool instance
+/// across concurrent connections or isolates. Each connection should either:
+/// 1. Use its own dedicated pool instance, or
+/// 2. Not use pooling at all (pass null to NativeUint8Buffer factories)
 class NativeUint8BufferPool {
   NativeUint8BufferPool({this.maxBuffers = 32});
-
-  static final NativeUint8BufferPool global = NativeUint8BufferPool();
 
   final int maxBuffers;
   final List<NativeUint8Buffer> _pool = <NativeUint8Buffer>[];
@@ -104,5 +124,13 @@ class NativeUint8BufferPool {
       return;
     }
     _pool.add(buffer);
+  }
+  
+  /// Disposes all buffers in the pool. Call this when the connection is closed.
+  void dispose() {
+    for (final buffer in _pool) {
+      calloc.free(buffer.pointer);
+    }
+    _pool.clear();
   }
 }

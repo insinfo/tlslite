@@ -185,10 +185,7 @@ class SecureSocketOpenSSLAsync {
       return 0;
     }
     await ensureHandshakeCompleted();
-    final buffer = NativeUint8Buffer.fromBytes(
-      data,
-      pool: NativeUint8BufferPool.global,
-    );
+    final buffer = NativeUint8Buffer.fromBytes(data);
     var written = 0;
     try {
       while (written < data.length) {
@@ -228,7 +225,7 @@ class SecureSocketOpenSSLAsync {
     await ensureHandshakeCompleted();
 
     final builder = BytesBuilder(copy: false);
-    final tempBuffer = NativeUint8Buffer.pooled(_defaultCiphertextChunk);
+    final tempBuffer = NativeUint8Buffer.allocate(_defaultCiphertextChunk);
 
     try {
       while (builder.length < bufferSize) {
@@ -348,10 +345,7 @@ class SecureSocketOpenSSLAsync {
       _debug('No ciphertext available for read BIO.');
       return false;
     }
-    final buffer = NativeUint8Buffer.fromBytes(
-      ciphertext,
-      pool: NativeUint8BufferPool.global,
-    );
+    final buffer = NativeUint8Buffer.fromBytes(ciphertext);
     try {
       final written = _openSslCrypto.BIO_write(
         bio,
@@ -386,10 +380,7 @@ class SecureSocketOpenSSLAsync {
       }
       final chunkSize =
           pending < _defaultCiphertextChunk ? pending : _defaultCiphertextChunk;
-      final buffer = NativeUint8Buffer.pooled(
-        chunkSize,
-        pool: NativeUint8BufferPool.global,
-      );
+      final buffer = NativeUint8Buffer.allocate(chunkSize);
       try {
         final read =
             _openSslCrypto.BIO_read(bio, buffer.pointer.cast(), chunkSize);

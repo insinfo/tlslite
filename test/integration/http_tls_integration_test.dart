@@ -7,6 +7,7 @@
 import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:isolate';
 
 import 'package:test/test.dart';
 import 'package:tlslite/src/integration/http_tls_connection.dart';
@@ -299,6 +300,61 @@ void main() {
         await socket.close();
       }
     }, timeout: const Timeout(Duration(seconds: 30)));
+
+    test('supports multiple concurrent handshakes with google.com', () async {
+      Future<void> runHandshake(int index) async {
+        final socket = await Socket.connect('www.google.com', 443);
+        final tls = TlsConnection(socket);
+        try {
+          await tls.handshakeClient(
+            settings: HandshakeSettings(minVersion: (3, 3)),
+            serverName: 'www.google.com',
+          );
+
+          final request = 'HEAD / HTTP/1.1\r\n'
+              'Host: www.google.com\r\n'
+              'User-Agent: TlsLite-Dart/1.0 (concurrency $index)\r\n'
+              'Connection: close\r\n'
+              '\r\n';
+          await tls.sendRecord(Message(
+            ContentType.application_data,
+            Uint8List.fromList(utf8.encode(request)),
+          ));
+
+          while (true) {
+            final (header, parser) = await tls.recvMessage();
+            final payload = parser.getFixBytes(parser.getRemainingLength());
+            if (header.type == ContentType.application_data) {
+              expect(payload, isNotEmpty);
+              break;
+            }
+            if (header.type == ContentType.alert) {
+              fail('Received TLS alert during concurrent handshake: $payload');
+            }
+          }
+        } finally {
+          await socket.close();
+        }
+      }
+
+      await Future.wait(List.generate(6, runHandshake));
+    }, timeout: const Timeout(Duration(seconds: 60)));
+
+    test('supports multiple isolate handshakes with google.com', () async {
+      Future<void> runIsolate(int index) async {
+        final receivePort = ReceivePort();
+        await Isolate.spawn(_tlsIsolateHandshakeEntry, [index, receivePort.sendPort],
+            errorsAreFatal: true);
+        final message = await receivePort.first;
+        receivePort.close();
+
+        if (message is Map && message['error'] != null) {
+          fail('Isolate handshake $index failed: ${message['error']}\n${message['stack']}');
+        }
+      }
+
+      await Future.wait(List.generate(4, runIsolate));
+    }, timeout: const Timeout(Duration(seconds: 90)));
   });
 
   group('Rio das Ostras Government Site Tests', () {
@@ -783,4 +839,56 @@ void main() {
       }
     }, timeout: const Timeout(Duration(seconds: 30)));
   });
+}
+
+Future<void> _tlsIsolateHandshakeEntry(List<dynamic> args) async {
+  final int index = args[0] as int;
+  final SendPort sendPort = args[1] as SendPort;
+
+  Socket? socket;
+  try {
+    socket = await Socket.connect('www.google.com', 443);
+    final tls = TlsConnection(socket);
+
+    try {
+      await tls.handshakeClient(
+        settings: HandshakeSettings(minVersion: (3, 3)),
+        serverName: 'www.google.com',
+      );
+
+      final request = 'HEAD / HTTP/1.1\r\n'
+          'Host: www.google.com\r\n'
+          'User-Agent: TlsLite-Dart/1.0 (isolate $index)\r\n'
+          'Connection: close\r\n'
+          '\r\n';
+      await tls.sendRecord(Message(
+        ContentType.application_data,
+        Uint8List.fromList(utf8.encode(request)),
+      ));
+
+      while (true) {
+        final (header, parser) = await tls.recvMessage();
+        final payload = parser.getFixBytes(parser.getRemainingLength());
+        if (header.type == ContentType.application_data) {
+          if (payload.isEmpty) {
+            throw StateError('Isolate $index received empty payload');
+          }
+          break;
+        }
+        if (header.type == ContentType.alert) {
+          throw StateError('Isolate $index received TLS alert: $payload');
+        }
+      }
+    } finally {
+      await socket.close();
+    }
+
+    sendPort.send(null);
+  } catch (e, st) {
+    sendPort.send({
+      'error': e.toString(),
+      'stack': st.toString(),
+    });
+    await socket?.close();
+  }
 }

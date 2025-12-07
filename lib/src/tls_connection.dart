@@ -274,8 +274,16 @@ class TlsConnection extends MessageSocket {
     } catch (_) {
       // Ignore errors when sending close_notify
     }
-    // Close the underlying socket
-    sock?.close();
+    // Flush and close the underlying socket
+    final socket = sock;
+    if (socket != null) {
+      try {
+        await socket.flush();
+      } catch (_) {
+        // Ignore flush errors
+      }
+      await socket.close();
+    }
   }
 
   /// Read application data.

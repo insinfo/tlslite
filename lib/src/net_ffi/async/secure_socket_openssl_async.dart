@@ -156,10 +156,7 @@ class SecureFFISocketOpenSSLAsync {
       return 0;
     }
     await ensureHandshakeCompleted();
-    final buffer = NativeUint8Buffer.fromBytes(
-      data,
-      pool: NativeUint8BufferPool.global,
-    );
+    final buffer = NativeUint8Buffer.fromBytes(data);
     var written = 0;
     try {
       while (written < data.length) {
@@ -194,7 +191,7 @@ class SecureFFISocketOpenSSLAsync {
 
   Future<Uint8List> recv(int bufferSize) async {
     await ensureHandshakeCompleted();
-    final buffer = NativeUint8Buffer.pooled(bufferSize);
+    final buffer = NativeUint8Buffer.allocate(bufferSize);
     try {
       while (true) {
         final received =
@@ -270,10 +267,7 @@ class SecureFFISocketOpenSSLAsync {
     if (ciphertext == null || ciphertext.isEmpty) {
       return false;
     }
-    final buffer = NativeUint8Buffer.fromBytes(
-      ciphertext,
-      pool: NativeUint8BufferPool.global,
-    );
+    final buffer = NativeUint8Buffer.fromBytes(ciphertext);
     try {
       final written = _openSslCrypto.BIO_write(
         bio,
@@ -307,10 +301,7 @@ class SecureFFISocketOpenSSLAsync {
       final chunkSize = pending < kDefaultCiphertextChunk
           ? pending
           : kDefaultCiphertextChunk;
-      final buffer = NativeUint8Buffer.pooled(
-        chunkSize,
-        pool: NativeUint8BufferPool.global,
-      );
+      final buffer = NativeUint8Buffer.allocate(chunkSize);
       try {
         final read =
           _openSslCrypto.BIO_read(bio, buffer.pointer.cast(), chunkSize);
