@@ -25,6 +25,13 @@
 - ✅ **HandshakeHashes.replaceWith()**: New method for transcript state replacement during HRR
 - ✅ **Integration Test**: `TLS 1.3 only connection to google.com` now passes with full HRR flow
 
+### ✅ RSA-PSS Signature Support in TLS 1.2
+- ✅ **Intrinsic Hash Algorithm**: Proper handling of `HashAlgorithm.intrinsic` (value 8)
+- ✅ **RSA-PSS Schemes**: Support for 0x0804 (SHA-256), 0x0805 (SHA-384), 0x0806 (SHA-512)
+- ✅ **RSA-PSS-PSS Schemes**: Support for 0x0809 (SHA-256), 0x080a (SHA-384), 0x080b (SHA-512)
+- ✅ **ServerKeyExchange Verification**: Correct PSS padding with saltLen = hashLen
+- ✅ **Integration Test**: Real-world server `www.riodasostras.rj.gov.br` with RSA-PSS signatures
+
 ### ✅ IMPORTANTE  
 4. **handshakesettings.py** → handshake_settings.dart (716 linhas) - ✅ COMPLETO
 5. **tlsrecordlayer.py** → tls_record_layer.dart (1.345 linhas) - ✅ COMPLETO

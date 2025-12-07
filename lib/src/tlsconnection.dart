@@ -11,8 +11,7 @@ import 'handshake_settings.dart';
 import 'keyexchange.dart';
 import 'messages.dart';
 import 'messagesocket.dart';
-import 'tls_types.dart'
-    show PureDartTlsMode;
+import 'tls_types.dart' show PureDartTlsMode;
 import 'tls_extensions.dart';
 import 'tls_handshake_state.dart';
 import 'recordlayer.dart';
@@ -249,32 +248,34 @@ class TlsConnection extends MessageSocket {
   /// Read application data.
   Future<Uint8List> read({int? max}) async {
     while (_appDataBuffer.isEmpty) {
-       // Check pending messages first
-       if (_pendingMessages.isNotEmpty) {
-          final (header, parser) = _pendingMessages.first;
-          if (header.type == ContentType.application_data) {
-             _pendingMessages.removeFirst();
-             _appDataBuffer.addAll(parser.getFixBytes(parser.getRemainingLength()));
-             continue;
-          } else {
-             _pendingMessages.removeFirst();
-             continue;
-          }
-       }
+      // Check pending messages first
+      if (_pendingMessages.isNotEmpty) {
+        final (header, parser) = _pendingMessages.first;
+        if (header.type == ContentType.application_data) {
+          _pendingMessages.removeFirst();
+          _appDataBuffer
+              .addAll(parser.getFixBytes(parser.getRemainingLength()));
+          continue;
+        } else {
+          _pendingMessages.removeFirst();
+          continue;
+        }
+      }
 
-       final (header, parser) = await _recvMessageInternal();
-       if (header.type == ContentType.application_data) {
-          _appDataBuffer.addAll(parser.getFixBytes(parser.getRemainingLength()));
-       } else if (header.type == ContentType.handshake) {
-          // Handle handshake
-          throw UnimplementedError('Handshake during read not supported yet');
-       } else {
-          await _processNonHandshakeRecord(header, parser);
-       }
+      final (header, parser) = await _recvMessageInternal();
+      if (header.type == ContentType.application_data) {
+        _appDataBuffer.addAll(parser.getFixBytes(parser.getRemainingLength()));
+      } else if (header.type == ContentType.handshake) {
+        // Handle handshake
+        throw UnimplementedError('Handshake during read not supported yet');
+      } else {
+        await _processNonHandshakeRecord(header, parser);
+      }
     }
 
     final count = max ?? _appDataBuffer.length;
-    final actualCount = count < _appDataBuffer.length ? count : _appDataBuffer.length;
+    final actualCount =
+        count < _appDataBuffer.length ? count : _appDataBuffer.length;
     final result = Uint8List.fromList(_appDataBuffer.sublist(0, actualCount));
     _appDataBuffer.removeRange(0, actualCount);
     return result;
@@ -593,127 +594,132 @@ class TlsConnection extends MessageSocket {
     // Receive ServerHello
     var message = await recvHandshakeMessage(
         allowedTypes: [TlsHandshakeType.serverHello]);
-    
+
     if (message is! TlsServerHello) {
-        await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
-        throw TLSUnexpectedMessage('Expected ServerHello, got ${message.handshakeType.name}');
+      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+      throw TLSUnexpectedMessage(
+          'Expected ServerHello, got ${message.handshakeType.name}');
     }
 
     // Check for HelloRetryRequest (TLS 1.3)
     if (message.isHelloRetryRequest) {
-        // Handle HRR - According to RFC 8446, we need to replace ClientHello1 
-        // in the transcript with message_hash
-        
-        // Determine the hash algorithm to use based on selected cipher suite
-        final cipherSuite = message.cipherSuite;
-        String hashName = 'sha256';  // Default for most TLS 1.3 suites
-        if (cipherSuite == CipherSuite.TLS_AES_256_GCM_SHA384 ||
-            cipherSuite == CipherSuite.TLS_CHACHA20_POLY1305_SHA256) {
-          // SHA384 for AES_256_GCM
-          if (cipherSuite == CipherSuite.TLS_AES_256_GCM_SHA384) {
-            hashName = 'sha384';
-          }
-        }
-        
-        // Calculate Hash(ClientHello1) from the snapshot taken BEFORE receiving HRR
-        final clientHello1Hash = clientHello1Snapshot.digest(hashName);
-        
-        // Create synthetic message_hash handshake message
-        // Format: msg_type (1) || length (3) || Hash(ClientHello1)
-        final messageHashMsg = Uint8List(4 + clientHello1Hash.length);
-        messageHashMsg[0] = HandshakeType.message_hash; // 254
-        messageHashMsg[1] = 0;
-        messageHashMsg[2] = 0;
-        messageHashMsg[3] = clientHello1Hash.length;
-        messageHashMsg.setRange(4, 4 + clientHello1Hash.length, clientHello1Hash);
-        
-        // Replace the transcript: clear and add message_hash + HelloRetryRequest
-        // We need a new HandshakeHashes instance
-        final newHashes = HandshakeHashes();
-        newHashes.update(messageHashMsg);
-        
-        // Copy internal state - we'll serialize the HRR and add it
-        final hrrBytes = message.serialize();
-        newHashes.update(hrrBytes);
-        
-        // Replace the handshake hashes (we need to copy values back)
-        handshakeHashes.replaceWith(newHashes);
+      // Handle HRR - According to RFC 8446, we need to replace ClientHello1
+      // in the transcript with message_hash
 
-        final cookieExt = message.extensions?.byType(ExtensionType.cookie);
-        Uint8List? cookie;
-        if (cookieExt is TlsCookieExtension) {
-            cookie = cookieExt.cookie;
+      // Determine the hash algorithm to use based on selected cipher suite
+      final cipherSuite = message.cipherSuite;
+      String hashName = 'sha256'; // Default for most TLS 1.3 suites
+      if (cipherSuite == CipherSuite.TLS_AES_256_GCM_SHA384 ||
+          cipherSuite == CipherSuite.TLS_CHACHA20_POLY1305_SHA256) {
+        // SHA384 for AES_256_GCM
+        if (cipherSuite == CipherSuite.TLS_AES_256_GCM_SHA384) {
+          hashName = 'sha384';
         }
+      }
 
-        // For HRR, use the selectedGroup field instead of serverShare
-        int? retryGroup = message.selectedGroup;
+      // Calculate Hash(ClientHello1) from the snapshot taken BEFORE receiving HRR
+      final clientHello1Hash = clientHello1Snapshot.digest(hashName);
 
-        // Send ClientHello2
-        await _clientSendClientHello(
-          handshakeSettings,
-          this.session,
-          srpUsername,
-          srpParams,
-          certParams,
-          anonParams,
-          serverName,
-          nextProtos,
-          reqTack,
-          alpn,
-          cookie: cookie,
-          retryGroup: retryGroup,
-        );
+      // Create synthetic message_hash handshake message
+      // Format: msg_type (1) || length (3) || Hash(ClientHello1)
+      final messageHashMsg = Uint8List(4 + clientHello1Hash.length);
+      messageHashMsg[0] = HandshakeType.message_hash; // 254
+      messageHashMsg[1] = 0;
+      messageHashMsg[2] = 0;
+      messageHashMsg[3] = clientHello1Hash.length;
+      messageHashMsg.setRange(4, 4 + clientHello1Hash.length, clientHello1Hash);
 
-        // Receive ServerHello (again)
-        message = await recvHandshakeMessage(
-            allowedTypes: [TlsHandshakeType.serverHello]);
-        
-        if (message is! TlsServerHello) {
-            await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
-            throw TLSUnexpectedMessage('Expected ServerHello after HRR, got ${message.handshakeType.name}');
-        }
-        
-        if (message.isHelloRetryRequest) {
-             await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
-             throw TLSUnexpectedMessage('Second HelloRetryRequest received');
-        }
+      // Replace the transcript: clear and add message_hash + HelloRetryRequest
+      // We need a new HandshakeHashes instance
+      final newHashes = HandshakeHashes();
+      newHashes.update(messageHashMsg);
+
+      // Copy internal state - we'll serialize the HRR and add it
+      final hrrBytes = message.serialize();
+      newHashes.update(hrrBytes);
+
+      // Replace the handshake hashes (we need to copy values back)
+      handshakeHashes.replaceWith(newHashes);
+
+      final cookieExt = message.extensions?.byType(ExtensionType.cookie);
+      Uint8List? cookie;
+      if (cookieExt is TlsCookieExtension) {
+        cookie = cookieExt.cookie;
+      }
+
+      // For HRR, use the selectedGroup field instead of serverShare
+      int? retryGroup = message.selectedGroup;
+
+      // Send ClientHello2
+      await _clientSendClientHello(
+        handshakeSettings,
+        this.session,
+        srpUsername,
+        srpParams,
+        certParams,
+        anonParams,
+        serverName,
+        nextProtos,
+        reqTack,
+        alpn,
+        cookie: cookie,
+        retryGroup: retryGroup,
+      );
+
+      // Receive ServerHello (again)
+      message = await recvHandshakeMessage(
+          allowedTypes: [TlsHandshakeType.serverHello]);
+
+      if (message is! TlsServerHello) {
+        await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+        throw TLSUnexpectedMessage(
+            'Expected ServerHello after HRR, got ${message.handshakeType.name}');
+      }
+
+      if (message.isHelloRetryRequest) {
+        await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+        throw TLSUnexpectedMessage('Second HelloRetryRequest received');
+      }
     }
 
     await _clientHandleServerHello(message);
 
     if (_isTls13Plus()) {
-        await _clientHandshake13(certParams);
+      await _clientHandshake13(certParams);
     } else {
-        await _clientHandshake12(certParams);
+      await _clientHandshake12(certParams);
     }
   }
 
   Future<void> _clientHandleServerHello(TlsServerHello serverHello) async {
     // Version Negotiation
     var negotiatedVersion = serverHello.serverVersion;
-    
+
     // Check Supported Versions (TLS 1.3)
-    final supportedVersions = serverHello.extensions?.byType(ExtensionType.supported_versions);
+    final supportedVersions =
+        serverHello.extensions?.byType(ExtensionType.supported_versions);
     if (supportedVersions is TlsSupportedVersionsExtension) {
-       if (supportedVersions.selectedVersion != null) {
-           negotiatedVersion = supportedVersions.selectedVersion!;
-       }
+      if (supportedVersions.selectedVersion != null) {
+        negotiatedVersion = supportedVersions.selectedVersion!;
+      }
     }
-    
+
     version = negotiatedVersion;
 
     // Validate version against settings
-    final minV = TlsProtocolVersion(handshakeSettings.minVersion.$1, handshakeSettings.minVersion.$2);
-    final maxV = TlsProtocolVersion(handshakeSettings.maxVersion.$1, handshakeSettings.maxVersion.$2);
+    final minV = TlsProtocolVersion(
+        handshakeSettings.minVersion.$1, handshakeSettings.minVersion.$2);
+    final maxV = TlsProtocolVersion(
+        handshakeSettings.maxVersion.$1, handshakeSettings.maxVersion.$2);
     if (version < minV || version > maxV) {
-        await _sendAlert(AlertLevel.fatal, AlertDescription.protocol_version);
-        throw TLSLocalAlert(
-            AlertDescription.protocol_version, AlertLevel.fatal,
-            detailedMessage: 'Server selected version $version which is not in range [$minV, $maxV]');
+      await _sendAlert(AlertLevel.fatal, AlertDescription.protocol_version);
+      throw TLSLocalAlert(AlertDescription.protocol_version, AlertLevel.fatal,
+          detailedMessage:
+              'Server selected version $version which is not in range [$minV, $maxV]');
     }
 
     _serverHelloMsg = serverHello;
-    
+
     // Update Session
     session.cipherSuite = serverHello.cipherSuite;
 
@@ -721,854 +727,972 @@ class TlsConnection extends MessageSocket {
     if (version < const TlsProtocolVersion(3, 3) &&
         CipherSuite.sha256Suites.contains(session.cipherSuite)) {
       await _sendAlert(AlertLevel.fatal, AlertDescription.illegal_parameter);
-      throw TLSLocalAlert(
-          AlertDescription.illegal_parameter, AlertLevel.fatal,
+      throw TLSLocalAlert(AlertDescription.illegal_parameter, AlertLevel.fatal,
           detailedMessage: 'SHA256 cipher suite with TLS < 1.2');
     }
-    
+
     serverRandom = serverHello.random;
     session.sessionID = serverHello.sessionId;
-    
+
     // Extensions
     final extensions = serverHello.extensions;
     if (extensions != null) {
-        // EMS
-        if (extensions.byType(ExtensionType.extended_master_secret) != null) {
-            session.extendedMasterSecret = true;
-        }
-        
-        // Encrypt-then-MAC
-        if (extensions.byType(ExtensionType.encrypt_then_mac) != null) {
-            session.encryptThenMAC = true;
-        }
+      // EMS
+      if (extensions.byType(ExtensionType.extended_master_secret) != null) {
+        session.extendedMasterSecret = true;
+      }
 
-        // Pre-Shared Key (TLS 1.3)
-        if (version >= const TlsProtocolVersion(3, 4)) {
-            final pskExt = extensions.byType(ExtensionType.pre_shared_key);
-            if (pskExt is TlsServerPreSharedKeyExtension) {
-                 _negotiatedClientHelloPskIndex = pskExt.selectedIdentity;
-            }
+      // Encrypt-then-MAC
+      if (extensions.byType(ExtensionType.encrypt_then_mac) != null) {
+        session.encryptThenMAC = true;
+      }
+
+      // Pre-Shared Key (TLS 1.3)
+      if (version >= const TlsProtocolVersion(3, 4)) {
+        final pskExt = extensions.byType(ExtensionType.pre_shared_key);
+        if (pskExt is TlsServerPreSharedKeyExtension) {
+          _negotiatedClientHelloPskIndex = pskExt.selectedIdentity;
         }
+      }
     }
 
     // Key Share (TLS 1.3)
     if (version >= const TlsProtocolVersion(3, 4)) {
-        final keyShareExt = serverHello.extensions?.byType(ExtensionType.key_share);
-        if (keyShareExt is TlsKeyShareExtension) {
-             final serverShare = keyShareExt.serverShare;
-             if (serverShare != null) {
-                 final group = serverShare.group;
-                 final privateKey = _clientKeyShares[group];
-                 if (privateKey == null) {
-                     throw TLSHandshakeFailure('Server selected unsupported group');
-                 }
-                 
-                 if (GroupName.allKEM.contains(group)) {
-                     final kem = KEMKeyExchange(group);
-                     _pendingSharedSecret = kem.calcSharedKey(privateKey, serverShare.keyExchange);
-                 } else {
-                     final kex = ECDHKeyExchange(group, (version.major, version.minor));
-                     _pendingSharedSecret = kex.calcSharedKey(privateKey, serverShare.keyExchange);
-                 }
-             }
+      final keyShareExt =
+          serverHello.extensions?.byType(ExtensionType.key_share);
+      if (keyShareExt is TlsKeyShareExtension) {
+        final serverShare = keyShareExt.serverShare;
+        if (serverShare != null) {
+          final group = serverShare.group;
+          final privateKey = _clientKeyShares[group];
+          if (privateKey == null) {
+            throw TLSHandshakeFailure('Server selected unsupported group');
+          }
+
+          if (GroupName.allKEM.contains(group)) {
+            final kem = KEMKeyExchange(group);
+            _pendingSharedSecret =
+                kem.calcSharedKey(privateKey, serverShare.keyExchange);
+          } else {
+            final kex = ECDHKeyExchange(group, (version.major, version.minor));
+            _pendingSharedSecret =
+                kex.calcSharedKey(privateKey, serverShare.keyExchange);
+          }
         }
+      }
     }
   }
 
   Future<void> _clientHandshake12(Keypair? certParams) async {
-      // Determine Key Exchange Method
-      final suiteName = CipherSuite.ietfNames[session.cipherSuite] ?? '';
-      final isDHE = suiteName.contains('_DHE_');
-      final isECDHE = suiteName.contains('_ECDHE_');
-      final isRSA = suiteName.contains('_RSA_');
-      
-      // Get accepted curves/groups from settings
-      final acceptedCurves = _curveNamesToList(handshakeSettings);
-      
-      KeyExchange? keyExchange;
-      if (isECDHE) {
-          keyExchange = ECDHE_RSAKeyExchange(
-              session.cipherSuite, 
-              _clientHelloMsg, 
-              _serverHelloMsg, 
-              null,
-              acceptedCurves: acceptedCurves.isNotEmpty ? acceptedCurves : null,
-          );
-      } else if (isDHE) {
-          keyExchange = DHE_RSAKeyExchange(session.cipherSuite, _clientHelloMsg, _serverHelloMsg, null);
-      } else if (isRSA) {
-          keyExchange = RSAKeyExchange(session.cipherSuite, _clientHelloMsg, _serverHelloMsg, null);
-      } else {
-          // Fallback to RSA if unknown (or handle error)
-          keyExchange = RSAKeyExchange(session.cipherSuite, _clientHelloMsg, _serverHelloMsg, null);
-      }
+    // Determine Key Exchange Method
+    final suiteName = CipherSuite.ietfNames[session.cipherSuite] ?? '';
+    final isDHE = suiteName.contains('_DHE_');
+    final isECDHE = suiteName.contains('_ECDHE_');
+    final isRSA = suiteName.contains('_RSA_');
 
-      Uint8List? premasterSecret;
-      TlsCertificateRequest? certificateRequest;
-      bool sentNonEmptyCertificate = false;
+    // Get accepted curves/groups from settings
+    final acceptedCurves = _curveNamesToList(handshakeSettings);
 
-      // Receive ServerCertificate (Optional)
-      // Receive ServerKeyExchange (Optional)
-      // Receive CertificateRequest (Optional)
-      // Receive ServerHelloDone
-      
-      while (true) {
-          var message = await recvHandshakeMessage();
-          print('[DART-DEBUG] Received message: ${message.runtimeType}, handshakeType: ${message.handshakeType.name}');
-          
-          // Handle RawTlsHandshakeMessage by parsing into specific types
-          if (message is RawTlsHandshakeMessage) {
-              print('[DART-DEBUG] Message is RawTlsHandshakeMessage, converting...');
-              final rawBody = message.serializeBody();
-              switch (message.handshakeType) {
-                  case TlsHandshakeType.serverHelloDone:
-                      message = TlsServerHelloDone();
-                      print('[DART-DEBUG] Converted to TlsServerHelloDone');
-                      break;
-                  case TlsHandshakeType.serverKeyExchange:
-                      message = TlsServerKeyExchange.parse(
-                          rawBody,
-                          session.cipherSuite,
-                          [version.major, version.minor],
-                      );
-                      print('[DART-DEBUG] Converted to TlsServerKeyExchange');
-                      break;
-                  case TlsHandshakeType.certificateStatus:
-                      message = TlsCertificateStatus.parse(rawBody);
-                      print('[DART-DEBUG] Converted to TlsCertificateStatus');
-                      break;
-                  default:
-                      print('[DART-DEBUG] Unknown type, keeping as RawTlsHandshakeMessage');
-                      // Keep as RawTlsHandshakeMessage, will be caught below
-                      break;
-              }
-          } else {
-              print('[DART-DEBUG] Message is NOT RawTlsHandshakeMessage, type: ${message.runtimeType}');
-          }
-          
-          if (message is TlsServerHelloDone) {
-              break;
-          } else if (message is TlsCertificate) {
-              // Parse Certificate Chain
-              final certs = <X509>[];
-              for (final certBytes in message.certificateChain) {
-                  final x509 = X509();
-                  x509.parseBinary(certBytes);
-                  certs.add(x509);
-              }
-              session.serverCertChain = X509CertChain(certs);
-              _validateCertificateChain(session.serverCertChain!);
-          } else if (message is TlsCertificateStatus) {
-              if (message.statusType == 1) { // ocsp
-                  session.ocspResponse = Uint8List.fromList(message.ocspResponse);
-              }
-          } else if (message is TlsServerKeyExchange) {
-              final pubKey = session.serverCertChain?.getEndEntityPublicKey();
-              premasterSecret = keyExchange.processServerKeyExchange(pubKey, message);
-              
-              if (message.signature.isNotEmpty) {
-                  if (pubKey == null) {
-                      throw TLSHandshakeFailure('ServerKeyExchange signature present but no server certificate');
-                  }
-                  
-                  final params = message.encodeParameters();
-                  final signedData = Uint8List.fromList([
-                      ...clientRandom,
-                      ...serverRandom,
-                      ...params
-                  ]);
-                  
-                  bool valid = false;
-                  final hashAlg = message.hashAlg;
-                  final hashName = HashAlgorithm.toRepr(hashAlg);
-                  if (hashName == null) {
-                       throw TLSHandshakeFailure('Unknown hash algorithm in ServerKeyExchange');
-                  }
-                  
-                  final hash = secureHash(signedData, hashName);
-
-                  if (pubKey is RSAKey) {
-                      valid = pubKey.verify(
-                          Uint8List.fromList(message.signature),
-                          hash,
-                          hashAlg: hashName
-                      );
-                  } else if (pubKey is ECDSAKey) {
-                      valid = pubKey.verify(
-                          Uint8List.fromList(message.signature),
-                          hash,
-                          hashAlg: hashName
-                      );
-                  } else if (pubKey is DSAKey) {
-                      valid = pubKey.verify(
-                          Uint8List.fromList(message.signature),
-                          hash
-                      );
-                  } else {
-                      throw UnimplementedError('Unsupported server key type: ${pubKey.runtimeType}');
-                  }
-                  
-                  if (!valid) {
-                      throw TLSHandshakeFailure('ServerKeyExchange signature invalid');
-                  }
-              }
-          } else if (message is TlsCertificateRequest) {
-              certificateRequest = message;
-          } else {
-              await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
-              throw TLSUnexpectedMessage('Unexpected message in TLS 1.2 handshake: ${message.handshakeType.name}');
-          }
-      }
-      
-      // Send Certificate (if requested)
-      if (certificateRequest != null) {
-          bool shouldSendCert = false;
-          if (certParams != null && certParams.certificates.isNotEmpty) {
-              final pubKey = certParams.key;
-              int? certType;
-              if (pubKey is RSAKey) {
-                  certType = ClientCertificateType.rsa_sign;
-              } else if (pubKey is ECDSAKey) {
-                  certType = ClientCertificateType.ecdsa_sign;
-              } else if (pubKey is DSAKey) {
-                  certType = ClientCertificateType.dss_sign;
-              }
-              
-              if (certType != null && 
-                  (certificateRequest.certificateTypes.isEmpty || 
-                   certificateRequest.certificateTypes.contains(certType))) {
-                  shouldSendCert = true;
-              }
-          }
-
-          if (shouldSendCert) {
-              final certList = certParams!.certificates.map((c) => c.bytes).toList();
-              final certMsg = TlsCertificate.tls12(certificateChain: certList);
-              await sendHandshakeMessage(certMsg);
-              sentNonEmptyCertificate = true;
-          } else {
-              // Send empty certificate if no suitable certificate available
-              final certMsg = TlsCertificate.tls12(certificateChain: []);
-              await sendHandshakeMessage(certMsg);
-          }
-      }
-
-      // Send ClientKeyExchange
-      if (premasterSecret == null) {
-          if (keyExchange is RSAKeyExchange) {
-               final pubKey = session.serverCertChain!.getEndEntityPublicKey();
-               premasterSecret = keyExchange.processServerKeyExchange(pubKey, null);
-          } else {
-               throw TLSHandshakeFailure('Missing ServerKeyExchange for DHE/ECDHE');
-          }
-      }
-      
-      final clientKeyExchange = keyExchange.makeClientKeyExchange();
-      
-      await sendHandshakeMessage(clientKeyExchange);
-      
-      // Send CertificateVerify (if certificate was sent)
-      if (sentNonEmptyCertificate) {
-        final isTls12 = version >= const TlsProtocolVersion(3, 3);
-        int? signatureScheme;
-        String keyType;
-        String? padding;
-        String? hashAlg;
-
-        if (certParams!.key is RSAKey) {
-          signatureScheme =
-              isTls12 ? SignatureScheme.rsa_pkcs1_sha256.value : null;
-          padding = 'pkcs1';
-          hashAlg = null; // Implicit in verifyBytes for RSA
-          keyType = 'rsa';
-        } else if (certParams.key is ECDSAKey) {
-          signatureScheme =
-              isTls12 ? SignatureScheme.ecdsa_secp256r1_sha256.value : null;
-          padding = null;
-          hashAlg = isTls12 ? 'sha256' : 'sha1';
-          keyType = 'ecdsa';
-        } else if (certParams.key is DSAKey) {
-          signatureScheme =
-              isTls12 ? SignatureScheme.dsa_sha256.value : null;
-          padding = null;
-          hashAlg = isTls12 ? 'sha256' : 'sha1';
-          keyType = 'dsa';
-        } else {
-          throw UnimplementedError(
-            'Unsupported client key type: ${certParams.key.runtimeType}',
-          );
-        }
-
-        final verifyBytes = KeyExchange.calcVerifyBytes(
-          version,
-          handshakeHashes,
-          signatureScheme ?? 0,
-          keyType: keyType,
-        );
-
-        final signature = (certParams.key as dynamic).sign(
-          verifyBytes,
-          padding: padding,
-          hashAlg: hashAlg,
-        );
-
-        final certVerify = TlsCertificateVerify(
-          version: version,
-          signature: signature,
-          signatureScheme: signatureScheme,
-        );
-
-        await sendHandshakeMessage(certVerify);
-      }
-
-      // Derive master secret now that all pre-CCS handshake messages are hashed
-      print('[DEBUG] extendedMasterSecret: ${session.extendedMasterSecret}');
-      if (session.extendedMasterSecret) {
-          session.masterSecret = calcKey(
-              [version.major, version.minor],
-              premasterSecret,
-              session.cipherSuite,
-              Uint8List.fromList('extended master secret'.codeUnits),
-              handshakeHashes: handshakeHashes,
-          );
-      } else {
-          session.masterSecret = calcMasterSecret(
-              [version.major, version.minor],
-              session.cipherSuite,
-              premasterSecret,
-              clientRandom, 
-              serverRandom
-          );
-      }
-      print('[DEBUG] masterSecret=${session.masterSecret.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
-
-      // Send ChangeCipherSpec
-      await queueMessageBlocking(Message(ContentType.change_cipher_spec, Uint8List.fromList([1])));
-      await flushBlocking();
-      
-      print('[DEBUG] About to calcPendingStates');
-      print('[DEBUG] cipherSuite: 0x${session.cipherSuite.toRadixString(16)}');
-      print('[DEBUG] masterSecret length: ${session.masterSecret.length}');
-      print('[DEBUG] clientRandom length: ${clientRandom.length}');
-      print('[DEBUG] serverRandom length: ${serverRandom.length}');
-      print('[DEBUG] version: ${version.major}.${version.minor}');
-      
-      // Calculate pending states for encryption (keys derived from master secret)
-      calcPendingStates(
+    KeyExchange? keyExchange;
+    if (isECDHE) {
+      keyExchange = ECDHE_RSAKeyExchange(
         session.cipherSuite,
-        Uint8List.fromList(session.masterSecret),
-        clientRandom,
-        serverRandom,
-        null, // implementations
+        _clientHelloMsg,
+        _serverHelloMsg,
+        null,
+        acceptedCurves: acceptedCurves.isNotEmpty ? acceptedCurves : null,
       );
-      
-      print('[DEBUG] calcPendingStates done');
-      print('[DEBUG] BEFORE changeWriteState - encContext: ${getCipherName()}');
-      
-      // Switch to Application Keys (Write) - MUST be done BEFORE sending Finished
-      changeWriteState();
-      
-      print('[DEBUG] AFTER changeWriteState - encContext: ${getCipherName()}');
-      
-      print('[DEBUG] changeWriteState done, about to send Finished');
-      
-      // Debug: print handshake hash before building verifyData
-      final hashForDebug = handshakeHashes.digest('sha256');
-      print('[DEBUG] handshakeHash (sha256 before Finished): ${hashForDebug.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
-      
-      // Send Finished (now encrypted)
-      final verifyData = buildFinishedVerifyData(forClient: true);
-      print('[DEBUG] verifyData: ${verifyData.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
-      print('[DEBUG] verifyData length: ${verifyData.length}');
-      await sendHandshakeMessage(TlsFinished(verifyData: verifyData));
-      
-      print('[DEBUG] Finished sent');
-      // Receive ChangeCipherSpec
-      print('[DEBUG] About to receive CCS. _pendingMessages.length=${_pendingMessages.length}');
-      if (_pendingMessages.isNotEmpty) {
-        final firstPending = _pendingMessages.first;
-        print('[DEBUG] First pending message type: ${firstPending.$1.type}');
+    } else if (isDHE) {
+      keyExchange = DHE_RSAKeyExchange(
+          session.cipherSuite, _clientHelloMsg, _serverHelloMsg, null);
+    } else if (isRSA) {
+      keyExchange = RSAKeyExchange(
+          session.cipherSuite, _clientHelloMsg, _serverHelloMsg, null);
+    } else {
+      // Fallback to RSA if unknown (or handle error)
+      keyExchange = RSAKeyExchange(
+          session.cipherSuite, _clientHelloMsg, _serverHelloMsg, null);
+    }
+
+    Uint8List? premasterSecret;
+    TlsCertificateRequest? certificateRequest;
+    bool sentNonEmptyCertificate = false;
+
+    // Receive ServerCertificate (Optional)
+    // Receive ServerKeyExchange (Optional)
+    // Receive CertificateRequest (Optional)
+    // Receive ServerHelloDone
+
+    while (true) {
+      var message = await recvHandshakeMessage();
+      print(
+          '[DART-DEBUG] Received message: ${message.runtimeType}, handshakeType: ${message.handshakeType.name}');
+
+      // Handle RawTlsHandshakeMessage by parsing into specific types
+      if (message is RawTlsHandshakeMessage) {
+        print('[DART-DEBUG] Message is RawTlsHandshakeMessage, converting...');
+        final rawBody = message.serializeBody();
+        switch (message.handshakeType) {
+          case TlsHandshakeType.serverHelloDone:
+            message = TlsServerHelloDone();
+            print('[DART-DEBUG] Converted to TlsServerHelloDone');
+            break;
+          case TlsHandshakeType.serverKeyExchange:
+            message = TlsServerKeyExchange.parse(
+              rawBody,
+              session.cipherSuite,
+              [version.major, version.minor],
+            );
+            print('[DART-DEBUG] Converted to TlsServerKeyExchange');
+            break;
+          case TlsHandshakeType.certificateStatus:
+            message = TlsCertificateStatus.parse(rawBody);
+            print('[DART-DEBUG] Converted to TlsCertificateStatus');
+            break;
+          default:
+            print(
+                '[DART-DEBUG] Unknown type, keeping as RawTlsHandshakeMessage');
+            // Keep as RawTlsHandshakeMessage, will be caught below
+            break;
+        }
+      } else {
+        print(
+            '[DART-DEBUG] Message is NOT RawTlsHandshakeMessage, type: ${message.runtimeType}');
       }
-      final pendingEncryptedHandshakes = <(dynamic, Uint8List)>[];
-      while (true) {
-        final (header, parser) = await recvRecord();
-        print('[DEBUG] Received message type: ${header.type}'
-              '${header is RecordHeader3 ? ', length=${header.length}' : ''}');
 
-        if (header.type == ContentType.alert) {
-          final alertBytes = parser.getFixBytes(parser.getRemainingLength());
-          print('[DEBUG] Alert received: level=${alertBytes.isNotEmpty ? alertBytes[0] : "?"} desc=${alertBytes.length > 1 ? alertBytes[1] : "?"}');
-          final alert = TlsAlert.parse(alertBytes);
-          throw TLSRemoteAlert(alert.description.code, alert.level.code);
+      if (message is TlsServerHelloDone) {
+        break;
+      } else if (message is TlsCertificate) {
+        // Parse Certificate Chain
+        final certs = <X509>[];
+        for (final certBytes in message.certificateChain) {
+          final x509 = X509();
+          x509.parseBinary(certBytes);
+          certs.add(x509);
         }
+        session.serverCertChain = X509CertChain(certs);
+        _validateCertificateChain(session.serverCertChain!);
+      } else if (message is TlsCertificateStatus) {
+        if (message.statusType == 1) {
+          // ocsp
+          session.ocspResponse = Uint8List.fromList(message.ocspResponse);
+        }
+      } else if (message is TlsServerKeyExchange) {
+        final pubKey = session.serverCertChain?.getEndEntityPublicKey();
+        premasterSecret = keyExchange.processServerKeyExchange(pubKey, message);
 
-        if (header.type == ContentType.change_cipher_spec) {
-          changeReadState();
-          for (final pending in pendingEncryptedHandshakes) {
-            final (_, plaintext) = decryptRecordPayload(pending.$1, pending.$2);
-            defragmenter.addData(ContentType.handshake, plaintext);
+        if (message.signature.isNotEmpty) {
+          if (pubKey == null) {
+            throw TLSHandshakeFailure(
+                'ServerKeyExchange signature present but no server certificate');
           }
-          break;
-        }
 
-        if (header.type == ContentType.handshake) {
-          final fragment = parser.getFixBytes(parser.getRemainingLength());
-          if (!hasReadCipher) {
-            try {
-              final recordVersion =
-                  header is RecordHeader3 ? header.version : version;
-              // If parsing succeeds, treat it as plaintext and let the
-              // defragmenter/handshake queue process it normally.
-              TlsHandshakeMessage.parseFragment(
-                fragment,
-                recordVersion: recordVersion,
-              );
-              defragmenter.addData(ContentType.handshake, fragment);
-              print('[DEBUG] Queued plaintext handshake before CCS '
-                  '(len=${fragment.length})');
-            } catch (_) {
-              print('[DEBUG] Stashed encrypted handshake fragment (hex): '
-                  '${fragment.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
-              pendingEncryptedHandshakes.add((header, fragment));
+          final params = message.encodeParameters();
+          final signedData =
+              Uint8List.fromList([...clientRandom, ...serverRandom, ...params]);
+
+          bool valid = false;
+          final hashAlg = message.hashAlg;
+          final signAlg = message.signAlg;
+          final schemeValue = (hashAlg << 8) | signAlg;
+          final isTls12OrLater = version >= const TlsProtocolVersion(3, 3);
+
+          // TLS < 1.2: No signature algorithm bytes in ServerKeyExchange
+          // Use legacy MD5+SHA1 for RSA, SHA1 for DSA/ECDSA
+          if (!isTls12OrLater) {
+            if (pubKey is RSAKey) {
+              // Legacy RSA: Hash is MD5 || SHA1
+              final md5Hash = MD5(signedData);
+              final sha1Hash = SHA1(signedData);
+              final legacyHash = Uint8List.fromList([...md5Hash, ...sha1Hash]);
+              valid = pubKey.verify(
+                  Uint8List.fromList(message.signature), legacyHash);
+            } else if (pubKey is ECDSAKey) {
+              // Legacy ECDSA: SHA1 only
+              final sha1Hash = SHA1(signedData);
+              valid = pubKey.verify(
+                  Uint8List.fromList(message.signature), sha1Hash,
+                  hashAlg: 'sha1');
+            } else if (pubKey is DSAKey) {
+              // Legacy DSA: SHA1 only
+              final sha1Hash = SHA1(signedData);
+              valid = pubKey.verify(
+                  Uint8List.fromList(message.signature), sha1Hash);
+            } else {
+              throw UnimplementedError(
+                  'Unsupported server key type: ${pubKey.runtimeType}');
             }
-            continue;
+          } else {
+            // TLS 1.2+: Signature algorithm bytes present
+            String hashName;
+            bool usePss = false;
+
+            // Handle intrinsic hash (value 8) - hash is embedded in signature scheme
+            if (hashAlg == HashAlgorithm.intrinsic) {
+              // For RSA-PSS schemes, derive hash from scheme value
+              // 0x0804 = sha256, 0x0805 = sha384, 0x0806 = sha512
+              // 0x0809 = sha256, 0x080a = sha384, 0x080b = sha512 (PSS-PSS)
+              switch (schemeValue) {
+                case 0x0804: // rsa_pss_rsae_sha256
+                case 0x0809: // rsa_pss_pss_sha256
+                  hashName = 'sha256';
+                  usePss = true;
+                  break;
+                case 0x0805: // rsa_pss_rsae_sha384
+                case 0x080a: // rsa_pss_pss_sha384
+                  hashName = 'sha384';
+                  usePss = true;
+                  break;
+                case 0x0806: // rsa_pss_rsae_sha512
+                case 0x080b: // rsa_pss_pss_sha512
+                  hashName = 'sha512';
+                  usePss = true;
+                  break;
+                case 0x0807: // ed25519
+                case 0x0808: // ed448
+                  throw TLSHandshakeFailure(
+                      'Ed25519/Ed448 not supported for ServerKeyExchange');
+                default:
+                  throw TLSHandshakeFailure(
+                      'Unknown intrinsic signature scheme: 0x${schemeValue.toRadixString(16)}');
+              }
+            } else {
+              final name = HashAlgorithm.toRepr(hashAlg);
+              if (name == null) {
+                throw TLSHandshakeFailure(
+                    'Unknown hash algorithm in ServerKeyExchange');
+              }
+              hashName = name;
+            }
+
+            if (pubKey is RSAKey) {
+              if (usePss) {
+                // RSA-PSS verification - hash the data and verify with PSS padding
+                final hash = secureHash(signedData, hashName);
+                valid = pubKey.verify(
+                  Uint8List.fromList(message.signature),
+                  hash,
+                  padding: 'pss',
+                  hashAlg: hashName,
+                  saltLen: hash.length,
+                );
+              } else {
+                // PKCS#1 v1.5 verification
+                final hash = secureHash(signedData, hashName);
+                valid = pubKey.verify(
+                    Uint8List.fromList(message.signature), hash,
+                    hashAlg: hashName);
+              }
+            } else if (pubKey is ECDSAKey) {
+              final hash = secureHash(signedData, hashName);
+              valid = pubKey.verify(Uint8List.fromList(message.signature), hash,
+                  hashAlg: hashName);
+            } else if (pubKey is DSAKey) {
+              final hash = secureHash(signedData, hashName);
+              valid =
+                  pubKey.verify(Uint8List.fromList(message.signature), hash);
+            } else {
+              throw UnimplementedError(
+                  'Unsupported server key type: ${pubKey.runtimeType}');
+            }
           }
 
-          // Otherwise, decrypt the encrypted handshake using the pending keys.
-          changeReadState();
-          print('[DEBUG] Encrypted handshake record (hex): '
-              '${fragment.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
-          final (_, plaintext) = decryptRecordPayload(header, fragment);
-          defragmenter.addData(ContentType.handshake, plaintext);
-          break;
+          if (!valid) {
+            throw TLSHandshakeFailure('ServerKeyExchange signature invalid');
+          }
+        }
+      } else if (message is TlsCertificateRequest) {
+        certificateRequest = message;
+      } else {
+        await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+        throw TLSUnexpectedMessage(
+            'Unexpected message in TLS 1.2 handshake: ${message.handshakeType.name}');
+      }
+    }
+
+    // Send Certificate (if requested)
+    if (certificateRequest != null) {
+      bool shouldSendCert = false;
+      if (certParams != null && certParams.certificates.isNotEmpty) {
+        final pubKey = certParams.key;
+        int? certType;
+        if (pubKey is RSAKey) {
+          certType = ClientCertificateType.rsa_sign;
+        } else if (pubKey is ECDSAKey) {
+          certType = ClientCertificateType.ecdsa_sign;
+        } else if (pubKey is DSAKey) {
+          certType = ClientCertificateType.dss_sign;
         }
 
-        await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
-        throw TLSUnexpectedMessage('Expected ChangeCipherSpec');
-      }
-      
-      // Receive Finished (tickets may arrive before it when not encrypted)
-      TlsFinished? finishedMsg;
-      final initialFinishedSnapshot = handshakeHashes.copy();
-      var finishedHandshakeSnapshot = initialFinishedSnapshot;
-      while (finishedMsg == null) {
-        final msg = await recvHandshakeMessage(
-          allowedTypes: [TlsHandshakeType.finished, TlsHandshakeType.newSessionTicket],
-        );
-        if (msg is TlsFinished) {
-          finishedMsg = msg;
-        } else if (msg is TlsNewSessionTicket) {
-          session.tickets ??= <Ticket>[];
-          session.tickets!.add(Ticket(
-            ticket: msg.ticket,
-            ticketLifetime: msg.ticketLifetime,
-            masterSecret: session.masterSecret,
-            cipherSuite: session.cipherSuite,
-          ));
-          final hh = handshakeHashes.digest('sha256');
-          print('[DEBUG] processed NST before Finished, handshakeHash='
-              '${hh.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
-          finishedHandshakeSnapshot = handshakeHashes.copy();
-        } else {
-          await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
-          throw TLSUnexpectedMessage('Expected Finished');
+        if (certType != null &&
+            (certificateRequest.certificateTypes.isEmpty ||
+                certificateRequest.certificateTypes.contains(certType))) {
+          shouldSendCert = true;
         }
       }
-      
-      // Verify Finished
-      print('[DEBUG] received server Finished verifyData: '
-          '${finishedMsg.verifyData.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
-      final expectedVerifyData = calcFinished(
-        [version.major, version.minor],
-        session.masterSecret,
-        session.cipherSuite,
-        finishedHandshakeSnapshot,
-        false,
-      );
-      print('[DEBUG] expected server Finished verifyData: '
-          '${expectedVerifyData.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
-      final altVerifyData = calcFinished(
-        [version.major, version.minor],
-        session.masterSecret,
-        session.cipherSuite,
-        initialFinishedSnapshot,
-        false,
-      );
-      print('[DEBUG] expected (without NST) verifyData: '
-          '${altVerifyData.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
-      if (!_bytesEqual(finishedMsg.verifyData, expectedVerifyData)) {
-          await _sendAlert(AlertLevel.fatal, AlertDescription.decrypt_error);
-          throw TLSHandshakeFailure('Finished verification failed');
+
+      if (shouldSendCert) {
+        final certList = certParams!.certificates.map((c) => c.bytes).toList();
+        final certMsg = TlsCertificate.tls12(certificateChain: certList);
+        await sendHandshakeMessage(certMsg);
+        sentNonEmptyCertificate = true;
+      } else {
+        // Send empty certificate if no suitable certificate available
+        final certMsg = TlsCertificate.tls12(certificateChain: []);
+        await sendHandshakeMessage(certMsg);
       }
-      
-      handshakeEstablished = true;
+    }
+
+    // Send ClientKeyExchange
+    if (premasterSecret == null) {
+      if (keyExchange is RSAKeyExchange) {
+        final pubKey = session.serverCertChain!.getEndEntityPublicKey();
+        premasterSecret = keyExchange.processServerKeyExchange(pubKey, null);
+      } else {
+        throw TLSHandshakeFailure('Missing ServerKeyExchange for DHE/ECDHE');
+      }
+    }
+
+    final clientKeyExchange = keyExchange.makeClientKeyExchange();
+
+    await sendHandshakeMessage(clientKeyExchange);
+
+    // Send CertificateVerify (if certificate was sent)
+    if (sentNonEmptyCertificate) {
+      final isTls12 = version >= const TlsProtocolVersion(3, 3);
+      int? signatureScheme;
+      String keyType;
+      String? padding;
+      String? hashAlg;
+
+      if (certParams!.key is RSAKey) {
+        signatureScheme =
+            isTls12 ? SignatureScheme.rsa_pkcs1_sha256.value : null;
+        padding = 'pkcs1';
+        hashAlg = null; // Implicit in verifyBytes for RSA
+        keyType = 'rsa';
+      } else if (certParams.key is ECDSAKey) {
+        signatureScheme =
+            isTls12 ? SignatureScheme.ecdsa_secp256r1_sha256.value : null;
+        padding = null;
+        hashAlg = isTls12 ? 'sha256' : 'sha1';
+        keyType = 'ecdsa';
+      } else if (certParams.key is DSAKey) {
+        signatureScheme = isTls12 ? SignatureScheme.dsa_sha256.value : null;
+        padding = null;
+        hashAlg = isTls12 ? 'sha256' : 'sha1';
+        keyType = 'dsa';
+      } else {
+        throw UnimplementedError(
+          'Unsupported client key type: ${certParams.key.runtimeType}',
+        );
+      }
+
+      final verifyBytes = KeyExchange.calcVerifyBytes(
+        version,
+        handshakeHashes,
+        signatureScheme ?? 0,
+        keyType: keyType,
+      );
+
+      final signature = (certParams.key as dynamic).sign(
+        verifyBytes,
+        padding: padding,
+        hashAlg: hashAlg,
+      );
+
+      final certVerify = TlsCertificateVerify(
+        version: version,
+        signature: signature,
+        signatureScheme: signatureScheme,
+      );
+
+      await sendHandshakeMessage(certVerify);
+    }
+
+    // Derive master secret now that all pre-CCS handshake messages are hashed
+    print('[DEBUG] extendedMasterSecret: ${session.extendedMasterSecret}');
+    if (session.extendedMasterSecret) {
+      session.masterSecret = calcKey(
+        [version.major, version.minor],
+        premasterSecret,
+        session.cipherSuite,
+        Uint8List.fromList('extended master secret'.codeUnits),
+        handshakeHashes: handshakeHashes,
+      );
+    } else {
+      session.masterSecret = calcMasterSecret([version.major, version.minor],
+          session.cipherSuite, premasterSecret, clientRandom, serverRandom);
+    }
+    print(
+        '[DEBUG] masterSecret=${session.masterSecret.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+
+    // Send ChangeCipherSpec
+    await queueMessageBlocking(
+        Message(ContentType.change_cipher_spec, Uint8List.fromList([1])));
+    await flushBlocking();
+
+    print('[DEBUG] About to calcPendingStates');
+    print('[DEBUG] cipherSuite: 0x${session.cipherSuite.toRadixString(16)}');
+    print('[DEBUG] masterSecret length: ${session.masterSecret.length}');
+    print('[DEBUG] clientRandom length: ${clientRandom.length}');
+    print('[DEBUG] serverRandom length: ${serverRandom.length}');
+    print('[DEBUG] version: ${version.major}.${version.minor}');
+
+    // Calculate pending states for encryption (keys derived from master secret)
+    calcPendingStates(
+      session.cipherSuite,
+      Uint8List.fromList(session.masterSecret),
+      clientRandom,
+      serverRandom,
+      null, // implementations
+    );
+
+    print('[DEBUG] calcPendingStates done');
+    print('[DEBUG] BEFORE changeWriteState - encContext: ${getCipherName()}');
+
+    // Switch to Application Keys (Write) - MUST be done BEFORE sending Finished
+    changeWriteState();
+
+    print('[DEBUG] AFTER changeWriteState - encContext: ${getCipherName()}');
+
+    print('[DEBUG] changeWriteState done, about to send Finished');
+
+    // Debug: print handshake hash before building verifyData
+    final hashForDebug = handshakeHashes.digest('sha256');
+    print(
+        '[DEBUG] handshakeHash (sha256 before Finished): ${hashForDebug.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+
+    // Send Finished (now encrypted)
+    final verifyData = buildFinishedVerifyData(forClient: true);
+    print(
+        '[DEBUG] verifyData: ${verifyData.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+    print('[DEBUG] verifyData length: ${verifyData.length}');
+    await sendHandshakeMessage(TlsFinished(verifyData: verifyData));
+
+    print('[DEBUG] Finished sent');
+    // Receive ChangeCipherSpec
+    print(
+        '[DEBUG] About to receive CCS. _pendingMessages.length=${_pendingMessages.length}');
+    if (_pendingMessages.isNotEmpty) {
+      final firstPending = _pendingMessages.first;
+      print('[DEBUG] First pending message type: ${firstPending.$1.type}');
+    }
+    final pendingEncryptedHandshakes = <(dynamic, Uint8List)>[];
+    while (true) {
+      final (header, parser) = await recvRecord();
+      print('[DEBUG] Received message type: ${header.type}'
+          '${header is RecordHeader3 ? ', length=${header.length}' : ''}');
+
+      if (header.type == ContentType.alert) {
+        final alertBytes = parser.getFixBytes(parser.getRemainingLength());
+        print(
+            '[DEBUG] Alert received: level=${alertBytes.isNotEmpty ? alertBytes[0] : "?"} desc=${alertBytes.length > 1 ? alertBytes[1] : "?"}');
+        final alert = TlsAlert.parse(alertBytes);
+        throw TLSRemoteAlert(alert.description.code, alert.level.code);
+      }
+
+      if (header.type == ContentType.change_cipher_spec) {
+        changeReadState();
+        for (final pending in pendingEncryptedHandshakes) {
+          final (_, plaintext) = decryptRecordPayload(pending.$1, pending.$2);
+          defragmenter.addData(ContentType.handshake, plaintext);
+        }
+        break;
+      }
+
+      if (header.type == ContentType.handshake) {
+        final fragment = parser.getFixBytes(parser.getRemainingLength());
+        if (!hasReadCipher) {
+          try {
+            final recordVersion =
+                header is RecordHeader3 ? header.version : version;
+            // If parsing succeeds, treat it as plaintext and let the
+            // defragmenter/handshake queue process it normally.
+            TlsHandshakeMessage.parseFragment(
+              fragment,
+              recordVersion: recordVersion,
+            );
+            defragmenter.addData(ContentType.handshake, fragment);
+            print('[DEBUG] Queued plaintext handshake before CCS '
+                '(len=${fragment.length})');
+          } catch (_) {
+            print('[DEBUG] Stashed encrypted handshake fragment (hex): '
+                '${fragment.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+            pendingEncryptedHandshakes.add((header, fragment));
+          }
+          continue;
+        }
+
+        // Otherwise, decrypt the encrypted handshake using the pending keys.
+        changeReadState();
+        print('[DEBUG] Encrypted handshake record (hex): '
+            '${fragment.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+        final (_, plaintext) = decryptRecordPayload(header, fragment);
+        defragmenter.addData(ContentType.handshake, plaintext);
+        break;
+      }
+
+      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+      throw TLSUnexpectedMessage('Expected ChangeCipherSpec');
+    }
+
+    // Receive Finished (tickets may arrive before it when not encrypted)
+    TlsFinished? finishedMsg;
+    final initialFinishedSnapshot = handshakeHashes.copy();
+    var finishedHandshakeSnapshot = initialFinishedSnapshot;
+    while (finishedMsg == null) {
+      final msg = await recvHandshakeMessage(
+        allowedTypes: [
+          TlsHandshakeType.finished,
+          TlsHandshakeType.newSessionTicket
+        ],
+      );
+      if (msg is TlsFinished) {
+        finishedMsg = msg;
+      } else if (msg is TlsNewSessionTicket) {
+        session.tickets ??= <Ticket>[];
+        session.tickets!.add(Ticket(
+          ticket: msg.ticket,
+          ticketLifetime: msg.ticketLifetime,
+          masterSecret: session.masterSecret,
+          cipherSuite: session.cipherSuite,
+        ));
+        final hh = handshakeHashes.digest('sha256');
+        print('[DEBUG] processed NST before Finished, handshakeHash='
+            '${hh.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+        finishedHandshakeSnapshot = handshakeHashes.copy();
+      } else {
+        await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+        throw TLSUnexpectedMessage('Expected Finished');
+      }
+    }
+
+    // Verify Finished
+    print('[DEBUG] received server Finished verifyData: '
+        '${finishedMsg.verifyData.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+    final expectedVerifyData = calcFinished(
+      [version.major, version.minor],
+      session.masterSecret,
+      session.cipherSuite,
+      finishedHandshakeSnapshot,
+      false,
+    );
+    print('[DEBUG] expected server Finished verifyData: '
+        '${expectedVerifyData.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+    final altVerifyData = calcFinished(
+      [version.major, version.minor],
+      session.masterSecret,
+      session.cipherSuite,
+      initialFinishedSnapshot,
+      false,
+    );
+    print('[DEBUG] expected (without NST) verifyData: '
+        '${altVerifyData.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+    if (!_bytesEqual(finishedMsg.verifyData, expectedVerifyData)) {
+      await _sendAlert(AlertLevel.fatal, AlertDescription.decrypt_error);
+      throw TLSHandshakeFailure('Finished verification failed');
+    }
+
+    handshakeEstablished = true;
   }
 
   Future<void> _clientHandshake13(Keypair? certParams) async {
-      if (_pendingSharedSecret == null) {
-          throw TLSHandshakeFailure('Missing shared secret for TLS 1.3');
-      }
-      final sharedSecret = _pendingSharedSecret!;
-      _pendingSharedSecret = null;
+    if (_pendingSharedSecret == null) {
+      throw TLSHandshakeFailure('Missing shared secret for TLS 1.3');
+    }
+    final sharedSecret = _pendingSharedSecret!;
+    _pendingSharedSecret = null;
 
-      // Determine Hash Algorithm
-      final hashName = _prfHashName();
-      final hashLen = hashName == 'sha384' ? 48 : 32;
-      
-      // Calculate Early Secret
-      Uint8List psk = Uint8List(hashLen); // 0-filled
-      if (_negotiatedClientHelloPskIndex != null) {
-          if (session.resumptionMasterSecret.isNotEmpty) {
-              psk = session.resumptionMasterSecret;
-          }
+    // Determine Hash Algorithm
+    final hashName = _prfHashName();
+    final hashLen = hashName == 'sha384' ? 48 : 32;
+
+    // Calculate Early Secret
+    Uint8List psk = Uint8List(hashLen); // 0-filled
+    if (_negotiatedClientHelloPskIndex != null) {
+      if (session.resumptionMasterSecret.isNotEmpty) {
+        psk = session.resumptionMasterSecret;
       }
-      final earlySecret = secureHMAC(psk, Uint8List(hashLen), hashName); 
-      
-      // Derive Handshake Secret
-      final derivedSecret = derive_secret(
-          earlySecret, 
-          Uint8List.fromList('derived'.codeUnits), 
-          null, 
-          hashName
-      );
-      
-      final handshakeSecret = secureHMAC(derivedSecret, sharedSecret, hashName);
-      late Uint8List masterSecret;
-      
-      // Calculate Client/Server Handshake Traffic Secrets
-      final helloHash = handshakeHashes.digest(hashName);
-      
-      final clientHandshakeTrafficSecret = HKDF_expand_label(
-          handshakeSecret,
-          Uint8List.fromList('c hs traffic'.codeUnits),
-          helloHash,
-          hashLen,
-          hashName
-      );
-      
-      final serverHandshakeTrafficSecret = HKDF_expand_label(
-          handshakeSecret,
-          Uint8List.fromList('s hs traffic'.codeUnits),
-          helloHash,
-          hashLen,
-          hashName
-      );
-      
-      // Store secrets in session
-      session.clHandshakeSecret = clientHandshakeTrafficSecret;
-      session.srHandshakeSecret = serverHandshakeTrafficSecret;
-      
-      // Switch to Handshake Keys
-      calcTLS1_3PendingState(
-          session.cipherSuite,
-          clientHandshakeTrafficSecret,
-          serverHandshakeTrafficSecret,
-          null
-      );
-      changeReadState();
-      changeWriteState();
-      
-      // Receive EncryptedExtensions
-      final encExtMsg = await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.encryptedExtensions]);
-      if (encExtMsg is TlsEncryptedExtensions) {
-          // Process ALPN
-          final alpnExt = encExtMsg.extensions.byType(ExtensionType.alpn);
-          if (alpnExt is TlsAlpnExtension) {
-              if (alpnExt.protocols.isNotEmpty) {
-                  session.appProto = Uint8List.fromList(alpnExt.protocols.first.codeUnits);
-              }
+    }
+    final earlySecret = secureHMAC(psk, Uint8List(hashLen), hashName);
+
+    // Derive Handshake Secret
+    final derivedSecret = derive_secret(
+        earlySecret, Uint8List.fromList('derived'.codeUnits), null, hashName);
+
+    final handshakeSecret = secureHMAC(derivedSecret, sharedSecret, hashName);
+    late Uint8List masterSecret;
+
+    // Calculate Client/Server Handshake Traffic Secrets
+    final helloHash = handshakeHashes.digest(hashName);
+
+    final clientHandshakeTrafficSecret = HKDF_expand_label(
+        handshakeSecret,
+        Uint8List.fromList('c hs traffic'.codeUnits),
+        helloHash,
+        hashLen,
+        hashName);
+
+    final serverHandshakeTrafficSecret = HKDF_expand_label(
+        handshakeSecret,
+        Uint8List.fromList('s hs traffic'.codeUnits),
+        helloHash,
+        hashLen,
+        hashName);
+
+    // Store secrets in session
+    session.clHandshakeSecret = clientHandshakeTrafficSecret;
+    session.srHandshakeSecret = serverHandshakeTrafficSecret;
+
+    // Switch to Handshake Keys
+    calcTLS1_3PendingState(session.cipherSuite, clientHandshakeTrafficSecret,
+        serverHandshakeTrafficSecret, null);
+    changeReadState();
+    changeWriteState();
+
+    // Receive EncryptedExtensions
+    final encExtMsg = await recvHandshakeMessage(
+        allowedTypes: [TlsHandshakeType.encryptedExtensions]);
+    if (encExtMsg is TlsEncryptedExtensions) {
+      // Process ALPN
+      final alpnExt = encExtMsg.extensions.byType(ExtensionType.alpn);
+      if (alpnExt is TlsAlpnExtension) {
+        if (alpnExt.protocols.isNotEmpty) {
+          session.appProto =
+              Uint8List.fromList(alpnExt.protocols.first.codeUnits);
+        }
+      }
+    } else {
+      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+      throw TLSUnexpectedMessage(
+          'Expected EncryptedExtensions, got ${encExtMsg.handshakeType.name}');
+    }
+
+    bool certRequested = false;
+    TlsCertificateRequest? certRequestMsg;
+
+    // Receive CertificateRequest (Optional) or Certificate
+    var message = await recvHandshakeMessage(allowedTypes: [
+      TlsHandshakeType.certificateRequest,
+      TlsHandshakeType.certificate
+    ]);
+
+    if (message is TlsCertificateRequest) {
+      certRequested = true;
+      certRequestMsg = message;
+      message = await recvHandshakeMessage(
+          allowedTypes: [TlsHandshakeType.certificate]);
+    }
+
+    if (message is! TlsCertificate) {
+      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+      throw TLSUnexpectedMessage(
+          'Expected Certificate, got ${message.handshakeType.name}');
+    }
+
+    // Parse Certificate Chain
+    final certs = <X509>[];
+    for (final entry in message.certificateEntries) {
+      final x509 = X509();
+      x509.parseBinary(entry.certificate);
+      certs.add(x509);
+
+      if (certs.length == 1 && entry.extensions.isNotEmpty) {
+        try {
+          final extBlock = TlsExtensionBlock.fromBytes(entry.extensions,
+              context: TlsExtensionContext.certificate);
+          final statusExt = extBlock.byType(ExtensionType.status_request);
+          if (statusExt is TlsCertificateStatusExtension) {
+            if (statusExt.statusType == 1) {
+              // ocsp
+              session.ocspResponse = statusExt.response;
+            }
           }
+        } catch (_) {
+          // Ignore extension parsing errors
+        }
+      }
+    }
+    session.serverCertChain = X509CertChain(certs);
+    _validateCertificateChain(session.serverCertChain!);
+
+    // Receive CertificateVerify
+    final certVerifyTranscript = handshakeHashes.copy();
+    final certVerifyMsg = await recvHandshakeMessage(
+        allowedTypes: [TlsHandshakeType.certificateVerify]);
+    if (certVerifyMsg is! TlsCertificateVerify) {
+      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+      throw TLSUnexpectedMessage(
+          'Expected CertificateVerify, got ${certVerifyMsg.handshakeType.name}');
+    }
+
+    final pubKey = session.serverCertChain!.getEndEntityPublicKey();
+    String keyType;
+    if (pubKey is RSAKey) {
+      keyType = 'rsa';
+    } else if (pubKey is ECDSAKey) {
+      keyType = 'ecdsa';
+    } else if (pubKey is Ed448PublicKey) {
+      keyType = 'ed448';
+    } else if (pubKey is EdDSAKey && pubKey.bitLength == 256) {
+      keyType = 'ed25519';
+    } else {
+      throw UnimplementedError('Unsupported key type: ${pubKey.runtimeType}');
+    }
+
+    // Verify Signature
+    final verifyBytes = buildCertificateVerifyBytes(
+      signatureScheme: certVerifyMsg.signatureScheme!,
+      peerTag: 'server',
+      keyType: keyType,
+      handshakeSnapshot: certVerifyTranscript,
+    );
+
+    final schemeName = SignatureScheme.toRepr(certVerifyMsg.signatureScheme!);
+    if (schemeName == null) {
+      throw TLSHandshakeFailure(
+          'Unknown signature scheme: ${certVerifyMsg.signatureScheme}');
+    }
+
+    bool signatureValid;
+    if (schemeName.startsWith('rsa_pss')) {
+      String hash;
+      int saltLen;
+      if (schemeName.endsWith('sha256')) {
+        hash = 'sha256';
+        saltLen = 32;
+      } else if (schemeName.endsWith('sha384')) {
+        hash = 'sha384';
+        saltLen = 48;
+      } else if (schemeName.endsWith('sha512')) {
+        hash = 'sha512';
+        saltLen = 64;
       } else {
-          await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
-          throw TLSUnexpectedMessage('Expected EncryptedExtensions, got ${encExtMsg.handshakeType.name}');
+        throw TLSHandshakeFailure('Unsupported hash for PSS: $schemeName');
       }
+      signatureValid = (pubKey as RSAKey).verify(
+          certVerifyMsg.signature, verifyBytes,
+          padding: 'pss', hashAlg: hash, saltLen: saltLen);
+    } else if (schemeName.startsWith('rsa_pkcs1')) {
+      String hash;
+      if (schemeName.endsWith('sha256'))
+        hash = 'sha256';
+      else if (schemeName.endsWith('sha384'))
+        hash = 'sha384';
+      else if (schemeName.endsWith('sha512'))
+        hash = 'sha512';
+      else if (schemeName.endsWith('sha1'))
+        hash = 'sha1';
+      else
+        throw TLSHandshakeFailure('Unsupported hash for PKCS1: $schemeName');
+      signatureValid = (pubKey as RSAKey).verify(
+          certVerifyMsg.signature, verifyBytes,
+          padding: 'pkcs1', hashAlg: hash, saltLen: 0);
+    } else if (schemeName.startsWith('ecdsa')) {
+      String hash;
+      if (schemeName.endsWith('sha256'))
+        hash = 'sha256';
+      else if (schemeName.endsWith('sha384'))
+        hash = 'sha384';
+      else if (schemeName.endsWith('sha512'))
+        hash = 'sha512';
+      else if (schemeName.endsWith('sha1'))
+        hash = 'sha1';
+      else
+        throw TLSHandshakeFailure('Unsupported hash for ECDSA: $schemeName');
+      signatureValid = (pubKey as ECDSAKey)
+          .verify(certVerifyMsg.signature, verifyBytes, hashAlg: hash);
+    } else if (schemeName == 'ed448' || schemeName == 'ed25519') {
+      // EdDSA (Ed448/Ed25519) uses pure signatures without pre-hashing
+      signatureValid = (pubKey as EdDSAKey)
+          .hashAndVerify(certVerifyMsg.signature, verifyBytes);
+    } else {
+      throw TLSHandshakeFailure('Unsupported signature scheme: $schemeName');
+    }
 
-      bool certRequested = false;
-      TlsCertificateRequest? certRequestMsg;
+    if (!signatureValid) {
+      await _sendAlert(AlertLevel.fatal, AlertDescription.decrypt_error);
+      throw TLSHandshakeFailure('Invalid signature');
+    }
 
-      // Receive CertificateRequest (Optional) or Certificate
-      var message = await recvHandshakeMessage(allowedTypes: [
-          TlsHandshakeType.certificateRequest,
-          TlsHandshakeType.certificate
-      ]);
+    // Receive Finished
+    final finishedTranscript = handshakeHashes.copy();
+    final finishedMsg =
+        await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.finished]);
+    if (finishedMsg is! TlsFinished) {
+      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+      throw TLSUnexpectedMessage(
+          'Expected Finished, got ${finishedMsg.handshakeType.name}');
+    }
 
-      if (message is TlsCertificateRequest) {
-          certRequested = true;
-          certRequestMsg = message;
-          message = await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.certificate]);
-      }
+    // Verify Finished
+    final expectedVerifyData = buildFinishedVerifyData(
+      forClient: false,
+      handshakeSnapshot: finishedTranscript,
+    );
+    if (!_bytesEqual(finishedMsg.verifyData, expectedVerifyData)) {
+      await _sendAlert(AlertLevel.fatal, AlertDescription.decrypt_error);
+      throw TLSHandshakeFailure('Finished verification failed');
+    }
 
-      if (message is! TlsCertificate) {
-          await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
-          throw TLSUnexpectedMessage('Expected Certificate, got ${message.handshakeType.name}');
-      }
-      
-      // Parse Certificate Chain
-      final certs = <X509>[];
-      for (final entry in message.certificateEntries) {
-          final x509 = X509();
-          x509.parseBinary(entry.certificate);
-          certs.add(x509);
+    // Prepare application traffic secrets using the transcript up through the
+    // server's Finished so we can immediately accept TLS 1.3 application data.
+    final trafficHandshakeHash = handshakeHashes.digest(hashName);
+    final derivedSecret2 = derive_secret(handshakeSecret,
+        Uint8List.fromList('derived'.codeUnits), null, hashName);
 
-          if (certs.length == 1 && entry.extensions.isNotEmpty) {
-              try {
-                  final extBlock = TlsExtensionBlock.fromBytes(
-                      entry.extensions, 
-                      context: TlsExtensionContext.certificate
-                  );
-                  final statusExt = extBlock.byType(ExtensionType.status_request);
-                  if (statusExt is TlsCertificateStatusExtension) {
-                      if (statusExt.statusType == 1) { // ocsp
-                          session.ocspResponse = statusExt.response;
-                      }
-                  }
-              } catch (_) {
-                  // Ignore extension parsing errors
-              }
+    masterSecret = secureHMAC(derivedSecret2, Uint8List(hashLen), hashName);
+    session.masterSecret = masterSecret;
+
+    final clientAppTrafficSecret = HKDF_expand_label(
+        masterSecret,
+        Uint8List.fromList('c ap traffic'.codeUnits),
+        trafficHandshakeHash,
+        hashLen,
+        hashName);
+
+    final serverAppTrafficSecret = HKDF_expand_label(
+        masterSecret,
+        Uint8List.fromList('s ap traffic'.codeUnits),
+        trafficHandshakeHash,
+        hashLen,
+        hashName);
+
+    session.clAppSecret = clientAppTrafficSecret;
+    session.srAppSecret = serverAppTrafficSecret;
+
+    calcTLS1_3PendingState(session.cipherSuite, clientAppTrafficSecret,
+        serverAppTrafficSecret, null);
+    changeReadState();
+
+    // Send Certificate and CertificateVerify if requested
+    if (certRequested) {
+      if (certParams != null) {
+        final certEntries = certParams.certificates
+            .map((c) => TlsCertificateEntry(certificate: c.bytes))
+            .toList();
+
+        await sendHandshakeMessage(TlsCertificate.tls13(
+            certificateRequestContext:
+                certRequestMsg!.certificateRequestContext,
+            certificateEntries: certEntries));
+
+        // Signature Scheme Selection
+        int? selectedScheme;
+        final supportedSchemes = certRequestMsg.signatureAlgorithms;
+        final pubKey = certParams.key;
+
+        if (pubKey is RSAKey) {
+          if (supportedSchemes
+              .contains(SignatureScheme.rsa_pss_rsae_sha256.value)) {
+            selectedScheme = SignatureScheme.rsa_pss_rsae_sha256.value;
+          } else if (supportedSchemes
+              .contains(SignatureScheme.rsa_pss_rsae_sha384.value)) {
+            selectedScheme = SignatureScheme.rsa_pss_rsae_sha384.value;
+          } else if (supportedSchemes
+              .contains(SignatureScheme.rsa_pkcs1_sha256.value)) {
+            selectedScheme = SignatureScheme.rsa_pkcs1_sha256.value;
           }
-      }
-      session.serverCertChain = X509CertChain(certs);
-      _validateCertificateChain(session.serverCertChain!);
-      
-      // Receive CertificateVerify
-      final certVerifyTranscript = handshakeHashes.copy();
-      final certVerifyMsg = await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.certificateVerify]);
-      if (certVerifyMsg is! TlsCertificateVerify) {
-          await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
-          throw TLSUnexpectedMessage('Expected CertificateVerify, got ${certVerifyMsg.handshakeType.name}');
-      }
-      
-      final pubKey = session.serverCertChain!.getEndEntityPublicKey();
-      String keyType;
-      if (pubKey is RSAKey) {
-          keyType = 'rsa';
-      } else if (pubKey is ECDSAKey) {
-          keyType = 'ecdsa';
-      } else if (pubKey is Ed448PublicKey) {
-          keyType = 'ed448';
-      } else if (pubKey is EdDSAKey && pubKey.bitLength == 256) {
-          keyType = 'ed25519';
-      } else {
-          throw UnimplementedError('Unsupported key type: ${pubKey.runtimeType}');
-      }
+        } else if (pubKey is ECDSAKey) {
+          if (supportedSchemes
+              .contains(SignatureScheme.ecdsa_secp256r1_sha256.value)) {
+            selectedScheme = SignatureScheme.ecdsa_secp256r1_sha256.value;
+          } else if (supportedSchemes
+              .contains(SignatureScheme.ecdsa_secp384r1_sha384.value)) {
+            selectedScheme = SignatureScheme.ecdsa_secp384r1_sha384.value;
+          }
+        }
 
-      // Verify Signature
-      final verifyBytes = buildCertificateVerifyBytes(
-          signatureScheme: certVerifyMsg.signatureScheme!,
-          peerTag: 'server',
-          keyType: keyType,
-          handshakeSnapshot: certVerifyTranscript,
-      );
-      
-      final schemeName = SignatureScheme.toRepr(certVerifyMsg.signatureScheme!);
-      if (schemeName == null) {
-          throw TLSHandshakeFailure('Unknown signature scheme: ${certVerifyMsg.signatureScheme}');
-      }
+        if (selectedScheme == null) {
+          if (pubKey is RSAKey)
+            selectedScheme = SignatureScheme.rsa_pss_rsae_sha256.value;
+          else if (pubKey is ECDSAKey)
+            selectedScheme = SignatureScheme.ecdsa_secp256r1_sha256.value;
+          else
+            throw UnimplementedError(
+                'Unsupported key type: ${pubKey.runtimeType}');
+        }
 
-      bool signatureValid;
-      if (schemeName.startsWith('rsa_pss')) {
-          String hash;
-          int saltLen;
-          if (schemeName.endsWith('sha256')) {
+        final verifyBytes = buildCertificateVerifyBytes(
+          signatureScheme: selectedScheme,
+          peerTag: 'client',
+          keyType: pubKey is RSAKey ? 'rsa' : 'ecdsa',
+        );
+
+        Uint8List signature;
+        final schemeName = SignatureScheme.toRepr(selectedScheme);
+
+        if (pubKey is RSAKey) {
+          String padding = 'pss';
+          String hash = 'sha256';
+          int saltLen = 32;
+
+          if (schemeName!.startsWith('rsa_pkcs1')) {
+            padding = 'pkcs1';
+            if (schemeName.endsWith('sha256'))
+              hash = 'sha256';
+            else if (schemeName.endsWith('sha384'))
+              hash = 'sha384';
+            else if (schemeName.endsWith('sha512')) hash = 'sha512';
+          } else if (schemeName.startsWith('rsa_pss')) {
+            padding = 'pss';
+            if (schemeName.endsWith('sha256')) {
               hash = 'sha256';
               saltLen = 32;
-          } else if (schemeName.endsWith('sha384')) {
+            } else if (schemeName.endsWith('sha384')) {
               hash = 'sha384';
               saltLen = 48;
-          } else if (schemeName.endsWith('sha512')) {
+            } else if (schemeName.endsWith('sha512')) {
               hash = 'sha512';
               saltLen = 64;
-          } else {
-              throw TLSHandshakeFailure('Unsupported hash for PSS: $schemeName');
+            }
           }
-          signatureValid = (pubKey as RSAKey).verify(certVerifyMsg.signature, verifyBytes, padding: 'pss', hashAlg: hash, saltLen: saltLen);
-      } else if (schemeName.startsWith('rsa_pkcs1')) {
-          String hash;
-          if (schemeName.endsWith('sha256')) hash = 'sha256';
-          else if (schemeName.endsWith('sha384')) hash = 'sha384';
+
+          signature = pubKey.sign(verifyBytes,
+              padding: padding, hashAlg: hash, saltLen: saltLen);
+        } else if (pubKey is ECDSAKey) {
+          String hash = 'sha256';
+          if (schemeName!.endsWith('sha256'))
+            hash = 'sha256';
+          else if (schemeName.endsWith('sha384'))
+            hash = 'sha384';
           else if (schemeName.endsWith('sha512')) hash = 'sha512';
-          else if (schemeName.endsWith('sha1')) hash = 'sha1';
-          else throw TLSHandshakeFailure('Unsupported hash for PKCS1: $schemeName');
-          signatureValid = (pubKey as RSAKey).verify(certVerifyMsg.signature, verifyBytes, padding: 'pkcs1', hashAlg: hash, saltLen: 0);
-      } else if (schemeName.startsWith('ecdsa')) {
-          String hash;
-          if (schemeName.endsWith('sha256')) hash = 'sha256';
-          else if (schemeName.endsWith('sha384')) hash = 'sha384';
-          else if (schemeName.endsWith('sha512')) hash = 'sha512';
-          else if (schemeName.endsWith('sha1')) hash = 'sha1';
-          else throw TLSHandshakeFailure('Unsupported hash for ECDSA: $schemeName');
-          signatureValid = (pubKey as ECDSAKey).verify(certVerifyMsg.signature, verifyBytes, hashAlg: hash);
-      } else if (schemeName == 'ed448' || schemeName == 'ed25519') {
-          // EdDSA (Ed448/Ed25519) uses pure signatures without pre-hashing
-          signatureValid = (pubKey as EdDSAKey).hashAndVerify(certVerifyMsg.signature, verifyBytes);
+
+          signature = pubKey.sign(verifyBytes, hashAlg: hash);
+        } else {
+          throw UnimplementedError('Unsupported key type for signing');
+        }
+
+        await sendHandshakeMessage(TlsCertificateVerify(
+            version: const TlsProtocolVersion(3, 4),
+            signatureScheme: selectedScheme,
+            signature: signature));
       } else {
-           throw TLSHandshakeFailure('Unsupported signature scheme: $schemeName');
+        await sendHandshakeMessage(TlsCertificate.tls13(
+            certificateRequestContext:
+                certRequestMsg!.certificateRequestContext,
+            certificateEntries: []));
       }
+    }
 
-      if (!signatureValid) {
-           await _sendAlert(AlertLevel.fatal, AlertDescription.decrypt_error);
-           throw TLSHandshakeFailure('Invalid signature');
-      }
-      
-      // Receive Finished
-      final finishedTranscript = handshakeHashes.copy();
-      final finishedMsg = await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.finished]);
-      if (finishedMsg is! TlsFinished) {
-          await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
-          throw TLSUnexpectedMessage('Expected Finished, got ${finishedMsg.handshakeType.name}');
-      }
-      
-      // Verify Finished
-      final expectedVerifyData = buildFinishedVerifyData(
-        forClient: false,
-        handshakeSnapshot: finishedTranscript,
-      );
-      if (!_bytesEqual(finishedMsg.verifyData, expectedVerifyData)) {
-          await _sendAlert(AlertLevel.fatal, AlertDescription.decrypt_error);
-          throw TLSHandshakeFailure('Finished verification failed');
-      }
+    // Send Finished
+    final verifyData = buildFinishedVerifyData(forClient: true);
+    await sendHandshakeMessage(TlsFinished(verifyData: verifyData));
 
-        // Prepare application traffic secrets using the transcript up through the
-        // server's Finished so we can immediately accept TLS 1.3 application data.
-        final trafficHandshakeHash = handshakeHashes.digest(hashName);
-        final derivedSecret2 = derive_secret(
-          handshakeSecret,
-          Uint8List.fromList('derived'.codeUnits),
-          null,
-          hashName);
+    // After sending our Finished, derive the resumption master secret using
+    // the full transcript (which now includes the client's handshake)
+    final fullHandshakeHash = handshakeHashes.digest(hashName);
+    final resumptionMasterSecret = derive_secret(
+        masterSecret,
+        Uint8List.fromList('res master'.codeUnits),
+        fullHandshakeHash,
+        hashName);
+    session.resumptionMasterSecret = resumptionMasterSecret;
 
-        masterSecret = secureHMAC(derivedSecret2, Uint8List(hashLen), hashName);
-        session.masterSecret = masterSecret;
+    changeWriteState();
 
-        final clientAppTrafficSecret = HKDF_expand_label(
-          masterSecret,
-          Uint8List.fromList('c ap traffic'.codeUnits),
-          trafficHandshakeHash,
-          hashLen,
-          hashName);
-
-        final serverAppTrafficSecret = HKDF_expand_label(
-          masterSecret,
-          Uint8List.fromList('s ap traffic'.codeUnits),
-          trafficHandshakeHash,
-          hashLen,
-          hashName);
-
-        session.clAppSecret = clientAppTrafficSecret;
-        session.srAppSecret = serverAppTrafficSecret;
-
-        calcTLS1_3PendingState(
-          session.cipherSuite,
-          clientAppTrafficSecret,
-          serverAppTrafficSecret,
-          null);
-        changeReadState();
-      
-      // Send Certificate and CertificateVerify if requested
-      if (certRequested) {
-          if (certParams != null) {
-              final certEntries = certParams.certificates.map((c) => TlsCertificateEntry(certificate: c.bytes)).toList();
-              
-              await sendHandshakeMessage(TlsCertificate.tls13(
-                  certificateRequestContext: certRequestMsg!.certificateRequestContext,
-                  certificateEntries: certEntries
-              ));
-              
-              // Signature Scheme Selection
-              int? selectedScheme;
-              final supportedSchemes = certRequestMsg.signatureAlgorithms;
-              final pubKey = certParams.key;
-              
-              if (pubKey is RSAKey) {
-                  if (supportedSchemes.contains(SignatureScheme.rsa_pss_rsae_sha256.value)) {
-                      selectedScheme = SignatureScheme.rsa_pss_rsae_sha256.value;
-                  } else if (supportedSchemes.contains(SignatureScheme.rsa_pss_rsae_sha384.value)) {
-                      selectedScheme = SignatureScheme.rsa_pss_rsae_sha384.value;
-                  } else if (supportedSchemes.contains(SignatureScheme.rsa_pkcs1_sha256.value)) {
-                      selectedScheme = SignatureScheme.rsa_pkcs1_sha256.value;
-                  }
-              } else if (pubKey is ECDSAKey) {
-                  if (supportedSchemes.contains(SignatureScheme.ecdsa_secp256r1_sha256.value)) {
-                      selectedScheme = SignatureScheme.ecdsa_secp256r1_sha256.value;
-                  } else if (supportedSchemes.contains(SignatureScheme.ecdsa_secp384r1_sha384.value)) {
-                      selectedScheme = SignatureScheme.ecdsa_secp384r1_sha384.value;
-                  }
-              }
-              
-              if (selectedScheme == null) {
-                   if (pubKey is RSAKey) selectedScheme = SignatureScheme.rsa_pss_rsae_sha256.value;
-                   else if (pubKey is ECDSAKey) selectedScheme = SignatureScheme.ecdsa_secp256r1_sha256.value;
-                   else throw UnimplementedError('Unsupported key type: ${pubKey.runtimeType}');
-              }
-              
-              final verifyBytes = buildCertificateVerifyBytes(
-                  signatureScheme: selectedScheme,
-                  peerTag: 'client',
-                  keyType: pubKey is RSAKey ? 'rsa' : 'ecdsa',
-              );
-              
-              Uint8List signature;
-              final schemeName = SignatureScheme.toRepr(selectedScheme);
-              
-              if (pubKey is RSAKey) {
-                  String padding = 'pss';
-                  String hash = 'sha256';
-                  int saltLen = 32;
-                  
-                  if (schemeName!.startsWith('rsa_pkcs1')) {
-                      padding = 'pkcs1';
-                      if (schemeName.endsWith('sha256')) hash = 'sha256';
-                      else if (schemeName.endsWith('sha384')) hash = 'sha384';
-                      else if (schemeName.endsWith('sha512')) hash = 'sha512';
-                  } else if (schemeName.startsWith('rsa_pss')) {
-                      padding = 'pss';
-                      if (schemeName.endsWith('sha256')) { hash = 'sha256'; saltLen = 32; }
-                      else if (schemeName.endsWith('sha384')) { hash = 'sha384'; saltLen = 48; }
-                      else if (schemeName.endsWith('sha512')) { hash = 'sha512'; saltLen = 64; }
-                  }
-                  
-                  signature = pubKey.sign(verifyBytes, padding: padding, hashAlg: hash, saltLen: saltLen);
-              } else if (pubKey is ECDSAKey) {
-                  String hash = 'sha256';
-                  if (schemeName!.endsWith('sha256')) hash = 'sha256';
-                  else if (schemeName.endsWith('sha384')) hash = 'sha384';
-                  else if (schemeName.endsWith('sha512')) hash = 'sha512';
-                  
-                  signature = pubKey.sign(verifyBytes, hashAlg: hash);
-              } else {
-                  throw UnimplementedError('Unsupported key type for signing');
-              }
-              
-              await sendHandshakeMessage(TlsCertificateVerify(
-                  version: const TlsProtocolVersion(3, 4),
-                  signatureScheme: selectedScheme,
-                  signature: signature
-              ));
-          } else {
-              await sendHandshakeMessage(TlsCertificate.tls13(
-                  certificateRequestContext: certRequestMsg!.certificateRequestContext,
-                  certificateEntries: []
-              ));
-          }
-      }
-
-        // Send Finished
-        final verifyData = buildFinishedVerifyData(forClient: true);
-        await sendHandshakeMessage(TlsFinished(verifyData: verifyData));
-
-        // After sending our Finished, derive the resumption master secret using
-        // the full transcript (which now includes the client's handshake)
-        final fullHandshakeHash = handshakeHashes.digest(hashName);
-        final resumptionMasterSecret = derive_secret(
-          masterSecret,
-          Uint8List.fromList('res master'.codeUnits),
-          fullHandshakeHash,
-          hashName);
-        session.resumptionMasterSecret = resumptionMasterSecret;
-
-        changeWriteState();
-
-        handshakeEstablished = true;
+    handshakeEstablished = true;
   }
 
   Future<void> handshakeServer({
@@ -1584,14 +1708,16 @@ class TlsConnection extends MessageSocket {
     client = false;
     handshakeSettings = settings ?? HandshakeSettings();
     this.session = session ?? Session();
-    
+
     // Receive ClientHello
-    final message = await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.clientHello]);
+    final message = await recvHandshakeMessage(
+        allowedTypes: [TlsHandshakeType.clientHello]);
     if (message is! TlsClientHello) {
-        await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
-        throw TLSUnexpectedMessage('Expected ClientHello, got ${message.handshakeType.name}');
+      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+      throw TLSUnexpectedMessage(
+          'Expected ClientHello, got ${message.handshakeType.name}');
     }
-    
+
     // Process ClientHello by negotiating the highest mutually supported version
     final minSupported = TlsProtocolVersion(
       handshakeSettings.minVersion.$1,
@@ -1630,14 +1756,16 @@ class TlsConnection extends MessageSocket {
     }
 
     version = negotiatedVersion;
-    
+
     if (_isTls13Plus()) {
-        await _serverHandshake13(message, certChain, privateKey, reqCert: reqCert, alpn: alpn);
+      await _serverHandshake13(message, certChain, privateKey,
+          reqCert: reqCert, alpn: alpn);
     } else {
-        await _serverHandshake12(message, certChain, privateKey, reqCert: reqCert, alpn: alpn);
+      await _serverHandshake12(message, certChain, privateKey,
+          reqCert: reqCert, alpn: alpn);
     }
   }
-  
+
   Future<void> _serverHandshake13(
     TlsClientHello clientHello,
     X509CertChain? certChain,
@@ -1645,450 +1773,480 @@ class TlsConnection extends MessageSocket {
     bool reqCert = false,
     List<String>? alpn,
   }) async {
-      if (certChain == null || privateKey == null) {
-          await _sendAlert(AlertLevel.fatal, AlertDescription.internal_error);
-          throw TLSHandshakeFailure('Server certificate and private key required');
-      }
-      session.serverCertChain = certChain;
-      
-      // 1. Select Cipher Suite
-      final supportedSuites = CipherSuite.getTLS13Suites(handshakeSettings);
-      int? selectedSuite;
-      for (final suite in clientHello.cipherSuites) {
-          if (supportedSuites.contains(suite)) {
-              selectedSuite = suite;
-              break;
-          }
-      }
-      if (selectedSuite == null) {
-          await _sendAlert(AlertLevel.fatal, AlertDescription.handshake_failure);
-          throw TLSHandshakeFailure('No shared cipher suites');
-      }
-      session.cipherSuite = selectedSuite;
-      
-      // 2. Process Key Share
-      final keyShareExt = clientHello.extensions?.byType(ExtensionType.key_share);
-      if (keyShareExt is! TlsKeyShareExtension) {
-           await _sendAlert(AlertLevel.fatal, AlertDescription.missing_extension);
-           throw TLSHandshakeFailure('Missing KeyShare extension');
-      }
-      
-      TlsKeyShareEntry? serverShare;
-      Uint8List? sharedSecret;
-      
-      // Get accepted groups from settings
-      final acceptedGroups = _curveNamesToList(handshakeSettings);
-      
-      // Try to find a match in client's shares (prefer server's order)
-      for (final preferredGroup in acceptedGroups) {
-          for (final share in keyShareExt.clientShares) {
-              if (share.group == preferredGroup) {
-                  if (GroupName.allKEM.contains(share.group)) {
-                      // Post-Quantum Hybrid (ML-KEM + ECDH)
-                      final kem = KEMKeyExchange(share.group);
-                      final (ss, ct) = kem.encapsulateKey(share.keyExchange);
-                      serverShare = TlsKeyShareEntry(group: share.group, keyExchange: ct);
-                      sharedSecret = ss;
-                  } else {
-                      // Classical ECDH (X25519, P-256, etc.)
-                      final kex = ECDHKeyExchange(share.group, (3, 4));
-                      final serverPrivateKey = kex.getRandomPrivateKey();
-                      final pubKey = kex.calcPublicValue(serverPrivateKey);
-                      serverShare = TlsKeyShareEntry(group: share.group, keyExchange: pubKey);
-                      sharedSecret = kex.calcSharedKey(serverPrivateKey, share.keyExchange);
-                  }
-                  break;
-              }
-          }
-          if (serverShare != null) break;
-      }
-      
-      // Fallback: try any client share we can handle
-      if (serverShare == null) {
-          for (final share in keyShareExt.clientShares) {
-              if (GroupName.allKEM.contains(share.group)) {
-                  final kem = KEMKeyExchange(share.group);
-                  final (ss, ct) = kem.encapsulateKey(share.keyExchange);
-                  serverShare = TlsKeyShareEntry(group: share.group, keyExchange: ct);
-                  sharedSecret = ss;
-                  break;
-              } else if (share.group == GroupName.x25519 || 
-                         share.group == GroupName.secp256r1 ||
-                         share.group == GroupName.secp384r1 ||
-                         share.group == GroupName.secp521r1) {
-                  final kex = ECDHKeyExchange(share.group, (3, 4));
-                  final serverPrivateKey = kex.getRandomPrivateKey();
-                  final pubKey = kex.calcPublicValue(serverPrivateKey);
-                  serverShare = TlsKeyShareEntry(group: share.group, keyExchange: pubKey);
-                  sharedSecret = kex.calcSharedKey(serverPrivateKey, share.keyExchange);
-                  break;
-              }
-          }
-      }
-      
-      if (serverShare == null) {
-           await _sendAlert(AlertLevel.fatal, AlertDescription.handshake_failure);
-           throw TLSHandshakeFailure('No supported key share');
-      }
-      
-      serverRandom = getRandomBytes(32);
-      
-      // 3. Send ServerHello
-      final extensions = <TlsExtension>[];
-      extensions.add(TlsSupportedVersionsExtension.server(const TlsProtocolVersion(3, 4)));
-      extensions.add(TlsKeyShareExtension.server(serverShare));
-      
-      final serverHello = TlsServerHello(
-          serverVersion: const TlsProtocolVersion(3, 3),
-          random: serverRandom,
-          sessionId: clientHello.sessionId,
-          cipherSuite: selectedSuite,
-          compressionMethod: 0,
-          extensions: TlsExtensionBlock(extensions: extensions),
-      );
-      
-      await sendHandshakeMessage(serverHello);
-      
-      // 4. Key Derivation
-      final hashName = _prfHashName();
-      final hashLen = hashName == 'sha384' ? 48 : 32;
-      
-      final salt = Uint8List(hashLen); // 0-filled
-      final earlySecret = secureHMAC(salt, Uint8List(hashLen), hashName); 
-      
-      final derivedSecret = derive_secret(
-          earlySecret, 
-          Uint8List.fromList('derived'.codeUnits), 
-          null, 
-          hashName
-      );
-      
-      final handshakeSecret = secureHMAC(derivedSecret, sharedSecret!, hashName);
-      late Uint8List masterSecret;
-      
-      final helloHash = handshakeHashes.digest(hashName);
-      
-      final clientHandshakeTrafficSecret = HKDF_expand_label(
-          handshakeSecret,
-          Uint8List.fromList('c hs traffic'.codeUnits),
-          helloHash,
-          hashLen,
-          hashName
-      );
-      
-      final serverHandshakeTrafficSecret = HKDF_expand_label(
-          handshakeSecret,
-          Uint8List.fromList('s hs traffic'.codeUnits),
-          helloHash,
-          hashLen,
-          hashName
-      );
-      
-      session.clHandshakeSecret = clientHandshakeTrafficSecret;
-      session.srHandshakeSecret = serverHandshakeTrafficSecret;
-      
-      // Switch to Handshake Keys
-      calcTLS1_3PendingState(
-          session.cipherSuite,
-          clientHandshakeTrafficSecret,
-          serverHandshakeTrafficSecret,
-          null
-      );
-      changeReadState();
-      changeWriteState();
-      
-      // 5. Send EncryptedExtensions
-      final encExtensions = <TlsExtension>[];
-      
-      // ALPN Negotiation
-      if (alpn != null && alpn.isNotEmpty) {
-          final clientAlpn = clientHello.extensions?.byType(ExtensionType.alpn);
-          if (clientAlpn is TlsAlpnExtension) {
-              for (final proto in alpn) {
-                  if (clientAlpn.protocols.contains(proto)) {
-                      encExtensions.add(TlsAlpnExtension(protocols: [proto]));
-                      session.appProto = Uint8List.fromList(proto.codeUnits);
-                      break;
-                  }
-              }
-          }
-      }
-      
-      await sendHandshakeMessage(TlsEncryptedExtensions(extensions: TlsExtensionBlock(extensions: encExtensions)));
-      
-      // 5.5 Send CertificateRequest (if requested)
-      if (reqCert) {
-          final certReqExtensions = <TlsExtension>[];
-          certReqExtensions.add(TlsSignatureAlgorithmsExtension(signatureSchemes: [
-              SignatureScheme.rsa_pss_rsae_sha256.value,
-              SignatureScheme.rsa_pkcs1_sha256.value,
-              SignatureScheme.ecdsa_secp256r1_sha256.value,
-              SignatureScheme.ecdsa_secp384r1_sha384.value,
-          ]));
-          
-          await sendHandshakeMessage(TlsCertificateRequest(
-              version: const TlsProtocolVersion(3, 4),
-              certificateRequestContext: Uint8List(0),
-              extensions: TlsExtensionBlock(extensions: certReqExtensions)
-          ));
-      }
+    if (certChain == null || privateKey == null) {
+      await _sendAlert(AlertLevel.fatal, AlertDescription.internal_error);
+      throw TLSHandshakeFailure('Server certificate and private key required');
+    }
+    session.serverCertChain = certChain;
 
-      // 6. Send Certificate
-      final certEntries = <TlsCertificateEntry>[];
-      for (final x509 in certChain.x509List) {
-          certEntries.add(TlsCertificateEntry(certificate: x509.bytes, extensions: null));
+    // 1. Select Cipher Suite
+    final supportedSuites = CipherSuite.getTLS13Suites(handshakeSettings);
+    int? selectedSuite;
+    for (final suite in clientHello.cipherSuites) {
+      if (supportedSuites.contains(suite)) {
+        selectedSuite = suite;
+        break;
       }
-      await sendHandshakeMessage(TlsCertificate.tls13(certificateEntries: certEntries, certificateRequestContext: Uint8List(0)));
-      
-      // 7. Send CertificateVerify
-      final sigAlgsExt = clientHello.extensions?.byType(ExtensionType.signature_algorithms);
-      int? selectedScheme;
-      String keyType = 'rsa';
-      
-      if (privateKey is ECDSAKey) {
-          keyType = 'ecdsa';
-      } else if (privateKey is Ed448PrivateKey) {
-          keyType = 'ed448';
-      } else if (privateKey is EdDSAKey && privateKey.bitLength == 256) {
-          keyType = 'ed25519';
-      }
+    }
+    if (selectedSuite == null) {
+      await _sendAlert(AlertLevel.fatal, AlertDescription.handshake_failure);
+      throw TLSHandshakeFailure('No shared cipher suites');
+    }
+    session.cipherSuite = selectedSuite;
 
-      if (sigAlgsExt is TlsSignatureAlgorithmsExtension) {
-          if (privateKey is RSAKey) {
-              if (sigAlgsExt.signatureSchemes.contains(SignatureScheme.rsa_pss_rsae_sha256.value)) {
-                  selectedScheme = SignatureScheme.rsa_pss_rsae_sha256.value;
-              } else if (sigAlgsExt.signatureSchemes.contains(SignatureScheme.rsa_pss_rsae_sha384.value)) {
-                  selectedScheme = SignatureScheme.rsa_pss_rsae_sha384.value;
-              } else if (sigAlgsExt.signatureSchemes.contains(SignatureScheme.rsa_pkcs1_sha256.value)) {
-                  selectedScheme = SignatureScheme.rsa_pkcs1_sha256.value;
-              }
-          } else if (privateKey is ECDSAKey) {
-              if (sigAlgsExt.signatureSchemes.contains(SignatureScheme.ecdsa_secp256r1_sha256.value)) {
-                  selectedScheme = SignatureScheme.ecdsa_secp256r1_sha256.value;
-              } else if (sigAlgsExt.signatureSchemes.contains(SignatureScheme.ecdsa_secp384r1_sha384.value)) {
-                  selectedScheme = SignatureScheme.ecdsa_secp384r1_sha384.value;
-              }
-          } else if (privateKey is Ed448PrivateKey) {
-              if (sigAlgsExt.signatureSchemes.contains(SignatureScheme.ed448.value)) {
-                  selectedScheme = SignatureScheme.ed448.value;
-              }
-          } else if (privateKey is EdDSAKey && privateKey.bitLength == 256) {
-              if (sigAlgsExt.signatureSchemes.contains(SignatureScheme.ed25519.value)) {
-                  selectedScheme = SignatureScheme.ed25519.value;
-              }
+    // 2. Process Key Share
+    final keyShareExt = clientHello.extensions?.byType(ExtensionType.key_share);
+    if (keyShareExt is! TlsKeyShareExtension) {
+      await _sendAlert(AlertLevel.fatal, AlertDescription.missing_extension);
+      throw TLSHandshakeFailure('Missing KeyShare extension');
+    }
+
+    TlsKeyShareEntry? serverShare;
+    Uint8List? sharedSecret;
+
+    // Get accepted groups from settings
+    final acceptedGroups = _curveNamesToList(handshakeSettings);
+
+    // Try to find a match in client's shares (prefer server's order)
+    for (final preferredGroup in acceptedGroups) {
+      for (final share in keyShareExt.clientShares) {
+        if (share.group == preferredGroup) {
+          if (GroupName.allKEM.contains(share.group)) {
+            // Post-Quantum Hybrid (ML-KEM + ECDH)
+            final kem = KEMKeyExchange(share.group);
+            final (ss, ct) = kem.encapsulateKey(share.keyExchange);
+            serverShare = TlsKeyShareEntry(group: share.group, keyExchange: ct);
+            sharedSecret = ss;
+          } else {
+            // Classical ECDH (X25519, P-256, etc.)
+            final kex = ECDHKeyExchange(share.group, (3, 4));
+            final serverPrivateKey = kex.getRandomPrivateKey();
+            final pubKey = kex.calcPublicValue(serverPrivateKey);
+            serverShare =
+                TlsKeyShareEntry(group: share.group, keyExchange: pubKey);
+            sharedSecret =
+                kex.calcSharedKey(serverPrivateKey, share.keyExchange);
           }
+          break;
+        }
       }
-      
-      if (selectedScheme == null) {
-           if (privateKey is RSAKey) {
-               selectedScheme = SignatureScheme.rsa_pss_rsae_sha256.value;
-           } else if (privateKey is ECDSAKey) {
-               selectedScheme = SignatureScheme.ecdsa_secp256r1_sha256.value;
-           } else if (privateKey is Ed448PrivateKey) {
-               selectedScheme = SignatureScheme.ed448.value;
-           } else if (privateKey is EdDSAKey && privateKey.bitLength == 256) {
-               selectedScheme = SignatureScheme.ed25519.value;
-           } else {
-               throw UnimplementedError('Unsupported key type: ${privateKey.runtimeType}');
-           }
+      if (serverShare != null) break;
+    }
+
+    // Fallback: try any client share we can handle
+    if (serverShare == null) {
+      for (final share in keyShareExt.clientShares) {
+        if (GroupName.allKEM.contains(share.group)) {
+          final kem = KEMKeyExchange(share.group);
+          final (ss, ct) = kem.encapsulateKey(share.keyExchange);
+          serverShare = TlsKeyShareEntry(group: share.group, keyExchange: ct);
+          sharedSecret = ss;
+          break;
+        } else if (share.group == GroupName.x25519 ||
+            share.group == GroupName.secp256r1 ||
+            share.group == GroupName.secp384r1 ||
+            share.group == GroupName.secp521r1) {
+          final kex = ECDHKeyExchange(share.group, (3, 4));
+          final serverPrivateKey = kex.getRandomPrivateKey();
+          final pubKey = kex.calcPublicValue(serverPrivateKey);
+          serverShare =
+              TlsKeyShareEntry(group: share.group, keyExchange: pubKey);
+          sharedSecret = kex.calcSharedKey(serverPrivateKey, share.keyExchange);
+          break;
+        }
       }
-      
-      final verifyBytes = buildCertificateVerifyBytes(
-          signatureScheme: selectedScheme,
-          peerTag: 'server',
-          keyType: keyType,
-      );
-      
-      Uint8List signature;
+    }
+
+    if (serverShare == null) {
+      await _sendAlert(AlertLevel.fatal, AlertDescription.handshake_failure);
+      throw TLSHandshakeFailure('No supported key share');
+    }
+
+    serverRandom = getRandomBytes(32);
+
+    // 3. Send ServerHello
+    final extensions = <TlsExtension>[];
+    extensions.add(
+        TlsSupportedVersionsExtension.server(const TlsProtocolVersion(3, 4)));
+    extensions.add(TlsKeyShareExtension.server(serverShare));
+
+    final serverHello = TlsServerHello(
+      serverVersion: const TlsProtocolVersion(3, 3),
+      random: serverRandom,
+      sessionId: clientHello.sessionId,
+      cipherSuite: selectedSuite,
+      compressionMethod: 0,
+      extensions: TlsExtensionBlock(extensions: extensions),
+    );
+
+    await sendHandshakeMessage(serverHello);
+
+    // 4. Key Derivation
+    final hashName = _prfHashName();
+    final hashLen = hashName == 'sha384' ? 48 : 32;
+
+    final salt = Uint8List(hashLen); // 0-filled
+    final earlySecret = secureHMAC(salt, Uint8List(hashLen), hashName);
+
+    final derivedSecret = derive_secret(
+        earlySecret, Uint8List.fromList('derived'.codeUnits), null, hashName);
+
+    final handshakeSecret = secureHMAC(derivedSecret, sharedSecret!, hashName);
+    late Uint8List masterSecret;
+
+    final helloHash = handshakeHashes.digest(hashName);
+
+    final clientHandshakeTrafficSecret = HKDF_expand_label(
+        handshakeSecret,
+        Uint8List.fromList('c hs traffic'.codeUnits),
+        helloHash,
+        hashLen,
+        hashName);
+
+    final serverHandshakeTrafficSecret = HKDF_expand_label(
+        handshakeSecret,
+        Uint8List.fromList('s hs traffic'.codeUnits),
+        helloHash,
+        hashLen,
+        hashName);
+
+    session.clHandshakeSecret = clientHandshakeTrafficSecret;
+    session.srHandshakeSecret = serverHandshakeTrafficSecret;
+
+    // Switch to Handshake Keys
+    calcTLS1_3PendingState(session.cipherSuite, clientHandshakeTrafficSecret,
+        serverHandshakeTrafficSecret, null);
+    changeReadState();
+    changeWriteState();
+
+    // 5. Send EncryptedExtensions
+    final encExtensions = <TlsExtension>[];
+
+    // ALPN Negotiation
+    if (alpn != null && alpn.isNotEmpty) {
+      final clientAlpn = clientHello.extensions?.byType(ExtensionType.alpn);
+      if (clientAlpn is TlsAlpnExtension) {
+        for (final proto in alpn) {
+          if (clientAlpn.protocols.contains(proto)) {
+            encExtensions.add(TlsAlpnExtension(protocols: [proto]));
+            session.appProto = Uint8List.fromList(proto.codeUnits);
+            break;
+          }
+        }
+      }
+    }
+
+    await sendHandshakeMessage(TlsEncryptedExtensions(
+        extensions: TlsExtensionBlock(extensions: encExtensions)));
+
+    // 5.5 Send CertificateRequest (if requested)
+    if (reqCert) {
+      final certReqExtensions = <TlsExtension>[];
+      certReqExtensions.add(TlsSignatureAlgorithmsExtension(signatureSchemes: [
+        SignatureScheme.rsa_pss_rsae_sha256.value,
+        SignatureScheme.rsa_pkcs1_sha256.value,
+        SignatureScheme.ecdsa_secp256r1_sha256.value,
+        SignatureScheme.ecdsa_secp384r1_sha384.value,
+      ]));
+
+      await sendHandshakeMessage(TlsCertificateRequest(
+          version: const TlsProtocolVersion(3, 4),
+          certificateRequestContext: Uint8List(0),
+          extensions: TlsExtensionBlock(extensions: certReqExtensions)));
+    }
+
+    // 6. Send Certificate
+    final certEntries = <TlsCertificateEntry>[];
+    for (final x509 in certChain.x509List) {
+      certEntries
+          .add(TlsCertificateEntry(certificate: x509.bytes, extensions: null));
+    }
+    await sendHandshakeMessage(TlsCertificate.tls13(
+        certificateEntries: certEntries,
+        certificateRequestContext: Uint8List(0)));
+
+    // 7. Send CertificateVerify
+    final sigAlgsExt =
+        clientHello.extensions?.byType(ExtensionType.signature_algorithms);
+    int? selectedScheme;
+    String keyType = 'rsa';
+
+    if (privateKey is ECDSAKey) {
+      keyType = 'ecdsa';
+    } else if (privateKey is Ed448PrivateKey) {
+      keyType = 'ed448';
+    } else if (privateKey is EdDSAKey && privateKey.bitLength == 256) {
+      keyType = 'ed25519';
+    }
+
+    if (sigAlgsExt is TlsSignatureAlgorithmsExtension) {
       if (privateKey is RSAKey) {
-          final schemeName = SignatureScheme.toRepr(selectedScheme);
+        if (sigAlgsExt.signatureSchemes
+            .contains(SignatureScheme.rsa_pss_rsae_sha256.value)) {
+          selectedScheme = SignatureScheme.rsa_pss_rsae_sha256.value;
+        } else if (sigAlgsExt.signatureSchemes
+            .contains(SignatureScheme.rsa_pss_rsae_sha384.value)) {
+          selectedScheme = SignatureScheme.rsa_pss_rsae_sha384.value;
+        } else if (sigAlgsExt.signatureSchemes
+            .contains(SignatureScheme.rsa_pkcs1_sha256.value)) {
+          selectedScheme = SignatureScheme.rsa_pkcs1_sha256.value;
+        }
+      } else if (privateKey is ECDSAKey) {
+        if (sigAlgsExt.signatureSchemes
+            .contains(SignatureScheme.ecdsa_secp256r1_sha256.value)) {
+          selectedScheme = SignatureScheme.ecdsa_secp256r1_sha256.value;
+        } else if (sigAlgsExt.signatureSchemes
+            .contains(SignatureScheme.ecdsa_secp384r1_sha384.value)) {
+          selectedScheme = SignatureScheme.ecdsa_secp384r1_sha384.value;
+        }
+      } else if (privateKey is Ed448PrivateKey) {
+        if (sigAlgsExt.signatureSchemes.contains(SignatureScheme.ed448.value)) {
+          selectedScheme = SignatureScheme.ed448.value;
+        }
+      } else if (privateKey is EdDSAKey && privateKey.bitLength == 256) {
+        if (sigAlgsExt.signatureSchemes
+            .contains(SignatureScheme.ed25519.value)) {
+          selectedScheme = SignatureScheme.ed25519.value;
+        }
+      }
+    }
+
+    if (selectedScheme == null) {
+      if (privateKey is RSAKey) {
+        selectedScheme = SignatureScheme.rsa_pss_rsae_sha256.value;
+      } else if (privateKey is ECDSAKey) {
+        selectedScheme = SignatureScheme.ecdsa_secp256r1_sha256.value;
+      } else if (privateKey is Ed448PrivateKey) {
+        selectedScheme = SignatureScheme.ed448.value;
+      } else if (privateKey is EdDSAKey && privateKey.bitLength == 256) {
+        selectedScheme = SignatureScheme.ed25519.value;
+      } else {
+        throw UnimplementedError(
+            'Unsupported key type: ${privateKey.runtimeType}');
+      }
+    }
+
+    final verifyBytes = buildCertificateVerifyBytes(
+      signatureScheme: selectedScheme,
+      peerTag: 'server',
+      keyType: keyType,
+    );
+
+    Uint8List signature;
+    if (privateKey is RSAKey) {
+      final schemeName = SignatureScheme.toRepr(selectedScheme);
+      String padding = 'pss';
+      String hash = 'sha256';
+      int saltLen = 32;
+
+      if (schemeName!.startsWith('rsa_pkcs1')) {
+        padding = 'pkcs1';
+        if (schemeName.endsWith('sha256'))
+          hash = 'sha256';
+        else if (schemeName.endsWith('sha384'))
+          hash = 'sha384';
+        else if (schemeName.endsWith('sha512'))
+          hash = 'sha512';
+        else if (schemeName.endsWith('sha1')) hash = 'sha1';
+      } else if (schemeName.startsWith('rsa_pss')) {
+        padding = 'pss';
+        if (schemeName.endsWith('sha256')) {
+          hash = 'sha256';
+          saltLen = 32;
+        } else if (schemeName.endsWith('sha384')) {
+          hash = 'sha384';
+          saltLen = 48;
+        } else if (schemeName.endsWith('sha512')) {
+          hash = 'sha512';
+          saltLen = 64;
+        }
+      }
+
+      signature = privateKey.sign(verifyBytes,
+          padding: padding, hashAlg: hash, saltLen: saltLen);
+    } else if (privateKey is ECDSAKey) {
+      final schemeName = SignatureScheme.toRepr(selectedScheme);
+      String hash = 'sha256';
+      if (schemeName!.endsWith('sha256'))
+        hash = 'sha256';
+      else if (schemeName.endsWith('sha384'))
+        hash = 'sha384';
+      else if (schemeName.endsWith('sha512')) hash = 'sha512';
+
+      signature = privateKey.sign(verifyBytes, hashAlg: hash);
+    } else if (privateKey is EdDSAKey) {
+      // Ed448 and Ed25519 use pure EdDSA signatures (no pre-hashing)
+      signature = privateKey.hashAndSign(verifyBytes);
+    } else {
+      throw UnimplementedError('Unsupported signing key');
+    }
+
+    await sendHandshakeMessage(TlsCertificateVerify(
+        version: const TlsProtocolVersion(3, 4),
+        signatureScheme: selectedScheme,
+        signature: signature));
+
+    // 8. Send Finished
+    final verifyData = buildFinishedVerifyData(forClient: false);
+    await sendHandshakeMessage(TlsFinished(verifyData: verifyData));
+
+    // After emitting the server's Finished we must be ready to encrypt
+    // application data immediately (clients may allow "short packets").
+    final trafficHandshakeHash = handshakeHashes.digest(hashName);
+    final derivedSecret2 = derive_secret(handshakeSecret,
+        Uint8List.fromList('derived'.codeUnits), null, hashName);
+
+    masterSecret = secureHMAC(derivedSecret2, Uint8List(hashLen), hashName);
+    session.masterSecret = masterSecret;
+
+    final clientAppTrafficSecret = HKDF_expand_label(
+        masterSecret,
+        Uint8List.fromList('c ap traffic'.codeUnits),
+        trafficHandshakeHash,
+        hashLen,
+        hashName);
+
+    final serverAppTrafficSecret = HKDF_expand_label(
+        masterSecret,
+        Uint8List.fromList('s ap traffic'.codeUnits),
+        trafficHandshakeHash,
+        hashLen,
+        hashName);
+
+    session.clAppSecret = clientAppTrafficSecret;
+    session.srAppSecret = serverAppTrafficSecret;
+
+    calcTLS1_3PendingState(session.cipherSuite, clientAppTrafficSecret,
+        serverAppTrafficSecret, null);
+    changeWriteState();
+
+    // 9. Receive Client Messages (Certificate, CertificateVerify, Finished)
+    if (reqCert) {
+      final certMsg = await recvHandshakeMessage(
+          allowedTypes: [TlsHandshakeType.certificate]);
+      if (certMsg is! TlsCertificate) {
+        await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+        throw TLSUnexpectedMessage('Expected Certificate');
+      }
+
+      X509CertChain? clientCertChain;
+      if (certMsg.certificateEntries.isNotEmpty) {
+        final certs = <X509>[];
+        for (final entry in certMsg.certificateEntries) {
+          final x509 = X509();
+          x509.parseBinary(entry.certificate);
+          certs.add(x509);
+        }
+        clientCertChain = X509CertChain(certs);
+        _validateCertificateChain(clientCertChain);
+      }
+
+      if (clientCertChain != null) {
+        final cvTranscript = handshakeHashes.copy();
+        final cvMsg = await recvHandshakeMessage(
+            allowedTypes: [TlsHandshakeType.certificateVerify]);
+        if (cvMsg is! TlsCertificateVerify) {
+          await _sendAlert(
+              AlertLevel.fatal, AlertDescription.unexpected_message);
+          throw TLSUnexpectedMessage('Expected CertificateVerify');
+        }
+
+        final pubKey = clientCertChain.x509List.first.publicKey!;
+        final verifyBytes = buildCertificateVerifyBytes(
+          signatureScheme: cvMsg.signatureScheme!,
+          peerTag: 'client',
+          keyType: pubKey is RSAKey ? 'rsa' : 'ecdsa',
+          handshakeSnapshot: cvTranscript,
+        );
+
+        bool valid = false;
+        if (pubKey is RSAKey) {
+          final schemeName = SignatureScheme.toRepr(cvMsg.signatureScheme!);
           String padding = 'pss';
           String hash = 'sha256';
           int saltLen = 32;
-          
-          if (schemeName!.startsWith('rsa_pkcs1')) {
+
+          if (schemeName != null) {
+            if (schemeName.startsWith('rsa_pkcs1')) {
               padding = 'pkcs1';
-              if (schemeName.endsWith('sha256')) hash = 'sha256';
-              else if (schemeName.endsWith('sha384')) hash = 'sha384';
-              else if (schemeName.endsWith('sha512')) hash = 'sha512';
+              if (schemeName.endsWith('sha256'))
+                hash = 'sha256';
+              else if (schemeName.endsWith('sha384'))
+                hash = 'sha384';
+              else if (schemeName.endsWith('sha512'))
+                hash = 'sha512';
               else if (schemeName.endsWith('sha1')) hash = 'sha1';
-          } else if (schemeName.startsWith('rsa_pss')) {
+            } else if (schemeName.startsWith('rsa_pss')) {
               padding = 'pss';
-              if (schemeName.endsWith('sha256')) { hash = 'sha256'; saltLen = 32; }
-              else if (schemeName.endsWith('sha384')) { hash = 'sha384'; saltLen = 48; }
-              else if (schemeName.endsWith('sha512')) { hash = 'sha512'; saltLen = 64; }
+              if (schemeName.endsWith('sha256')) {
+                hash = 'sha256';
+                saltLen = 32;
+              } else if (schemeName.endsWith('sha384')) {
+                hash = 'sha384';
+                saltLen = 48;
+              } else if (schemeName.endsWith('sha512')) {
+                hash = 'sha512';
+                saltLen = 64;
+              }
+            }
           }
-          
-          signature = privateKey.sign(verifyBytes, padding: padding, hashAlg: hash, saltLen: saltLen);
-      } else if (privateKey is ECDSAKey) {
-          final schemeName = SignatureScheme.toRepr(selectedScheme);
+          valid = pubKey.verify(cvMsg.signature, verifyBytes,
+              padding: padding, hashAlg: hash, saltLen: saltLen);
+        } else if (pubKey is ECDSAKey) {
+          final schemeName = SignatureScheme.toRepr(cvMsg.signatureScheme!);
           String hash = 'sha256';
-          if (schemeName!.endsWith('sha256')) hash = 'sha256';
-          else if (schemeName.endsWith('sha384')) hash = 'sha384';
-          else if (schemeName.endsWith('sha512')) hash = 'sha512';
-          
-          signature = privateKey.sign(verifyBytes, hashAlg: hash);
-      } else if (privateKey is EdDSAKey) {
-          // Ed448 and Ed25519 use pure EdDSA signatures (no pre-hashing)
-          signature = privateKey.hashAndSign(verifyBytes);
-      } else {
-          throw UnimplementedError('Unsupported signing key');
-      }
-      
-      await sendHandshakeMessage(TlsCertificateVerify(
-          version: const TlsProtocolVersion(3, 4),
-          signatureScheme: selectedScheme, 
-          signature: signature
-      ));
-      
-      // 8. Send Finished
-      final verifyData = buildFinishedVerifyData(forClient: false);
-        await sendHandshakeMessage(TlsFinished(verifyData: verifyData));
-
-        // After emitting the server's Finished we must be ready to encrypt
-        // application data immediately (clients may allow "short packets").
-        final trafficHandshakeHash = handshakeHashes.digest(hashName);
-        final derivedSecret2 = derive_secret(
-          handshakeSecret,
-          Uint8List.fromList('derived'.codeUnits),
-          null,
-          hashName);
-
-        masterSecret = secureHMAC(derivedSecret2, Uint8List(hashLen), hashName);
-        session.masterSecret = masterSecret;
-
-        final clientAppTrafficSecret = HKDF_expand_label(
-          masterSecret,
-          Uint8List.fromList('c ap traffic'.codeUnits),
-          trafficHandshakeHash,
-          hashLen,
-          hashName);
-
-        final serverAppTrafficSecret = HKDF_expand_label(
-          masterSecret,
-          Uint8List.fromList('s ap traffic'.codeUnits),
-          trafficHandshakeHash,
-          hashLen,
-          hashName);
-
-        session.clAppSecret = clientAppTrafficSecret;
-        session.srAppSecret = serverAppTrafficSecret;
-
-        calcTLS1_3PendingState(
-          session.cipherSuite,
-          clientAppTrafficSecret,
-          serverAppTrafficSecret,
-          null);
-        changeWriteState();
-      
-      // 9. Receive Client Messages (Certificate, CertificateVerify, Finished)
-      if (reqCert) {
-          final certMsg = await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.certificate]);
-          if (certMsg is! TlsCertificate) {
-               await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
-               throw TLSUnexpectedMessage('Expected Certificate');
+          if (schemeName != null) {
+            if (schemeName.endsWith('sha256'))
+              hash = 'sha256';
+            else if (schemeName.endsWith('sha384'))
+              hash = 'sha384';
+            else if (schemeName.endsWith('sha512')) hash = 'sha512';
           }
-          
-          X509CertChain? clientCertChain;
-          if (certMsg.certificateEntries.isNotEmpty) {
-               final certs = <X509>[];
-               for (final entry in certMsg.certificateEntries) {
-                   final x509 = X509();
-                   x509.parseBinary(entry.certificate);
-                   certs.add(x509);
-               }
-               clientCertChain = X509CertChain(certs);
-               _validateCertificateChain(clientCertChain);
-          }
-          
-          if (clientCertChain != null) {
-               final cvTranscript = handshakeHashes.copy();
-               final cvMsg = await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.certificateVerify]);
-               if (cvMsg is! TlsCertificateVerify) {
-                    await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
-                    throw TLSUnexpectedMessage('Expected CertificateVerify');
-               }
-               
-               final pubKey = clientCertChain.x509List.first.publicKey!;
-               final verifyBytes = buildCertificateVerifyBytes(
-                   signatureScheme: cvMsg.signatureScheme!,
-                   peerTag: 'client',
-                   keyType: pubKey is RSAKey ? 'rsa' : 'ecdsa',
-                   handshakeSnapshot: cvTranscript,
-               );
-               
-               bool valid = false;
-               if (pubKey is RSAKey) {
-                   final schemeName = SignatureScheme.toRepr(cvMsg.signatureScheme!);
-                   String padding = 'pss';
-                   String hash = 'sha256';
-                   int saltLen = 32;
-                   
-                   if (schemeName != null) {
-                       if (schemeName.startsWith('rsa_pkcs1')) {
-                           padding = 'pkcs1';
-                           if (schemeName.endsWith('sha256')) hash = 'sha256';
-                           else if (schemeName.endsWith('sha384')) hash = 'sha384';
-                           else if (schemeName.endsWith('sha512')) hash = 'sha512';
-                           else if (schemeName.endsWith('sha1')) hash = 'sha1';
-                       } else if (schemeName.startsWith('rsa_pss')) {
-                           padding = 'pss';
-                           if (schemeName.endsWith('sha256')) { hash = 'sha256'; saltLen = 32; }
-                           else if (schemeName.endsWith('sha384')) { hash = 'sha384'; saltLen = 48; }
-                           else if (schemeName.endsWith('sha512')) { hash = 'sha512'; saltLen = 64; }
-                       }
-                   }
-                   valid = pubKey.verify(cvMsg.signature, verifyBytes, padding: padding, hashAlg: hash, saltLen: saltLen);
-               } else if (pubKey is ECDSAKey) {
-                   final schemeName = SignatureScheme.toRepr(cvMsg.signatureScheme!);
-                   String hash = 'sha256';
-                   if (schemeName != null) {
-                       if (schemeName.endsWith('sha256')) hash = 'sha256';
-                       else if (schemeName.endsWith('sha384')) hash = 'sha384';
-                       else if (schemeName.endsWith('sha512')) hash = 'sha512';
-                   }
-                   valid = pubKey.verify(cvMsg.signature, verifyBytes, hashAlg: hash);
-               }
-               
-               if (!valid) {
-                   await _sendAlert(AlertLevel.fatal, AlertDescription.decrypt_error);
-                   throw TLSHandshakeFailure('CertificateVerify signature invalid');
-               }
-          }
-      }
+          valid = pubKey.verify(cvMsg.signature, verifyBytes, hashAlg: hash);
+        }
 
-      final finishedTranscript = handshakeHashes.copy();
-      final finishedMsg = await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.finished]);
-      if (finishedMsg is! TlsFinished) {
-          await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
-          throw TLSUnexpectedMessage('Expected Finished');
-      }
-      
-      final expectedVerifyData = buildFinishedVerifyData(
-        forClient: true,
-        handshakeSnapshot: finishedTranscript,
-      );
-      if (!_bytesEqual(finishedMsg.verifyData, expectedVerifyData)) {
+        if (!valid) {
           await _sendAlert(AlertLevel.fatal, AlertDescription.decrypt_error);
-          throw TLSHandshakeFailure('Finished verification failed');
+          throw TLSHandshakeFailure('CertificateVerify signature invalid');
+        }
       }
+    }
 
-        // Calculate Resumption Master Secret using the complete transcript
-        // (which now also includes the client's Finished).
-        final fullHandshakeHash = handshakeHashes.digest(hashName);
-        final resumptionMasterSecret = derive_secret(
-          masterSecret,
-          Uint8List.fromList('res master'.codeUnits),
-          fullHandshakeHash,
-          hashName);
-        session.resumptionMasterSecret = resumptionMasterSecret;
+    final finishedTranscript = handshakeHashes.copy();
+    final finishedMsg =
+        await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.finished]);
+    if (finishedMsg is! TlsFinished) {
+      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+      throw TLSUnexpectedMessage('Expected Finished');
+    }
 
-        changeReadState();
+    final expectedVerifyData = buildFinishedVerifyData(
+      forClient: true,
+      handshakeSnapshot: finishedTranscript,
+    );
+    if (!_bytesEqual(finishedMsg.verifyData, expectedVerifyData)) {
+      await _sendAlert(AlertLevel.fatal, AlertDescription.decrypt_error);
+      throw TLSHandshakeFailure('Finished verification failed');
+    }
 
-        handshakeEstablished = true;
+    // Calculate Resumption Master Secret using the complete transcript
+    // (which now also includes the client's Finished).
+    final fullHandshakeHash = handshakeHashes.digest(hashName);
+    final resumptionMasterSecret = derive_secret(
+        masterSecret,
+        Uint8List.fromList('res master'.codeUnits),
+        fullHandshakeHash,
+        hashName);
+    session.resumptionMasterSecret = resumptionMasterSecret;
+
+    changeReadState();
+
+    handshakeEstablished = true;
   }
-  
-  Future<void> _serverHandshake12(TlsClientHello clientHello, X509CertChain? certChain, dynamic privateKey, {bool reqCert = false, List<String>? alpn}) async {
+
+  Future<void> _serverHandshake12(
+      TlsClientHello clientHello, X509CertChain? certChain, dynamic privateKey,
+      {bool reqCert = false, List<String>? alpn}) async {
     // 1. Negotiate Cipher Suite
     final clientSuites = clientHello.cipherSuites;
     var serverSuites = <int>[];
@@ -2107,44 +2265,48 @@ class TlsConnection extends MessageSocket {
       handshakeSettings.minVersion,
       negotiatedTuple,
     );
-    
+
     // Filter by certificate
     if (certChain != null) {
-        serverSuites = CipherSuite.filterForCertificate(serverSuites, certChain);
+      serverSuites = CipherSuite.filterForCertificate(serverSuites, certChain);
     }
-    
+
     // Find intersection
     int? selectedSuite;
     for (final suite in serverSuites) {
-        if (clientSuites.contains(suite)) {
-            selectedSuite = suite;
-            break;
-        }
+      if (clientSuites.contains(suite)) {
+        selectedSuite = suite;
+        break;
+      }
     }
-    
+
     if (selectedSuite == null) {
-        await _sendAlert(AlertLevel.fatal, AlertDescription.handshake_failure);
-        throw TLSHandshakeFailure('No shared cipher suites');
+      await _sendAlert(AlertLevel.fatal, AlertDescription.handshake_failure);
+      throw TLSHandshakeFailure('No shared cipher suites');
     }
-    
+
     session.cipherSuite = selectedSuite;
-    
+
     // 2. Send ServerHello
     serverRandom = getRandomBytes(32);
     // Set last 8 bytes for downgrade protection if needed (not strictly required for basic 1.2)
-    
+
     final extensions = <TlsExtension>[];
-    if (clientHello.extensions?.byType(ExtensionType.renegotiation_info) != null) {
-        extensions.add(TlsRawExtension(type: ExtensionType.renegotiation_info, body: Uint8List(1)..[0] = 0));
+    if (clientHello.extensions?.byType(ExtensionType.renegotiation_info) !=
+        null) {
+      extensions.add(TlsRawExtension(
+          type: ExtensionType.renegotiation_info, body: Uint8List(1)..[0] = 0));
     }
     final clientOfferedEms =
-        clientHello.extensions?.byType(ExtensionType.extended_master_secret) != null;
+        clientHello.extensions?.byType(ExtensionType.extended_master_secret) !=
+            null;
     if (handshakeSettings.useExtendedMasterSecret && clientOfferedEms) {
-        extensions.add(const TlsExtendedMasterSecretExtension());
-        session.extendedMasterSecret = true;
-    } else if (handshakeSettings.requireExtendedMasterSecret && !clientOfferedEms) {
-        await _sendAlert(AlertLevel.fatal, AlertDescription.handshake_failure);
-        throw TLSHandshakeFailure('Client did not offer Extended Master Secret');
+      extensions.add(const TlsExtendedMasterSecretExtension());
+      session.extendedMasterSecret = true;
+    } else if (handshakeSettings.requireExtendedMasterSecret &&
+        !clientOfferedEms) {
+      await _sendAlert(AlertLevel.fatal, AlertDescription.handshake_failure);
+      throw TLSHandshakeFailure('Client did not offer Extended Master Secret');
     }
 
     if (handshakeSettings.requireExtendedMasterSecret &&
@@ -2157,19 +2319,19 @@ class TlsConnection extends MessageSocket {
 
     // ALPN Negotiation
     if (alpn != null && alpn.isNotEmpty) {
-        final alpnExt = clientHello.extensions?.byType(ExtensionType.alpn);
-        if (alpnExt is TlsAlpnExtension) {
-            String? selectedProto;
-            for (final proto in alpnExt.protocols) {
-                if (alpn.contains(proto)) {
-                    selectedProto = proto;
-                    break;
-                }
-            }
-            if (selectedProto != null) {
-                extensions.add(TlsAlpnExtension(protocols: [selectedProto]));
-            }
+      final alpnExt = clientHello.extensions?.byType(ExtensionType.alpn);
+      if (alpnExt is TlsAlpnExtension) {
+        String? selectedProto;
+        for (final proto in alpnExt.protocols) {
+          if (alpn.contains(proto)) {
+            selectedProto = proto;
+            break;
+          }
         }
+        if (selectedProto != null) {
+          extensions.add(TlsAlpnExtension(protocols: [selectedProto]));
+        }
+      }
     }
 
     // Generate new Session ID for full handshake
@@ -2178,77 +2340,89 @@ class TlsConnection extends MessageSocket {
 
     final serverHello = TlsServerHello(
       serverVersion: version,
-        random: serverRandom,
-        sessionId: sessionId,
-        cipherSuite: selectedSuite,
-        compressionMethod: 0, // Compression method null
-        extensions: TlsExtensionBlock(extensions: extensions),
+      random: serverRandom,
+      sessionId: sessionId,
+      cipherSuite: selectedSuite,
+      compressionMethod: 0, // Compression method null
+      extensions: TlsExtensionBlock(extensions: extensions),
     );
-    
+
     await sendHandshakeMessage(serverHello);
     _serverHelloMsg = serverHello;
-    
+
     // 3. Send Certificate
     if (certChain != null) {
-        // Convert X509CertChain to List<Uint8List>
-        final certList = certChain.x509List.map((c) => c.bytes).toList();
-        final certMsg = TlsCertificate.tls12(certificateChain: certList);
-        await sendHandshakeMessage(certMsg);
+      // Convert X509CertChain to List<Uint8List>
+      final certList = certChain.x509List.map((c) => c.bytes).toList();
+      final certMsg = TlsCertificate.tls12(certificateChain: certList);
+      await sendHandshakeMessage(certMsg);
     } else {
-        // Handle anonymous or PSK if supported, else error if suite requires cert
-        // For now assume cert is required for non-anon suites
+      // Handle anonymous or PSK if supported, else error if suite requires cert
+      // For now assume cert is required for non-anon suites
     }
-    
+
     // 4. Send ServerKeyExchange (if DHE/ECDHE)
     final suiteName = CipherSuite.ietfNames[selectedSuite] ?? '';
     final isDHE = suiteName.contains('_DHE_');
     final isECDHE = suiteName.contains('_ECDHE_');
-    
+
     KeyExchange? keyExchange;
-    
+
     if (isECDHE) {
-        final acceptedCurves = _curveNamesToList(handshakeSettings);
-        keyExchange = ECDHE_RSAKeyExchange(
-          selectedSuite,
-          clientHello,
-          serverHello,
-          privateKey,
-          acceptedCurves: acceptedCurves.isNotEmpty ? acceptedCurves : null,
-        );
+      final acceptedCurves = _curveNamesToList(handshakeSettings);
+      keyExchange = ECDHE_RSAKeyExchange(
+        selectedSuite,
+        clientHello,
+        serverHello,
+        privateKey,
+        acceptedCurves: acceptedCurves.isNotEmpty ? acceptedCurves : null,
+      );
     } else if (isDHE) {
-        keyExchange = DHE_RSAKeyExchange(selectedSuite, clientHello, serverHello, privateKey);
+      keyExchange = DHE_RSAKeyExchange(
+          selectedSuite, clientHello, serverHello, privateKey);
     } else if (suiteName.contains('_RSA_')) {
-        keyExchange = RSAKeyExchange(selectedSuite, clientHello, serverHello, privateKey);
+      keyExchange =
+          RSAKeyExchange(selectedSuite, clientHello, serverHello, privateKey);
     }
-    
+
     if (keyExchange != null && (isDHE || isECDHE)) {
-        String? sigHash;
-        final sigAlgsExt = clientHello.extensions?.byType(ExtensionType.signature_algorithms);
-        if (sigAlgsExt is TlsSignatureAlgorithmsExtension) {
-             bool supportsSha256 = false;
-             for (final scheme in sigAlgsExt.signatureSchemes) {
-                 final name = SignatureScheme.toRepr(scheme);
-                 if (name != null && name.endsWith('sha256')) {
-                     supportsSha256 = true;
-                     break;
-                 }
-             }
-             
-             if (supportsSha256) {
-                 sigHash = 'sha256';
-             } else {
-                 for (final scheme in sigAlgsExt.signatureSchemes) {
-                     final name = SignatureScheme.toRepr(scheme);
-                     if (name != null) {
-                         if (name.endsWith('sha384')) { sigHash = 'sha384'; break; }
-                         if (name.endsWith('sha512')) { sigHash = 'sha512'; break; }
-                         if (name.endsWith('sha1')) { sigHash = 'sha1'; break; }
-                     }
-                 }
-             }
+      String? sigHash;
+      final sigAlgsExt =
+          clientHello.extensions?.byType(ExtensionType.signature_algorithms);
+      if (sigAlgsExt is TlsSignatureAlgorithmsExtension) {
+        bool supportsSha256 = false;
+        for (final scheme in sigAlgsExt.signatureSchemes) {
+          final name = SignatureScheme.toRepr(scheme);
+          if (name != null && name.endsWith('sha256')) {
+            supportsSha256 = true;
+            break;
+          }
         }
-        final ske = keyExchange.makeServerKeyExchange(sigHash: sigHash);
-        await sendHandshakeMessage(ske);
+
+        if (supportsSha256) {
+          sigHash = 'sha256';
+        } else {
+          for (final scheme in sigAlgsExt.signatureSchemes) {
+            final name = SignatureScheme.toRepr(scheme);
+            if (name != null) {
+              if (name.endsWith('sha384')) {
+                sigHash = 'sha384';
+                break;
+              }
+              if (name.endsWith('sha512')) {
+                sigHash = 'sha512';
+                break;
+              }
+              if (name.endsWith('sha1')) {
+                sigHash = 'sha1';
+                break;
+              }
+            }
+          }
+        }
+      }
+      final ske = keyExchange.makeServerKeyExchange(sigHash: sigHash);
+      await sendHandshakeMessage(ske);
     }
 
     // 5. Send CertificateRequest (if requested)
@@ -2280,54 +2454,56 @@ class TlsConnection extends MessageSocket {
       );
       await sendHandshakeMessage(certReq);
     }
-    
+
     // 6. Send ServerHelloDone
     await sendHandshakeMessage(TlsServerHelloDone());
-    
+
     // 7. Receive Client Messages
-    
+
     // If reqCert, expect Certificate
     bool gotClientCert = false;
     X509CertChain? clientCertChain;
     if (reqCert) {
-        final certMsg = await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.certificate]);
-        if (certMsg is! TlsCertificate) {
-             await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
-             throw TLSUnexpectedMessage('Expected Certificate');
+      final certMsg = await recvHandshakeMessage(
+          allowedTypes: [TlsHandshakeType.certificate]);
+      if (certMsg is! TlsCertificate) {
+        await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+        throw TLSUnexpectedMessage('Expected Certificate');
+      }
+      if (certMsg.certificateChain.isNotEmpty) {
+        gotClientCert = true;
+        final certs = <X509>[];
+        for (final certBytes in certMsg.certificateChain) {
+          final x509 = X509();
+          x509.parseBinary(certBytes);
+          certs.add(x509);
         }
-        if (certMsg.certificateChain.isNotEmpty) {
-             gotClientCert = true;
-             final certs = <X509>[];
-             for (final certBytes in certMsg.certificateChain) {
-                 final x509 = X509();
-                 x509.parseBinary(certBytes);
-                 certs.add(x509);
-             }
-             clientCertChain = X509CertChain(certs);
-             _validateCertificateChain(clientCertChain);
-        }
+        clientCertChain = X509CertChain(certs);
+        _validateCertificateChain(clientCertChain);
+      }
     }
-    
+
     // 8. Receive ClientKeyExchange
-    var ckeMsg = await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.clientKeyExchange]);
+    var ckeMsg = await recvHandshakeMessage(
+        allowedTypes: [TlsHandshakeType.clientKeyExchange]);
     if (ckeMsg is RawTlsHandshakeMessage) {
-         ckeMsg = TlsClientKeyExchange.parse(
-             ckeMsg.serializeBody(),
-             session.cipherSuite,
-             [version.major, version.minor],
-         );
+      ckeMsg = TlsClientKeyExchange.parse(
+        ckeMsg.serializeBody(),
+        session.cipherSuite,
+        [version.major, version.minor],
+      );
     }
     if (ckeMsg is! TlsClientKeyExchange) {
-         await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
-         throw TLSUnexpectedMessage('Expected ClientKeyExchange');
+      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+      throw TLSUnexpectedMessage('Expected ClientKeyExchange');
     }
-    
+
     if (keyExchange == null) {
-         throw TLSInternalError('KeyExchange not initialized');
+      throw TLSInternalError('KeyExchange not initialized');
     }
 
     final premasterSecret = await keyExchange.processClientKeyExchange(ckeMsg);
-    
+
     // 9. Receive CertificateVerify (if client cert was sent)
     if (gotClientCert && clientCertChain != null) {
       final cvMsg = await recvHandshakeMessage(
@@ -2411,7 +2587,7 @@ class TlsConnection extends MessageSocket {
         throw TLSHandshakeFailure('CertificateVerify signature invalid');
       }
     }
-    
+
     // Calculate Master Secret (respect Extended Master Secret if negotiated)
     if (session.extendedMasterSecret) {
       session.masterSecret = calcKey(
@@ -2431,7 +2607,7 @@ class TlsConnection extends MessageSocket {
       );
       session.masterSecret = masterSecret;
     }
-    
+
     // Prepare pending read/write states derived from the negotiated master secret
     calcPendingStates(
       session.cipherSuite,
@@ -2440,23 +2616,24 @@ class TlsConnection extends MessageSocket {
       serverHello.random,
       null,
     );
-    
+
     // 10. Receive ChangeCipherSpec
     final (header, _) = await recvMessage();
     if (header.type != ContentType.change_cipher_spec) {
-        await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
-        throw TLSUnexpectedMessage('Expected ChangeCipherSpec');
+      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+      throw TLSUnexpectedMessage('Expected ChangeCipherSpec');
     }
-    
+
     // 11. Receive Finished
     changeReadState(); // Switch to encrypted read
     final clientFinishedHandshakeHashes = handshakeHashes.copy();
-    final finishedMsg = await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.finished]);
+    final finishedMsg =
+        await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.finished]);
     if (finishedMsg is! TlsFinished) {
-         await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
-         throw TLSUnexpectedMessage('Expected Finished');
+      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+      throw TLSUnexpectedMessage('Expected Finished');
     }
-    
+
     final expectedVerifyData = calcFinished(
       [version.major, version.minor],
       session.masterSecret,
@@ -2465,19 +2642,20 @@ class TlsConnection extends MessageSocket {
       true,
     );
     if (!_bytesEqual(finishedMsg.verifyData, expectedVerifyData)) {
-         await _sendAlert(AlertLevel.fatal, AlertDescription.decrypt_error);
-         throw TLSHandshakeFailure('Finished verification failed');
+      await _sendAlert(AlertLevel.fatal, AlertDescription.decrypt_error);
+      throw TLSHandshakeFailure('Finished verification failed');
     }
-    
+
     // 12. Send ChangeCipherSpec
-    await sendRecord(Message(ContentType.change_cipher_spec, Uint8List.fromList([1])));
+    await sendRecord(
+        Message(ContentType.change_cipher_spec, Uint8List.fromList([1])));
     changeWriteState(); // Switch to encrypted write
-    
+
     // 13. Send Finished
     final myVerifyData = buildFinishedVerifyData(forClient: false);
     final myFinished = TlsFinished(verifyData: myVerifyData);
     await sendHandshakeMessage(myFinished);
-    
+
     handshakeEstablished = true;
   }
 
@@ -2557,8 +2735,8 @@ class TlsConnection extends MessageSocket {
       }
       if (isGreaterOrEqual(settings.maxVersion, (3, 3)) &&
           isLessOrEqual(settings.minVersion, (3, 3))) {
-        final tls12List = _sigHashesToList(settings,
-            version: const TlsProtocolVersion(3, 3));
+        final tls12List =
+            _sigHashesToList(settings, version: const TlsProtocolVersion(3, 3));
         for (final sig in tls12List) {
           if (!sigList.contains(sig)) {
             sigList.add(sig);
@@ -2593,11 +2771,9 @@ class TlsConnection extends MessageSocket {
 
       sessionId = getRandomBytes(32); // Middlebox compat
 
-      final supportedVersions = settings.versions
-          .map((v) => TlsProtocolVersion(v.$1, v.$2))
-          .toList();
-      extensions.add(
-          TlsSupportedVersionsExtension.client(supportedVersions));
+      final supportedVersions =
+          settings.versions.map((v) => TlsProtocolVersion(v.$1, v.$2)).toList();
+      extensions.add(TlsSupportedVersionsExtension.client(supportedVersions));
 
       shares = <TlsKeyShareEntry>[];
       if (retryGroup != null) {
@@ -2632,8 +2808,8 @@ class TlsConnection extends MessageSocket {
         CipherSuite.tls13Suites.contains(c))) {
       groups.addAll(_curveNamesToList(settings));
       if (settings.ecPointFormats.isNotEmpty) {
-        extensions.add(
-            TlsEcPointFormatsExtension(formats: settings.ecPointFormats));
+        extensions
+            .add(TlsEcPointFormatsExtension(formats: settings.ecPointFormats));
       }
     }
     if (cipherSuites.any((c) => CipherSuite.dhAllSuites.contains(c))) {
@@ -2655,8 +2831,8 @@ class TlsConnection extends MessageSocket {
     }
 
     if (settings.use_heartbeat_extension) {
-      extensions.add(
-          TlsHeartbeatExtension(mode: HeartbeatMode.PEER_ALLOWED_TO_SEND));
+      extensions
+          .add(TlsHeartbeatExtension(mode: HeartbeatMode.PEER_ALLOWED_TO_SEND));
       heartbeatCanReceive = true;
     }
 
@@ -2680,20 +2856,20 @@ class TlsConnection extends MessageSocket {
     if (settings.pskConfigs.isNotEmpty || session.tls13Tickets.isNotEmpty) {
       // Remove expired tickets
       session.tls13Tickets.removeWhere((t) {
-          final ageSeconds = DateTime.now().difference(t.receivedAt).inSeconds;
-          return ageSeconds > t.ticketLifetime;
+        final ageSeconds = DateTime.now().difference(t.receivedAt).inSeconds;
+        return ageSeconds > t.ticketLifetime;
       });
 
       final identities = <TlsPskIdentity>[];
       for (final config in settings.pskConfigs) {
-        identities.add(TlsPskIdentity(
-            identity: config.identity, obfuscatedTicketAge: 0));
+        identities.add(
+            TlsPskIdentity(identity: config.identity, obfuscatedTicketAge: 0));
       }
       for (final ticket in session.tls13Tickets) {
         final age = DateTime.now().difference(ticket.receivedAt).inMilliseconds;
         final obfuscatedAge = (age + ticket.ticketAgeAdd) % 4294967296;
-        identities.add(
-            TlsPskIdentity(identity: ticket.ticket, obfuscatedTicketAge: obfuscatedAge));
+        identities.add(TlsPskIdentity(
+            identity: ticket.ticket, obfuscatedTicketAge: obfuscatedAge));
       }
 
       if (identities.isNotEmpty) {
@@ -2719,8 +2895,8 @@ class TlsConnection extends MessageSocket {
         handshakeHashes,
         settings.pskConfigs,
         tickets: session.tls13Tickets,
-        resMasterSecret: session.resumptionMasterSecret.isNotEmpty 
-            ? session.resumptionMasterSecret 
+        resMasterSecret: session.resumptionMasterSecret.isNotEmpty
+            ? session.resumptionMasterSecret
             : null,
       );
     }
@@ -2870,8 +3046,7 @@ class TlsConnection extends MessageSocket {
     final hasExternalPsk = orderedConfigs.isNotEmpty;
     final tls13Tickets = session.tls13Tickets;
     final resSecret = session.resumptionMasterSecret;
-    final hasResumptionPsk =
-        tls13Tickets.isNotEmpty && resSecret.isNotEmpty;
+    final hasResumptionPsk = tls13Tickets.isNotEmpty && resSecret.isNotEmpty;
 
     if (!hasExternalPsk && !hasResumptionPsk) {
       return;
@@ -2971,8 +3146,9 @@ class TlsConnection extends MessageSocket {
   Uint8List _buildTls13FinishedVerifyData(
       {required bool forClient, HandshakeHashes? handshakeSnapshot}) {
     final activeSession = session;
-    final secret =
-        forClient ? activeSession.clHandshakeSecret : activeSession.srHandshakeSecret;
+    final secret = forClient
+        ? activeSession.clHandshakeSecret
+        : activeSession.srHandshakeSecret;
     if (secret.isEmpty) {
       throw TLSInternalError('Handshake traffic secret missing for TLS 1.3');
     }
@@ -3033,8 +3209,7 @@ class TlsConnection extends MessageSocket {
   }) {
     if (pskConfigs.isEmpty &&
         (tickets == null || tickets.isEmpty) &&
-        (resumptionMasterSecret == null ||
-            resumptionMasterSecret.isEmpty)) {
+        (resumptionMasterSecret == null || resumptionMasterSecret.isEmpty)) {
       return;
     }
     HandshakeHelpers.updateBinders(
@@ -3042,8 +3217,7 @@ class TlsConnection extends MessageSocket {
       handshakeHashes,
       pskConfigs,
       tickets: tickets ?? session.tls13Tickets,
-      resMasterSecret:
-          resumptionMasterSecret ?? session.resumptionMasterSecret,
+      resMasterSecret: resumptionMasterSecret ?? session.resumptionMasterSecret,
     );
   }
 
@@ -3116,18 +3290,16 @@ class TlsConnection extends MessageSocket {
       }
       _negotiatedClientHelloPskIndex = i;
       _negotiatedExternalPsk = config;
-      _negotiatedClientHelloPskIdentity =
-          Uint8List.fromList(identity.identity);
+      _negotiatedClientHelloPskIdentity = Uint8List.fromList(identity.identity);
       return;
     }
   }
 
-  Future<bool> _handlePostHandshakeMessage(
-      TlsHandshakeMessage message) async {
-    final isTls13Ticket =
-        _isTls13Plus() && message.handshakeType == TlsHandshakeType.newSessionTicket;
-    final isPostHandshake = message.handshakeType == TlsHandshakeType.keyUpdate ||
-        isTls13Ticket;
+  Future<bool> _handlePostHandshakeMessage(TlsHandshakeMessage message) async {
+    final isTls13Ticket = _isTls13Plus() &&
+        message.handshakeType == TlsHandshakeType.newSessionTicket;
+    final isPostHandshake =
+        message.handshakeType == TlsHandshakeType.keyUpdate || isTls13Ticket;
     if (!isPostHandshake) {
       return false;
     }
@@ -3200,8 +3372,7 @@ class TlsConnection extends MessageSocket {
     }
   }
 
-  Future<bool> _rejectRenegotiationIfNeeded(
-      TlsHandshakeMessage message) async {
+  Future<bool> _rejectRenegotiationIfNeeded(TlsHandshakeMessage message) async {
     if (!_isRenegotiationAttempt(message)) {
       return false;
     }
@@ -3326,7 +3497,8 @@ class TlsConnection extends MessageSocket {
             external: true,
           );
         } on TLSIllegalParameterException {
-          await _sendAlert(AlertLevel.fatal, AlertDescription.illegal_parameter);
+          await _sendAlert(
+              AlertLevel.fatal, AlertDescription.illegal_parameter);
           rethrow;
         }
 
@@ -3362,7 +3534,8 @@ class TlsConnection extends MessageSocket {
             external: false,
           );
         } on TLSIllegalParameterException {
-          await _sendAlert(AlertLevel.fatal, AlertDescription.illegal_parameter);
+          await _sendAlert(
+              AlertLevel.fatal, AlertDescription.illegal_parameter);
           rethrow;
         }
 
