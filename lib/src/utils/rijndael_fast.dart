@@ -1,7 +1,14 @@
 // dart format width=5000
+//
+// Versão otimizada do Rijndael que usa buffers nativos via dart:ffi
+// para minimizar pressão no coletor de lixo. A lógica do algoritmo é
+// baseada em rijndael_slow.dart, mas o agendamento de chaves e os
+// buffers de trabalho são mantidos em memória nativa.
+import 'dart:ffi' as ffi;
 import 'dart:typed_data';
+import 'package:ffi/ffi.dart' as pkgffi;
 
-/// Uma implementação pura em Dart (lenta) do Rijndael com uma interface decente.
+/// Uma implementação pura em Dart fast do Rijndael com uma interface decente.
 ///
 /// Para incluir:
 ///
@@ -950,25 +957,58 @@ final List<int> _rcon = [
 /// tamanhos de bloco não padrão de 192 e 256 bits (o tamanho de bloco
 /// padrão de 128 bits é o default).
 ///
+///
 /// Pode processar dados apenas um bloco por vez, não realiza encadeamento
 /// de cifras de bloco ou preenchimento de texto simples (padding).
-class Rijndael {
-  /// O tamanho dos blocos criptografados, em bytes.
+class RijndaelFast {
+  /// Tamanho do bloco em bytes (16, 24 ou 32).
   final int blockSize;
 
-  /// Esquema de chaves para criptografia.
-  late final List<List<int>> _ke;
+  /// Quantidade de colunas (palavras de 32 bits) no bloco.
+  late final int _bc;
 
-  /// Esquema de chaves para decriptografia.
-  late final List<List<int>> _kd;
+  /// Quantidade de colunas (palavras de 32 bits) na chave.
+  late final int _kc;
 
-  /// Inicializa o objeto, deriva as chaves para criptografia e decriptografia.
+  /// Número total de rounds.
+  late final int _rounds;
+
+  /// Quantidade total de palavras no agendamento de chaves.
+  late final int _roundKeyCount;
+
+  /// Shift constants cache.
+  late final int _encS1;
+  late final int _encS2;
+  late final int _encS3;
+  late final int _decS1;
+  late final int _decS2;
+  late final int _decS3;
+
+  /// Alocador de memória nativa (permitindo customização em testes).
+  final ffi.Allocator _allocator;
+
+  /// Esquema de chaves para criptografia em memória nativa.
+  late final ffi.Pointer<ffi.Uint32> _ke;
+
+  /// Esquema de chaves para decriptografia em memória nativa.
+  late final ffi.Pointer<ffi.Uint32> _kd;
+
+  /// Buffers de trabalho reutilizáveis em memória nativa.
+  late final ffi.Pointer<ffi.Uint32> _workA;
+  late final ffi.Pointer<ffi.Uint32> _workT;
+
+  bool _disposed = false;
+
+  /// Inicializa o objeto, derivando as chaves em memória nativa.
   ///
-  /// Lança um [ArgumentError] se `key` ou `blockSize` tiverem tamanhos inválidos.
-  ///
-  /// - [key]: A chave secreta como [Uint8List] (16, 24 ou 32 bytes).
-  /// - [blockSize]: O tamanho do bloco em bytes (16, 24 ou 32). Padrão é 16.
-  Rijndael(Uint8List key, {this.blockSize = 16}) {
+  /// - [key]: 16, 24 ou 32 bytes.
+  /// - [blockSize]: 16, 24 ou 32 bytes (padrão 16).
+  /// - [allocator]: custom allocator (por padrão, [ffi.calloc]).
+  RijndaelFast(
+    Uint8List key, {
+    this.blockSize = 16,
+    ffi.Allocator allocator = pkgffi.calloc,
+  }) : _allocator = allocator {
     if (blockSize != 16 && blockSize != 24 && blockSize != 32) {
       throw ArgumentError('Tamanho de bloco inválido: $blockSize');
     }
@@ -976,45 +1016,94 @@ class Rijndael {
       throw ArgumentError('Tamanho de chave inválido: ${key.length}');
     }
 
-    final int rounds = _numRounds[key.length]![blockSize]!;
-    final int bc =
-        blockSize ~/ 4; // Número de colunas (palavras de 32 bits) no bloco
-    final int kc =
-        key.length ~/ 4; // Número de colunas (palavras de 32 bits) na chave
+    _rounds = _numRounds[key.length]![blockSize]!;
+    _bc = blockSize ~/ 4;
+    _kc = key.length ~/ 4;
+    _roundKeyCount = (_rounds + 1) * _bc;
 
-    // Chaves de round para criptografia
-    _ke = List.generate(rounds + 1, (_) => List.filled(bc, 0));
-    // Chaves de round para decriptografia
-    _kd = List.generate(rounds + 1, (_) => List.filled(bc, 0));
+    // Cache de shifts para evitar recomputar em cada chamada.
+    final int sc = _bc == 4
+        ? 0
+        : _bc == 6
+            ? 1
+            : 2;
+    _encS1 = _shifts[sc][1][0];
+    _encS2 = _shifts[sc][2][0];
+    _encS3 = _shifts[sc][3][0];
+    _decS1 = _shifts[sc][1][1];
+    _decS2 = _shifts[sc][2][1];
+    _decS3 = _shifts[sc][3][1];
 
-    final int roundKeyCount = (rounds + 1) * bc;
+    _ke = _allocator<ffi.Uint32>(_roundKeyCount);
+    _kd = _allocator<ffi.Uint32>(_roundKeyCount);
+    _workA = _allocator<ffi.Uint32>(_bc);
+    _workT = _allocator<ffi.Uint32>(_bc);
 
+    _expandKey(key);
+  }
+
+  /// Libera buffers nativos.
+  void dispose() {
+    if (_disposed) return;
+    _allocator.free(_ke);
+    _allocator.free(_kd);
+    _allocator.free(_workA);
+    _allocator.free(_workT);
+    _disposed = true;
+  }
+
+  void _checkNotDisposed() {
+    if (_disposed) {
+      throw StateError('RijndaelFast já foi liberado (dispose).');
+    }
+  }
+
+  void _setRoundKey(
+      ffi.Pointer<ffi.Uint32> ptr, int round, int col, int value) {
+    (ptr + (round * _bc + col)).value = value;
+  }
+
+  int _getRoundKey(ffi.Pointer<ffi.Uint32> ptr, int round, int col) {
+    return (ptr + (round * _bc + col)).value;
+  }
+
+  void _copyWords(
+      ffi.Pointer<ffi.Uint32> src, ffi.Pointer<ffi.Uint32> dst, int count) {
+    for (int i = 0; i < count; i++) {
+      (dst + i).value = (src + i).value;
+    }
+  }
+
+  int _wordAt(ffi.Pointer<ffi.Uint32> ptr, int index) => (ptr + index).value;
+
+  void _wordSet(ffi.Pointer<ffi.Uint32> ptr, int index, int value) {
+    (ptr + index).value = value;
+  }
+
+  void _expandKey(Uint8List key) {
     // Copia os bytes do material do usuário para inteiros temporários
-    final List<int> tk = List.filled(kc, 0);
-    for (int i = 0; i < kc; i++) {
+    final List<int> tk = List.filled(_kc, 0);
+    for (int i = 0; i < _kc; i++) {
       tk[i] = (key[i * 4] << 24) |
           (key[i * 4 + 1] << 16) |
           (key[i * 4 + 2] << 8) |
           key[i * 4 + 3];
     }
 
-    // Copia os valores para os arrays de chaves de round
     int t = 0;
     int j = 0;
-    while (j < kc && t < roundKeyCount) {
-      _ke[t ~/ bc][t % bc] = tk[j];
-      _kd[rounds - (t ~/ bc)][t % bc] = tk[j];
+    while (j < _kc && t < _roundKeyCount) {
+      _setRoundKey(_ke, t ~/ _bc, t % _bc, tk[j]);
+      _setRoundKey(_kd, _rounds - (t ~/ _bc), t % _bc, tk[j]);
       j++;
       t++;
     }
 
     int tt = 0;
     int rconPointer = 0;
-    while (t < roundKeyCount) {
-      // Extrapola usando phi (a função de evolução da chave de round)
-      tt = tk[kc - 1];
+    while (t < _roundKeyCount) {
+      tt = tk[_kc - 1];
 
-      // RotWord and SubWord combined, then XOR with Rcon
       int temp = (tk[0] ^
           ((_s[(tt >> 16) & 0xFF] & 0xFF) << 24) ^
           ((_s[(tt >> 8) & 0xFF] & 0xFF) << 16) ^
@@ -1024,215 +1113,193 @@ class Rijndael {
       tk[0] = temp;
       rconPointer++;
 
-      // Key schedule update differs for 256-bit key (KC=8)
-      if (kc != 8) {
-        for (int i = 1; i < kc; i++) {
+      if (_kc != 8) {
+        for (int i = 1; i < _kc; i++) {
           tk[i] ^= tk[i - 1];
         }
       } else {
-        for (int i = 1; i < kc ~/ 2; i++) {
+        for (int i = 1; i < _kc ~/ 2; i++) {
           tk[i] ^= tk[i - 1];
         }
-        tt = tk[kc ~/ 2 - 1];
-        // SubWord step for the middle word
-        tk[kc ~/ 2] ^= ((_s[tt & 0xFF] & 0xFF)) ^
+        tt = tk[_kc ~/ 2 - 1];
+        tk[_kc ~/ 2] ^= ((_s[tt & 0xFF] & 0xFF)) ^
             ((_s[(tt >> 8) & 0xFF] & 0xFF) << 8) ^
             ((_s[(tt >> 16) & 0xFF] & 0xFF) << 16) ^
             ((_s[(tt >> 24) & 0xFF] & 0xFF) << 24);
-        for (int i = kc ~/ 2 + 1; i < kc; i++) {
+        for (int i = _kc ~/ 2 + 1; i < _kc; i++) {
           tk[i] ^= tk[i - 1];
         }
       }
 
-      // Copia os valores para os arrays de chaves de round
       j = 0;
-      while (j < kc && t < roundKeyCount) {
-        _ke[t ~/ bc][t % bc] = tk[j];
-        _kd[rounds - (t ~/ bc)][t % bc] = tk[j];
+      while (j < _kc && t < _roundKeyCount) {
+        _setRoundKey(_ke, t ~/ _bc, t % _bc, tk[j]);
+        _setRoundKey(_kd, _rounds - (t ~/ _bc), t % _bc, tk[j]);
         j++;
         t++;
       }
     }
 
-    // InvMixColumn onde necessário para as chaves de decriptografia
-    for (int r = 1; r < rounds; r++) {
-      for (j = 0; j < bc; j++) {
-        tt = _kd[r][j];
-        _kd[r][j] = _u1[(tt >> 24) & 0xFF] ^
-            _u2[(tt >> 16) & 0xFF] ^
-            _u3[(tt >> 8) & 0xFF] ^
-            _u4[tt & 0xFF];
+    for (int r = 1; r < _rounds; r++) {
+      for (j = 0; j < _bc; j++) {
+        tt = _getRoundKey(_kd, r, j);
+        _setRoundKey(
+            _kd,
+            r,
+            j,
+            _u1[(tt >> 24) & 0xFF] ^
+                _u2[(tt >> 16) & 0xFF] ^
+                _u3[(tt >> 8) & 0xFF] ^
+                _u4[tt & 0xFF]);
       }
     }
   }
 
-  /// Criptografa um único bloco de texto simples.
-  ///
-  /// Lança um [ArgumentError] se `plaintext` tiver o tamanho incorreto.
+  /// Criptografa um único bloco.
   Uint8List encrypt(Uint8List plaintext) {
+    final out = Uint8List(blockSize);
+    encryptInto(plaintext, out);
+    return out;
+  }
+
+  /// Variante sem alocações: escreve em [out] (tamanho deve ser `blockSize`).
+  void encryptInto(Uint8List plaintext, Uint8List out) {
+    _checkNotDisposed();
     if (plaintext.length != blockSize) {
       throw ArgumentError(
           'Comprimento de bloco incorreto, esperado $blockSize, obteve ${plaintext.length}');
     }
-
-    final int bc = blockSize ~/ 4;
-    final int rounds = _ke.length - 1;
-
-    // Seleciona os shifts corretos baseados no tamanho do bloco
-    final int sc; // Shift count index
-    if (bc == 4) {
-      sc = 0;
-    } else if (bc == 6) {
-      sc = 1;
-    } else {
-      // BC == 8
-      sc = 2;
-    }
-    final int s1 = _shifts[sc][1][0];
-    final int s2 = _shifts[sc][2][0];
-    final int s3 = _shifts[sc][3][0];
-
-    List<int> a = List.filled(bc, 0);
-    // Array de trabalho temporário
-    List<int> t = List.filled(bc, 0);
-
-    // Converte plaintext para inteiros + chave de round 0 (AddRoundKey)
-    for (int i = 0; i < bc; i++) {
-      t[i] = ((plaintext[i * 4] << 24) |
-              (plaintext[i * 4 + 1] << 16) |
-              (plaintext[i * 4 + 2] << 8) |
-              plaintext[i * 4 + 3]) ^
-          _ke[0][i];
+    if (out.length != blockSize) {
+      throw ArgumentError(
+          'Comprimento de saída incorreto, esperado $blockSize, obteve ${out.length}');
     }
 
-    // Aplica as transformações de round (SubBytes, ShiftRows, MixColumns, AddRoundKey)
-    for (int r = 1; r < rounds; r++) {
-      for (int i = 0; i < bc; i++) {
-        // Usa tabelas T pré-calculadas que combinam SubBytes, ShiftRows e MixColumns
-        a[i] = (_t1[(t[i] >> 24) & 0xFF] ^
-                _t2[(t[(i + s1) % bc] >> 16) & 0xFF] ^
-                _t3[(t[(i + s2) % bc] >> 8) & 0xFF] ^
-                _t4[t[(i + s3) % bc] & 0xFF]) ^
-            _ke[r][i]; // AddRoundKey
+    // AddRoundKey inicial (manual para evitar ByteData.view a cada chamada).
+    for (int i = 0; i < _bc; i++) {
+      final int base = i * 4;
+      final int word = (plaintext[base] << 24) |
+          (plaintext[base + 1] << 16) |
+          (plaintext[base + 2] << 8) |
+          plaintext[base + 3];
+      _wordSet(_workT, i, word ^ _getRoundKey(_ke, 0, i));
+    }
+
+    // Rounds principais
+    for (int r = 1; r < _rounds; r++) {
+      for (int i = 0; i < _bc; i++) {
+        final int t0 = _wordAt(_workT, i);
+        final int t1 = _wordAt(_workT, (i + _encS1) % _bc);
+        final int t2 = _wordAt(_workT, (i + _encS2) % _bc);
+        final int t3 = _wordAt(_workT, (i + _encS3) % _bc);
+        _wordSet(
+            _workA,
+            i,
+            (_t1[(t0 >> 24) & 0xFF] ^
+                    _t2[(t1 >> 16) & 0xFF] ^
+                    _t3[(t2 >> 8) & 0xFF] ^
+                    _t4[t3 & 0xFF]) ^
+                _getRoundKey(_ke, r, i));
       }
-      // Atualiza o estado para o próximo round
-      t = List<int>.from(a); // Equivalente a t = a[:] em dart
+      _copyWords(_workA, _workT, _bc);
     }
 
-    // Último round é especial (SubBytes, ShiftRows, AddRoundKey - sem MixColumns)
-    final List<int> resultBytes = [];
-    for (int i = 0; i < bc; i++) {
-      final int tt = _ke[rounds][i];
-      // Aplica SubBytes e AddRoundKey byte a byte
-      resultBytes.add((_s[(t[i] >> 24) & 0xFF] ^ (tt >> 24)) & 0xFF);
-      resultBytes
-          .add((_s[(t[(i + s1) % bc] >> 16) & 0xFF] ^ (tt >> 16)) & 0xFF);
-      resultBytes.add((_s[(t[(i + s2) % bc] >> 8) & 0xFF] ^ (tt >> 8)) & 0xFF);
-      resultBytes.add((_s[t[(i + s3) % bc] & 0xFF] ^ tt) & 0xFF);
+    // Último round
+    for (int i = 0; i < _bc; i++) {
+      final int tt = _getRoundKey(_ke, _rounds, i);
+      final int t0 = _wordAt(_workT, i);
+      final int t1 = _wordAt(_workT, (i + _encS1) % _bc);
+      final int t2 = _wordAt(_workT, (i + _encS2) % _bc);
+      final int t3 = _wordAt(_workT, (i + _encS3) % _bc);
+
+      out[i * 4] = (_s[(t0 >> 24) & 0xFF] ^ (tt >> 24)) & 0xFF;
+      out[i * 4 + 1] = (_s[(t1 >> 16) & 0xFF] ^ (tt >> 16)) & 0xFF;
+      out[i * 4 + 2] = (_s[(t2 >> 8) & 0xFF] ^ (tt >> 8)) & 0xFF;
+      out[i * 4 + 3] = (_s[t3 & 0xFF] ^ tt) & 0xFF;
     }
-    return Uint8List.fromList(resultBytes);
   }
 
-  /// Decriptografa um bloco de texto cifrado.
-  ///
-  /// Lança um [ArgumentError] se `ciphertext` tiver o tamanho incorreto.
-  /// Decrypts a single block of ciphertext.
+  /// Decriptografa um único bloco.
   Uint8List decrypt(Uint8List ciphertext) {
+    final out = Uint8List(blockSize);
+    decryptInto(ciphertext, out);
+    return out;
+  }
+
+  /// Variante sem alocações: escreve em [out] (tamanho deve ser `blockSize`).
+  void decryptInto(Uint8List ciphertext, Uint8List out) {
+    _checkNotDisposed();
     if (ciphertext.length != blockSize) {
       throw ArgumentError(
           'wrong block length, expected $blockSize got ${ciphertext.length}');
     }
-
-    // Kd is already initialized by the constructor
-
-    final int BC = blockSize ~/ 4; // Block size in 32-bit words
-    final int ROUNDS = _kd.length - 1; // Number of rounds
-
-    int SC; // Shift constant index
-    if (BC == 4) {
-      SC = 0;
-    } else if (BC == 6) {
-      SC = 1;
-    } else {
-      // BC == 8
-      SC = 2;
+    if (out.length != blockSize) {
+      throw ArgumentError(
+          'Comprimento de saída incorreto, esperado $blockSize, obteve ${out.length}');
     }
 
-    // Inverse shift offsets (use the second value from the shifts table for decryption)
-    final int s1 = _shifts[SC][1][1];
-    final int s2 = _shifts[SC][2][1];
-    final int s3 = _shifts[SC][3][1];
-
-    // Temporary work arrays (32-bit words)
-    List<int> a = List<int>.filled(BC, 0);
-    List<int> t = List<int>.filled(BC, 0);
-
-    // Use ByteData for easier 32-bit manipulation from Uint8List
-    ByteData cipherData = ByteData.sublistView(ciphertext);
-
-    // Initial round: AddRoundKey (XOR ciphertext with initial round key)
-    for (int i = 0; i < BC; i++) {
-      // Read 32-bit word in Big Endian order
-      t[i] = cipherData.getUint32(i * 4, Endian.big) ^ _kd[0][i];
+    for (int i = 0; i < _bc; i++) {
+      final int base = i * 4;
+      final int word = (ciphertext[base] << 24) |
+          (ciphertext[base + 1] << 16) |
+          (ciphertext[base + 2] << 8) |
+          ciphertext[base + 3];
+      _wordSet(_workT, i, word ^ _getRoundKey(_kd, 0, i));
     }
 
-    // Apply round transforms (InvShiftRows, InvSubBytes, InvMixColumns, AddRoundKey)
-    // The T tables (T5-T8) combine InvShiftRows, InvSubBytes, and InvMixColumns
-    for (int r = 1; r < ROUNDS; r++) {
-      for (int i = 0; i < BC; i++) {
-        // Apply the T-box transformations and XOR with the round key
-        a[i] = (_t5[(t[i] >> 24) & 0xFF] ^ // Byte 3
-                _t6[(t[(i + s1) % BC] >> 16) & 0xFF] ^ // Byte 2 (shifted)
-                _t7[(t[(i + s2) % BC] >> 8) & 0xFF] ^ // Byte 1 (shifted)
-                _t8[t[(i + s3) % BC] & 0xFF]) ^ // Byte 0 (shifted)
-            _kd[r][i]; // AddRoundKey
+    for (int r = 1; r < _rounds; r++) {
+      for (int i = 0; i < _bc; i++) {
+        final int t0 = _wordAt(_workT, i);
+        final int t1 = _wordAt(_workT, (i + _decS1) % _bc);
+        final int t2 = _wordAt(_workT, (i + _decS2) % _bc);
+        final int t3 = _wordAt(_workT, (i + _decS3) % _bc);
+        _wordSet(
+            _workA,
+            i,
+            (_t5[(t0 >> 24) & 0xFF] ^
+                    _t6[(t1 >> 16) & 0xFF] ^
+                    _t7[(t2 >> 8) & 0xFF] ^
+                    _t8[t3 & 0xFF]) ^
+                _getRoundKey(_kd, r, i));
       }
-      // Copy the result of this round (a) to the state array (t) for the next round
-      t = List<int>.from(a); // Create a copy
+      _copyWords(_workA, _workT, _bc);
     }
 
-    // Last round is special: InvShiftRows, InvSubBytes, AddRoundKey (no InvMixColumns)
-    List<int> resultBytes = []; // Stores the final plaintext bytes
-    for (int i = 0; i < BC; i++) {
-      int tt = _kd[ROUNDS][i]; // Final round key word
+    for (int i = 0; i < _bc; i++) {
+      final int tt = _getRoundKey(_kd, _rounds, i);
+      final int t0 = _wordAt(_workT, i);
+      final int t1 = _wordAt(_workT, (i + _decS1) % _bc);
+      final int t2 = _wordAt(_workT, (i + _decS2) % _bc);
+      final int t3 = _wordAt(_workT, (i + _decS3) % _bc);
 
-      // Extract bytes from the final round key for XORing
-      int ttByte3 = (tt >> 24) & 0xFF;
-      int ttByte2 = (tt >> 16) & 0xFF;
-      int ttByte1 = (tt >> 8) & 0xFF;
-      int ttByte0 = tt & 0xFF;
+      final int ttByte3 = (tt >> 24) & 0xFF;
+      final int ttByte2 = (tt >> 16) & 0xFF;
+      final int ttByte1 = (tt >> 8) & 0xFF;
+      final int ttByte0 = tt & 0xFF;
 
-      // Apply InvSubBytes (Si lookup) to the shifted state bytes and XOR with key bytes
-      // The indexing t[(i+sX)%BC] implicitly performs InvShiftRows
-      int resByte3 = (_si[(t[i] >> 24) & 0xFF] ^ ttByte3) & 0xFF;
-      int resByte2 = (_si[(t[(i + s1) % BC] >> 16) & 0xFF] ^ ttByte2) & 0xFF;
-      int resByte1 = (_si[(t[(i + s2) % BC] >> 8) & 0xFF] ^ ttByte1) & 0xFF;
-      int resByte0 = (_si[t[(i + s3) % BC] & 0xFF] ^ ttByte0) & 0xFF;
-
-      // Add the resulting bytes to the list in Big Endian order (byte 3, 2, 1, 0)
-      resultBytes.add(resByte3);
-      resultBytes.add(resByte2);
-      resultBytes.add(resByte1);
-      resultBytes.add(resByte0);
+      out[i * 4] = (_si[(t0 >> 24) & 0xFF] ^ ttByte3) & 0xFF;
+      out[i * 4 + 1] = (_si[(t1 >> 16) & 0xFF] ^ ttByte2) & 0xFF;
+      out[i * 4 + 2] = (_si[(t2 >> 8) & 0xFF] ^ ttByte1) & 0xFF;
+      out[i * 4 + 3] = (_si[t3 & 0xFF] ^ ttByte0) & 0xFF;
     }
-
-    // Convert the list of bytes back to Uint8List
-    return Uint8List.fromList(resultBytes);
   }
-} // End of Rijndael class
+} // End of RijndaelFast class
 
 // --- Helper Functions (Outside the class) ---
 
-/// Encrypts a single block using the specified key.
-/// Creates a temporary Rijndael instance.
-Uint8List encryptBlock(Uint8List key, Uint8List block) {
-  // Ensure the Rijndael class constructor handles key and block size validation
-  return Rijndael(key, blockSize: block.length).encrypt(block);
+Uint8List encryptBlockFast(Uint8List key, Uint8List block) {
+  final cipher = RijndaelFast(key, blockSize: block.length);
+  try {
+    return cipher.encrypt(block);
+  } finally {
+    cipher.dispose();
+  }
 }
 
-/// Decrypts a single block using the specified key.
-/// Creates a temporary Rijndael instance.
-Uint8List decryptBlock(Uint8List key, Uint8List block) {
-  // Ensure the Rijndael class constructor handles key and block size validation
-  return Rijndael(key, blockSize: block.length).decrypt(block);
+Uint8List decryptBlockFast(Uint8List key, Uint8List block) {
+  final cipher = RijndaelFast(key, blockSize: block.length);
+  try {
+    return cipher.decrypt(block);
+  } finally {
+    cipher.dispose();
+  }
 }
