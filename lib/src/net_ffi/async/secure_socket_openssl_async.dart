@@ -7,6 +7,7 @@ import 'dart:ffi' as ffi;
 import 'dart:isolate';
 import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
+import 'package:tlslite/src/net/ciphertext_callback.dart';
 import 'package:tlslite/src/net_ffi/socket_exceptions.dart';
 import 'package:tlslite/src/net_ffi/native_buffer_utils.dart';
 import 'package:tlslite/src/net_ffi/sync/socket_native_ffi.dart';
@@ -16,8 +17,7 @@ import '../../openssl/openssl_loader.dart';
 import '../secure_socket_constants.dart';
 
 
-typedef CiphertextWriter = Future<void> Function(Uint8List chunk);
-typedef CiphertextReader = Future<Uint8List?> Function(int preferredLength);
+
 
 /// High-level helper that combines the isolate-backed transport with the
 /// async OpenSSL engine so callers can await TLS handshakes without blocking
@@ -72,8 +72,8 @@ class SecureFFISocketOpenSSLAsync {
     required bool isServer,
     String? certFile,
     String? keyFile,
-    required CiphertextWriter writer,
-    required CiphertextReader reader,
+    required CiphertextWriterAsync writer,
+    required CiphertextReaderAsync reader,
   })  : _isServer = isServer,
         _certFile = certFile,
         _keyFile = keyFile,
@@ -85,8 +85,8 @@ class SecureFFISocketOpenSSLAsync {
   }
 
   factory SecureFFISocketOpenSSLAsync.client({
-    required CiphertextWriter writer,
-    required CiphertextReader reader,
+    required CiphertextWriterAsync writer,
+    required CiphertextReaderAsync reader,
   }) =>
       SecureFFISocketOpenSSLAsync._(
         isServer: false,
@@ -95,8 +95,8 @@ class SecureFFISocketOpenSSLAsync {
       );
 
   factory SecureFFISocketOpenSSLAsync.server({
-    required CiphertextWriter writer,
-    required CiphertextReader reader,
+    required CiphertextWriterAsync writer,
+    required CiphertextReaderAsync reader,
     required String certFile,
     required String keyFile,
   }) =>
@@ -109,8 +109,8 @@ class SecureFFISocketOpenSSLAsync {
       );
 
   final bool _isServer;
-  final CiphertextWriter _writeCiphertext;
-  final CiphertextReader _readCiphertext;
+  final CiphertextWriterAsync _writeCiphertext;
+  final CiphertextReaderAsync _readCiphertext;
   final String? _certFile;
   final String? _keyFile;
   late final OpenSsl _openSsl;

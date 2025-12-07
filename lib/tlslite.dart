@@ -1,13 +1,15 @@
 library tlslite;
 
 //export 'src/net_ffi/security/secure_socket_openssl.dart';
+export 'src/net/ciphertext_callback.dart';
 export 'src/net/secure_socket_openssl_async.dart';
 export 'src/net/secure_socket_openssl_sync.dart';
 
 export 'src/dh.dart';
 export 'src/checker.dart';
 export 'src/verifierdb.dart';
-export 'src/constants.dart' show AlertLevel, AlertDescription, Fault, ContentType;
+export 'src/constants.dart'
+    show AlertLevel, AlertDescription, Fault, ContentType;
 export 'src/errors.dart';
 export 'src/handshake_settings.dart';
 export 'src/session.dart';

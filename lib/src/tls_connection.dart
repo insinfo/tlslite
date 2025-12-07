@@ -245,6 +245,20 @@ class TlsConnection extends MessageSocket {
     await sendMessage(Message(ContentType.application_data, data));
   }
 
+  /// Closes the TLS connection.
+  /// 
+  /// This sends a close_notify alert to the peer and closes the underlying socket.
+  Future<void> close() async {
+    try {
+      // Send close_notify alert (level=1 warning, description=0 close_notify)
+      await _sendAlert(AlertLevel.warning, AlertDescription.close_notify);
+    } catch (_) {
+      // Ignore errors when sending close_notify
+    }
+    // Close the underlying socket
+    sock?.close();
+  }
+
   /// Read application data.
   Future<Uint8List> read({int? max}) async {
     while (_appDataBuffer.isEmpty) {

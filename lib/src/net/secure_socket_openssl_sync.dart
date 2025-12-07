@@ -1,5 +1,6 @@
 // ignore_for_file: lines_longer_than_80_chars
 
+import 'dart:async';
 import 'dart:ffi' as ffi;
 import 'dart:io' as io;
 import 'dart:typed_data';
@@ -8,6 +9,8 @@ import 'package:ffi/ffi.dart';
 import '../net_ffi/native_buffer_utils.dart';
 import '../openssl/generated/ffi.dart';
 import '../openssl/openssl_loader.dart';
+
+import 'ciphertext_callback.dart';
 
 const int _bioCtrlPending = 10; // BIO_CTRL_PENDING
 const int _defaultCiphertextChunk = 16 * 1024;
@@ -18,18 +21,23 @@ const int _sslErrorZeroReturn = 6;
 /// A synchronous TLS socket that reuses the OpenSSL BIO engine.
 class SecureSocketOpenSSLSync {
   SecureSocketOpenSSLSync._({
-    required io.RawSynchronousSocket socket,
+    io.RawSynchronousSocket? socket,
+    CiphertextWriterSync? writer,
+    CiphertextReaderSync? reader,
     required bool isServer,
     String? certFile,
     String? keyFile,
     bool eagerHandshake = false,
   })  : _socket = socket,
+        _ciphertextWriter = writer,
+        _ciphertextReader = reader,
+        _useCallbacks = writer != null && reader != null,
         _isServer = isServer {
     _initOpenSsl();
     _initializeSSL(certFile: certFile, keyFile: keyFile);
     _attachSslObject();
     if (eagerHandshake || isServer) {
-      ensureHandshakeCompleted();
+      _handshakeFuture = ensureHandshakeCompleted();
     }
   }
 
@@ -56,6 +64,19 @@ class SecureSocketOpenSSLSync {
         eagerHandshake: eagerHandshake,
       );
 
+  factory SecureSocketOpenSSLSync.clientWithCallbacks({
+    required CiphertextWriterSync writer,
+    required CiphertextReaderSync reader,
+    bool eagerHandshake = true,
+  }) =>
+      SecureSocketOpenSSLSync._(
+        socket: null,
+        writer: writer,
+        reader: reader,
+        isServer: false,
+        eagerHandshake: eagerHandshake,
+      );
+
   factory SecureSocketOpenSSLSync.serverFromSocket(
     io.RawSynchronousSocket socket, {
     required String certFile,
@@ -70,7 +91,10 @@ class SecureSocketOpenSSLSync {
         eagerHandshake: eagerHandshake,
       );
 
-  final io.RawSynchronousSocket _socket;
+  final io.RawSynchronousSocket? _socket;
+  final CiphertextWriterSync? _ciphertextWriter;
+  final CiphertextReaderSync? _ciphertextReader;
+  final bool _useCallbacks;
   final bool _isServer;
   late final OpenSsl _openSsl;
   late final OpenSsl _openSslCrypto;
@@ -79,30 +103,29 @@ class SecureSocketOpenSSLSync {
   ffi.Pointer<BIO>? _networkReadBio;
   ffi.Pointer<BIO>? _networkWriteBio;
   bool _sslInitialized = false;
+  Future<void>? _handshakeFuture;
   bool _socketClosed = false;
 
-  io.RawSynchronousSocket get socket => _socket;
+  io.RawSynchronousSocket? get socket => _socket;
 
   bool get isHandshakeComplete => _sslInitialized;
 
-  void ensureHandshakeCompleted() {
-    if (_sslInitialized) {
-      return;
-    }
-    _performHandshake();
+  Future<void> ensureHandshakeCompleted() {
+    _handshakeFuture ??= _performHandshake();
+    return _handshakeFuture!;
   }
 
-  void _performHandshake() {
+  Future<void> _performHandshake() async {
     while (true) {
       final result = _openSsl.SSL_do_handshake(_sslPtr);
-      _drainWriteBioToSocket();
+      await _drainWriteBio();
       if (result == 1) {
         _sslInitialized = true;
         return;
       }
       final error = _openSsl.SSL_get_error(_sslPtr, result);
       if (error == _sslErrorWantRead) {
-        final filled = _fillReadBioFromSocket();
+        final filled = await _fillReadBio();
         if (!filled) {
           throw io.SocketException(
             'TLS handshake aborted: socket closed before completion.',
@@ -119,11 +142,11 @@ class SecureSocketOpenSSLSync {
     }
   }
 
-  int send(Uint8List data) {
+  Future<int> send(Uint8List data) async {
     if (data.isEmpty) {
       return 0;
     }
-    ensureHandshakeCompleted();
+    await ensureHandshakeCompleted();
     final buffer = NativeUint8Buffer.fromBytes(
       data,
       pool: NativeUint8BufferPool.global,
@@ -134,14 +157,14 @@ class SecureSocketOpenSSLSync {
         final remaining = data.length - written;
         final ptr = buffer.slice(written).cast<ffi.Void>();
         final result = _openSsl.SSL_write(_sslPtr, ptr, remaining);
-        _drainWriteBioToSocket();
+        await _drainWriteBio();
         if (result > 0) {
           written += result;
           continue;
         }
         final error = _openSsl.SSL_get_error(_sslPtr, result);
         if (error == _sslErrorWantRead) {
-          final filled = _fillReadBioFromSocket();
+          final filled = await _fillReadBio();
           if (!filled) {
             throw io.SocketException(
               'Socket closed while SSL_write was waiting for data.',
@@ -160,11 +183,11 @@ class SecureSocketOpenSSLSync {
     return data.length;
   }
 
-  Uint8List recv(int bufferSize) {
+  Future<Uint8List> recv(int bufferSize) async {
     if (bufferSize <= 0) {
       throw ArgumentError.value(bufferSize, 'bufferSize', 'must be positive');
     }
-    ensureHandshakeCompleted();
+    await ensureHandshakeCompleted();
     final buffer = NativeUint8Buffer.pooled(bufferSize);
     try {
       while (true) {
@@ -175,7 +198,7 @@ class SecureSocketOpenSSLSync {
         }
         final error = _openSsl.SSL_get_error(_sslPtr, received);
         if (error == _sslErrorWantRead) {
-          final filled = _fillReadBioFromSocket(
+          final filled = await _fillReadBio(
             preferredSize: bufferSize,
           );
           if (!filled) {
@@ -184,7 +207,7 @@ class SecureSocketOpenSSLSync {
           continue;
         }
         if (error == _sslErrorWantWrite) {
-          _drainWriteBioToSocket();
+          await _drainWriteBio();
           continue;
         }
         if (error == _sslErrorZeroReturn) {
@@ -197,24 +220,27 @@ class SecureSocketOpenSSLSync {
     }
   }
 
-  void shutdown() {
+  Future<void> shutdown() async {
     if (_ssl == null || _ssl == ffi.nullptr || !_sslInitialized) {
       return;
     }
     final result = _openSsl.SSL_shutdown(_sslPtr);
     if (result == 0) {
-      _drainWriteBioToSocket();
-      _fillReadBioFromSocket();
+      await _drainWriteBio();
+      await _fillReadBio();
       _openSsl.SSL_shutdown(_sslPtr);
     }
-    _drainWriteBioToSocket();
+    await _drainWriteBio();
     _sslInitialized = false;
   }
 
-  void close() {
-    shutdown();
+  Future<void> close() async {
+    await shutdown();
     if (!_socketClosed) {
-      _socket.closeSync();
+      final socket = _socket;
+      if (socket != null) {
+        socket.closeSync();
+      }
       _socketClosed = true;
     }
     final ssl = _ssl;
@@ -231,28 +257,39 @@ class SecureSocketOpenSSLSync {
     }
   }
 
-  bool _fillReadBioFromSocket({int? preferredSize}) {
+  Future<bool> _fillReadBio({int? preferredSize}) async {
     final bio = _networkReadBio;
     if (bio == null || bio == ffi.nullptr) {
       throw io.SocketException('TLS read BIO is unavailable.');
     }
-    final chunkSize = (preferredSize == null || preferredSize <= 0)
-        ? _defaultCiphertextChunk
-        : preferredSize;
-    List<int>? ciphertext;
-    try {
-      ciphertext = _socket.readSync(chunkSize);
-    } on io.SocketException catch (_) {
-      _socketClosed = true;
-      rethrow;
+    Uint8List? bytes;
+    if (_useCallbacks) {
+      final size = (preferredSize == null || preferredSize <= 0)
+          ? _defaultCiphertextChunk
+          : preferredSize;
+      bytes = await _ciphertextReader!(size);
+    } else {
+      final socket = _requireSocket();
+      final chunkSize = (preferredSize == null || preferredSize <= 0)
+          ? _defaultCiphertextChunk
+          : preferredSize;
+      List<int>? ciphertext;
+      try {
+        ciphertext = socket.readSync(chunkSize);
+      } on io.SocketException catch (_) {
+        _socketClosed = true;
+        rethrow;
+      }
+      if (ciphertext != null && ciphertext.isNotEmpty) {
+        bytes = ciphertext is Uint8List
+            ? ciphertext
+            : Uint8List.fromList(ciphertext);
+      }
     }
-    if (ciphertext == null || ciphertext.isEmpty) {
+    if (bytes == null || bytes.isEmpty) {
       _socketClosed = true;
       return false;
     }
-    final bytes = ciphertext is Uint8List
-        ? ciphertext
-        : Uint8List.fromList(ciphertext);
     final buffer = NativeUint8Buffer.fromBytes(
       bytes,
       pool: NativeUint8BufferPool.global,
@@ -272,7 +309,7 @@ class SecureSocketOpenSSLSync {
     return true;
   }
 
-  void _drainWriteBioToSocket() {
+  Future<void> _drainWriteBio() async {
     final bio = _networkWriteBio;
     if (bio == null || bio == ffi.nullptr) {
       return;
@@ -287,9 +324,8 @@ class SecureSocketOpenSSLSync {
       if (pending <= 0) {
         break;
       }
-      final chunkSize = pending < _defaultCiphertextChunk
-          ? pending
-          : _defaultCiphertextChunk;
+      final chunkSize =
+          pending < _defaultCiphertextChunk ? pending : _defaultCiphertextChunk;
       final buffer = NativeUint8Buffer.pooled(
         chunkSize,
         pool: NativeUint8BufferPool.global,
@@ -301,11 +337,25 @@ class SecureSocketOpenSSLSync {
           break;
         }
         final ciphertext = buffer.copyToDart(read);
-        _socket.writeFromSync(ciphertext);
+        if (_useCallbacks) {
+           _ciphertextWriter!(ciphertext);
+        } else {
+          final socket = _requireSocket();
+          socket.writeFromSync(ciphertext);
+        }
       } finally {
         buffer.release();
       }
     }
+  }
+
+  io.RawSynchronousSocket _requireSocket() {
+    final socket = _socket;
+    if (socket == null) {
+      throw io.SocketException(
+          'No underlying socket available in callback mode');
+    }
+    return socket;
   }
 
   void _initOpenSsl() {

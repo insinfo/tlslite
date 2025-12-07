@@ -170,15 +170,15 @@ Future<void> _runSecureClient(_SecureClientArgs args) async {
     );
     print('client isolate: connected to ${args.port}');
     try {
-      client.ensureHandshakeCompleted();
+      await client.ensureHandshakeCompleted();
       print('client isolate: handshake complete');
-      client.send(Uint8List.fromList('ping'.codeUnits));
+      await client.send(Uint8List.fromList('ping'.codeUnits));
       print('client isolate: sent ping');
-      final response = client.recv(4);
+      final response = await client.recv(4);
       print('client isolate: got ${String.fromCharCodes(response)}');
       args.resultPort.send(String.fromCharCodes(response));
     } finally {
-      client.close();
+      await client.close();
     }
   } catch (error, stackTrace) {
     args.resultPort.send({

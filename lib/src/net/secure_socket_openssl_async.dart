@@ -10,6 +10,7 @@ import 'package:ffi/ffi.dart';
 import '../net_ffi/native_buffer_utils.dart';
 import '../openssl/generated/ffi.dart';
 import '../openssl/openssl_loader.dart';
+import 'ciphertext_callback.dart';
 
 const int _bioCtrlPending = 10; // BIO_CTRL_PENDING
 const int _defaultCiphertextChunk = 16 * 1024;
@@ -20,19 +21,27 @@ const int _sslErrorZeroReturn = 6;
 /// A dart SecureSocket with dart io.Socket and OpenSSL FFI
 class SecureSocketOpenSSLAsync {
   SecureSocketOpenSSLAsync._({
-    required io.Socket socket,
+    io.Socket? socket,
+    CiphertextWriterAsync? writer,
+    CiphertextReaderAsync? reader,
     required bool isServer,
     String? certFile,
     String? keyFile,
     bool eagerHandshake = false,
-    })  : _socket = socket,
-      _isServer = isServer {
-    _subscription = _socket.listen(
-      _handleCiphertext,
-      onError: _handleSocketError,
-      onDone: _handleSocketDone,
-      cancelOnError: true,
-    );
+  })  : _socket = socket,
+        _ciphertextWriter = writer,
+        _ciphertextReader = reader,
+        _useCallbacks = writer != null && reader != null,
+        _isServer = isServer {
+    final socket = _socket;
+    if (socket != null) {
+      _subscription = socket.listen(
+        _handleCiphertext,
+        onError: _handleSocketError,
+        onDone: _handleSocketDone,
+        cancelOnError: true,
+      );
+    }
     _initOpenSsl();
     _initializeSSL(certFile: certFile, keyFile: keyFile);
     _attachSslObject();
@@ -65,6 +74,19 @@ class SecureSocketOpenSSLAsync {
         eagerHandshake: eagerHandshake,
       );
 
+  factory SecureSocketOpenSSLAsync.clientWithCallbacks({
+    required CiphertextWriterAsync writer,
+    required CiphertextReaderAsync reader,
+    bool eagerHandshake = true,
+  }) =>
+      SecureSocketOpenSSLAsync._(
+        socket: null,
+        writer: writer,
+        reader: reader,
+        isServer: false,
+        eagerHandshake: eagerHandshake,
+      );
+
   factory SecureSocketOpenSSLAsync.serverFromSocket(
     io.Socket socket, {
     required String certFile,
@@ -79,7 +101,10 @@ class SecureSocketOpenSSLAsync {
         eagerHandshake: eagerHandshake,
       );
 
-  final io.Socket _socket;
+  final io.Socket? _socket;
+  final CiphertextWriterAsync? _ciphertextWriter;
+  final CiphertextReaderAsync? _ciphertextReader;
+  final bool _useCallbacks;
   final bool _isServer;
   late final OpenSsl _openSsl;
   late final OpenSsl _openSslCrypto;
@@ -95,7 +120,7 @@ class SecureSocketOpenSSLAsync {
   Object? _socketError;
   bool _socketClosed = false;
 
-  io.Socket get socket => _socket;
+  io.Socket? get socket => _socket;
 
   bool get isHandshakeComplete => _sslInitialized;
 
@@ -110,14 +135,14 @@ class SecureSocketOpenSSLAsync {
     }
     while (true) {
       final result = _openSsl.SSL_do_handshake(_sslPtr);
-      await _drainWriteBioToSocket();
+      await _drainWriteBio();
       if (result == 1) {
         _sslInitialized = true;
         return;
       }
       final error = _openSsl.SSL_get_error(_sslPtr, result);
       if (error == _sslErrorWantRead) {
-        final filled = await _fillReadBioFromSocket();
+        final filled = await _fillReadBio();
         if (!filled) {
           throw io.SocketException(
             'TLS handshake aborted: socket closed before completion.',
@@ -149,14 +174,14 @@ class SecureSocketOpenSSLAsync {
         final remaining = data.length - written;
         final ptr = buffer.slice(written).cast<ffi.Void>();
         final result = _openSsl.SSL_write(_sslPtr, ptr, remaining);
-        await _drainWriteBioToSocket();
+        await _drainWriteBio();
         if (result > 0) {
           written += result;
           continue;
         }
         final error = _openSsl.SSL_get_error(_sslPtr, result);
         if (error == _sslErrorWantRead) {
-          final filled = await _fillReadBioFromSocket();
+          final filled = await _fillReadBio();
           if (!filled) {
             throw io.SocketException(
               'Socket closed while SSL_write was waiting for data.',
@@ -190,7 +215,7 @@ class SecureSocketOpenSSLAsync {
         }
         final error = _openSsl.SSL_get_error(_sslPtr, received);
         if (error == _sslErrorWantRead) {
-          final filled = await _fillReadBioFromSocket(
+          final filled = await _fillReadBio(
             preferredSize: bufferSize,
           );
           if (!filled) {
@@ -199,7 +224,7 @@ class SecureSocketOpenSSLAsync {
           continue;
         }
         if (error == _sslErrorWantWrite) {
-          await _drainWriteBioToSocket();
+          await _drainWriteBio();
           continue;
         }
         if (error == _sslErrorZeroReturn) {
@@ -218,11 +243,11 @@ class SecureSocketOpenSSLAsync {
     }
     final result = _openSsl.SSL_shutdown(_sslPtr);
     if (result == 0) {
-      await _drainWriteBioToSocket();
-      await _fillReadBioFromSocket();
+      await _drainWriteBio();
+      await _fillReadBio();
       _openSsl.SSL_shutdown(_sslPtr);
     }
-    await _drainWriteBioToSocket();
+    await _drainWriteBio();
     _sslInitialized = false;
   }
 
@@ -231,9 +256,10 @@ class SecureSocketOpenSSLAsync {
     final subscription = _subscription;
     _subscription = null;
     await subscription?.cancel();
-    if (!_socketClosed) {
-      await _socket.flush();
-      await _socket.close();
+    final socket = _socket;
+    if (socket != null && !_socketClosed) {
+      await socket.flush();
+      await socket.close();
       _socketClosed = true;
     }
     final ssl = _ssl;
@@ -256,15 +282,12 @@ class SecureSocketOpenSSLAsync {
     _ciphertextSignal = null;
   }
 
-  Future<bool> _fillReadBioFromSocket({int? preferredSize}) async {
-    // Ignore preferredSize; unused for BIO.
-    final _ = preferredSize;
+  Future<bool> _fillReadBio({int? preferredSize}) async {
     final bio = _networkReadBio;
     if (bio == null || bio == ffi.nullptr) {
       throw io.SocketException('TLS read BIO is unavailable.');
     }
-    // Return any available ciphertext immediately; don't aggregate.
-    final ciphertext = await _dequeueCiphertextChunk();
+    final ciphertext = await _dequeueCiphertextChunk(preferredSize);
     if (ciphertext == null || ciphertext.isEmpty) {
       return false;
     }
@@ -287,7 +310,7 @@ class SecureSocketOpenSSLAsync {
     return true;
   }
 
-  Future<void> _drainWriteBioToSocket() async {
+  Future<void> _drainWriteBio() async {
     final bio = _networkWriteBio;
     if (bio == null || bio == ffi.nullptr) {
       return;
@@ -303,16 +326,15 @@ class SecureSocketOpenSSLAsync {
       if (pending <= 0) {
         break;
       }
-      final chunkSize = pending < _defaultCiphertextChunk
-          ? pending
-          : _defaultCiphertextChunk;
+      final chunkSize =
+          pending < _defaultCiphertextChunk ? pending : _defaultCiphertextChunk;
       final buffer = NativeUint8Buffer.pooled(
         chunkSize,
         pool: NativeUint8BufferPool.global,
       );
       try {
         final read =
-          _openSslCrypto.BIO_read(bio, buffer.pointer.cast(), chunkSize);
+            _openSslCrypto.BIO_read(bio, buffer.pointer.cast(), chunkSize);
         if (read <= 0) {
           break;
         }
@@ -320,18 +342,27 @@ class SecureSocketOpenSSLAsync {
         if (ciphertext.isEmpty) {
           break;
         }
-        _socket.add(ciphertext);
-        wroteAny = true;
+        if (_useCallbacks) {
+          await _ciphertextWriter!(ciphertext);
+        } else {
+          _socket!.add(ciphertext);
+          wroteAny = true;
+        }
       } finally {
         buffer.release();
       }
     }
-    if (wroteAny) {
-      await _socket.flush();
+    final socket = _socket;
+    if (wroteAny && socket != null) {
+      await socket.flush();
     }
   }
 
-  Future<Uint8List?> _dequeueCiphertextChunk() async {
+  Future<Uint8List?> _dequeueCiphertextChunk(int? preferredSize) async {
+    if (_useCallbacks) {
+      final size = preferredSize ?? _defaultCiphertextChunk;
+      return await _ciphertextReader!(size);
+    }
     while (true) {
       if (_ciphertextQueue.isNotEmpty) {
         return _ciphertextQueue.removeFirst();
