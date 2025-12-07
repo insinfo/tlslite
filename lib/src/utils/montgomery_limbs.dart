@@ -7,7 +7,7 @@
 // modular em multiplicações sem divisão.
 //
 // Referência: OpenSSL bn_asm.c, bn_local.h, bn_mont.c
-//
+// Limbs vs BigInt: Limbs é 20.90x mais lento que BigInt
 // No Dart:
 // - int é 64-bit em VM nativa
 // - Usamos limbs de 32-bit para multiplicação 32x32→64 sem overflow
