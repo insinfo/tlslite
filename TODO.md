@@ -275,3 +275,55 @@ Finalizar o fluxo TLS 1.3 (EncryptedExtensions, CertificateVerify, Finished, t
 Acrescentar testes de integração por versão usando tlslite-ng e OpenSSL, validando que cada combinação passa sem bad_record_mac.
 Quando essas etapas estiverem concluídas, a pilha Dart terá paridade funcional com a referência Python para todas as versões SSLv3–TLS 1.3.
 
+problemas de desenpenho 07/12/2025
+
+Agora encontrei o problema principal! A implementação usa BigInt para operações de contador e conversão de bytes, o que é extremamente lento em Dart.
+
+Vou analisar o fluxo:
+
+AES-GCM usa _mul() que faz operações com BigInt 128 iterações por bloco de 16 bytes
+AES-CTR usa bytesToNumber() e numberToByteArray() para cada incremento de contador
+Rijndael é uma implementação pura Dart do AES
+Os gargalos principais são:
+
+_mul() no AESGCM - usa BigInt para multiplicação em GF(2^128) - chamado para cada 16 bytes
+_counterUpdate() no AES-CTR - converte contador para BigInt e volta - chamado para cada 16 bytes
+bytesToNumber() e numberToByteArray() - conversões BigInt muito lentas
+Vou verificar essas funções:
+
+Read cryptomath.dart, lines 265 to 320
+
+Agora tenho uma visão clara do problema. O gargalo está na implementação do AES-GCM que faz muitas operações com BigInt que são muito lentas em Dart.
+
+Para cada 16 bytes de dados:
+
+_update() chama bytesToNumber() e _mul()
+_mul() faz 128 iterações com operações BigInt
+Resumo dos gargalos principais:
+
+Análise de Performance - TlsConnection
+O throughput de 0.94 MB/s vs 18.75 MB/s (OpenSSL) indica que o código está ~20x mais lento.
+
+Principais gargalos identificados:
+AESGCM._mul() em aesgcm.dart (linhas 121-130)
+
+Usa BigInt para multiplicação em GF(2^128)
+Executa 128 iterações com shifts/XORs em BigInt para cada bloco de 16 bytes
+Para 100MB = 6.5 milhões de chamadas de _mul()
+Dart_AES_CTR._counterUpdate() em dart_aes.dart (linhas 173-213)
+
+Converte contador de 16 bytes para BigInt e volta
+Chama bytesToNumber() e numberToByteArray() para cada bloco
+Para 100MB = 6.5 milhões de conversões
+bytesToNumber() e numberToByteArray() em cryptomath.dart
+
+Operações BigInt byte-a-byte são extremamente lentas
+Conversões acontecem em cada bloco de 16 bytes
+AESGCM._auth() / _update() em aesgcm.dart
+
+Chama bytesToNumber() para cada bloco de dados
+Acumula operações BigInt
+Soluções possíveis:
+Otimizar _counterUpdate(): Incrementar diretamente os bytes do contador sem BigInt
+Otimizar _mul(): Usar tabelas lookup maiores ou operações em Uint64
+Usar FFI para AES: Chamar libcrypto/OpenSSL para operações AES-GCM
