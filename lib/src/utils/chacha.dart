@@ -68,8 +68,8 @@ class ChaCha {
   /// Realiza duas rodadas (1 rodada dupla) da cifra ChaCha no estado `x`.
   /// Modifica a lista `x` no local (in-place).
   static void _doubleRound(List<int> x) {
-    // Nota: A implementação Python duplica a lógica do quarter_round aqui.
-    // Uma maneira mais limpa seria chamar _quarterRound, mas isso corresponde ao Python.
+    // Nota: A implementação duplica a lógica do quarter_round aqui.
+    // Uma maneira mais limpa seria chamar _quarterRound, mas isso corresponde 
     for (final mixup in _roundMixupBox) {
       final a = mixup[0];
       final b = mixup[1];

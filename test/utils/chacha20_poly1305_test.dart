@@ -7,12 +7,12 @@ import 'package:tlslite/src/utils/chacha20_poly1305.dart';
 void main() {
   group('ChaCha20-Poly1305', () {
     test('constructor accepts 32-byte key', () {
-      expect(() => Chacha20Poly1305(Uint8List(32), 'python'), returnsNormally);
+      expect(() => Chacha20Poly1305(Uint8List(32), 'dart'), returnsNormally);
     });
 
     test('constructor rejects invalid key size', () {
       expect(
-          () => Chacha20Poly1305(Uint8List(16), 'python'), throwsArgumentError);
+          () => Chacha20Poly1305(Uint8List(16), 'dart'), throwsArgumentError);
     });
 
     test('constructor rejects unsupported implementation', () {
@@ -30,7 +30,7 @@ void main() {
       final plaintext = asciiBytes(
         "Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen would be it.",
       );
-      final aead = Chacha20Poly1305(key, 'python');
+      final aead = Chacha20Poly1305(key, 'dart');
       final result = aead.seal(nonce, plaintext, aad);
       expect(
           result,
@@ -47,7 +47,7 @@ void main() {
     });
 
     test('seal throws with invalid nonce length', () {
-      final aead = Chacha20Poly1305(Uint8List(32), 'python');
+      final aead = Chacha20Poly1305(Uint8List(32), 'dart');
       expect(() => aead.seal(Uint8List(16), Uint8List(0), Uint8List(0)),
           throwsArgumentError);
     });
@@ -79,7 +79,7 @@ void main() {
         'a6ad5cb4022b02709b',
       );
       final tag = hex('eead9d67890cbb22392336fea1851f38');
-      final aead = Chacha20Poly1305(key, 'python');
+      final aead = Chacha20Poly1305(key, 'dart');
       final combined = Uint8List(ciphertext.length + tag.length)
         ..setRange(0, ciphertext.length, ciphertext)
         ..setRange(ciphertext.length, ciphertext.length + tag.length, tag);
@@ -93,18 +93,18 @@ void main() {
     });
 
     test('open throws with invalid nonce length', () {
-      final aead = Chacha20Poly1305(Uint8List(32), 'python');
+      final aead = Chacha20Poly1305(Uint8List(32), 'dart');
       expect(() => aead.open(Uint8List(8), Uint8List(16), Uint8List(0)),
           throwsArgumentError);
     });
 
     test('open returns null when ciphertext too short', () {
-      final aead = Chacha20Poly1305(Uint8List(32), 'python');
+      final aead = Chacha20Poly1305(Uint8List(32), 'dart');
       expect(aead.open(Uint8List(12), Uint8List(15), Uint8List(0)), isNull);
     });
 
     test('open returns null when tag mismatches', () {
-      final aead = Chacha20Poly1305(Uint8List(32), 'python');
+      final aead = Chacha20Poly1305(Uint8List(32), 'dart');
       expect(aead.open(Uint8List(12), Uint8List(32), Uint8List(0)), isNull);
     });
   });

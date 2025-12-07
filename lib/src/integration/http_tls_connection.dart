@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:convert';
 
-import '../tlsconnection.dart';
+import '../tls_connection.dart';
 import '../handshake_settings.dart';
 import '../checker.dart';
 import '../utils/rsakey.dart';
@@ -11,7 +11,7 @@ import '../constants.dart';
 import '../recordlayer.dart';
 import '../errors.dart';
 
-/// This class mimics Python's httplib.HTTPConnection but with TLS support via TlsConnection.
+/// This class mimics httplib.HTTPConnection but with TLS support via TlsConnection.
 ///
 /// It is a basic implementation for integration testing purposes.
 class HttpTlsConnection {

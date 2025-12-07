@@ -7,20 +7,20 @@ import 'package:tlslite/src/utils/eddsakey.dart';
 import 'package:tlslite/src/utils/keyfactory.dart';
 
 void main() {
-  late PythonEdDSAKey privateKey;
+  late DartEdDSAKey privateKey;
   late Uint8List seed;
 
   setUp(() {
     seed = Uint8List.fromList(
       List<int>.generate(32, (index) => index + 1),
     );
-    privateKey = PythonEdDSAKey.ed25519(privateKey: seed);
+    privateKey = DartEdDSAKey.ed25519(privateKey: seed);
   });
 
   test('write serializes Ed25519 private key to PKCS#8 PEM', () {
     final pemData = privateKey.write();
     expect(pemData, contains('-----BEGIN PRIVATE KEY-----'));
-    final parsed = parsePrivateKey(pemData) as PythonEdDSAKey;
+    final parsed = parsePrivateKey(pemData) as DartEdDSAKey;
     expect(parsed.curveName, equals('Ed25519'));
     expect(parsed.hasPrivateKey(), isTrue);
   });
@@ -32,17 +32,17 @@ void main() {
       pemData,
       private: true,
       passwordCallback: () => 'hunter2',
-    ) as PythonEdDSAKey;
+    ) as DartEdDSAKey;
     expect(parsed.curveName, equals('Ed25519'));
     expect(parsed.hasPrivateKey(), isTrue);
   });
 
   test('write serializes Ed25519 public key to SPKI PEM', () {
     final publicOnly =
-        PythonEdDSAKey.ed25519(publicKey: privateKey.publicKeyBytes);
+        DartEdDSAKey.ed25519(publicKey: privateKey.publicKeyBytes);
     final pemData = publicOnly.write();
     expect(pemData, contains('-----BEGIN PUBLIC KEY-----'));
-    final parsed = parseAsPublicKey(pemData) as PythonEdDSAKey;
+    final parsed = parseAsPublicKey(pemData) as DartEdDSAKey;
     expect(parsed.curveName, equals('Ed25519'));
     expect(parsed.hasPrivateKey(), isFalse);
   });

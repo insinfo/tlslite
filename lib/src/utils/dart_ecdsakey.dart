@@ -20,8 +20,8 @@ import 'ecc.dart';
 import 'pem.dart';
 import 'pkcs8.dart';
 
-class PythonECDSAKey extends ECDSAKey {
-  PythonECDSAKey({
+class DartECDSAKey extends ECDSAKey {
+  DartECDSAKey({
     BigInt? pointX,
     BigInt? pointY,
     required String curveName,

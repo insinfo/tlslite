@@ -1,5 +1,4 @@
 // Helper functions for manipulating UTC timestamps.
-// Ported from tlslite-ng/tlslite/utils/datefuncs.py.
 
 /// Parses a timestamp in the CCYY-MM-DDThh:mm:ssZ form into a UTC [DateTime].
 DateTime parseDateClass(String value) {

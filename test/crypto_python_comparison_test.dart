@@ -7,7 +7,7 @@ import 'dart:typed_data';
 
 import 'package:test/test.dart';
 import 'package:tlslite/src/utils/chacha20_poly1305.dart';
-import 'package:tlslite/src/utils/python_aesgcm.dart' as python_aesgcm;
+import 'package:tlslite/src/utils/dart_aesgcm.dart' as dart_aesgcm;
 import 'package:tlslite/src/utils/poly1305.dart';
 import 'package:tlslite/src/utils/chacha.dart';
 import 'package:tlslite/src/utils/tlshashlib.dart';
@@ -33,7 +33,7 @@ String toHex(Uint8List bytes) {
   return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
 }
 
-/// Path to Python executable
+/// Path to executable
 String get pythonPath => Platform.isWindows ? 'python' : 'python3';
 
 /// Path to tlslite-ng directory
@@ -221,7 +221,7 @@ print(result.hex())
 ''');
 
       // Get Dart result
-      final dartAead = Chacha20Poly1305(key, 'python');
+      final dartAead = Chacha20Poly1305(key, 'dart');
       final dartResult = dartAead.seal(nonce, plaintext, aad);
 
       expect(toHex(dartResult), equals(pythonResult),
@@ -256,7 +256,7 @@ print(result.hex() if result else "None")
 ''');
 
       // Get Dart result
-      final dartAead = Chacha20Poly1305(key, 'python');
+      final dartAead = Chacha20Poly1305(key, 'dart');
       final dartResult = dartAead.open(nonce, ciphertextWithTag, aad);
 
       expect(dartResult, isNotNull);
@@ -292,7 +292,7 @@ print(result.hex())
 ''');
 
       // Get Dart result
-      final dartAead = Chacha20Poly1305(key, 'python');
+      final dartAead = Chacha20Poly1305(key, 'dart');
       final dartResult = dartAead.seal(nonce, plaintext, aad);
 
       expect(toHex(dartResult), equals(pythonResult),
@@ -329,7 +329,7 @@ print(result.hex())
 ''');
 
       // Get Dart result
-      final dartAead = python_aesgcm.newAESGCM(key);
+      final dartAead = dart_aesgcm.newAESGCM(key);
       final dartResult = dartAead.seal(nonce, plaintext, aad);
 
       expect(toHex(dartResult), equals(pythonResult),
@@ -364,7 +364,7 @@ print(result.hex() if result else "None")
 ''');
 
       // Get Dart result
-      final dartAead = python_aesgcm.newAESGCM(key);
+      final dartAead = dart_aesgcm.newAESGCM(key);
       final dartResult = dartAead.open(nonce, ciphertextWithTag, aad);
 
       expect(dartResult, isNotNull);
@@ -553,7 +553,7 @@ print(result.hex())
       final key = hex('0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b');
       final data = hex('4869205468657265'); // "Hi There"
 
-      // Get Python result
+     
       final pythonResult = await runPythonHex('''
 import hmac
 import hashlib
@@ -613,7 +613,6 @@ print(result.hex())
 
       final data = hex('48656c6c6f20576f726c6421'); // "Hello World!"
 
-      // Get Python result
       final pythonResult = await runPythonHex('''
 import hashlib
 
@@ -662,7 +661,7 @@ print(result.hex())
 ''');
 
         // Get Dart result
-        final dartAead = Chacha20Poly1305(key, 'python');
+        final dartAead = Chacha20Poly1305(key, 'dart');
         final dartResult = dartAead.seal(nonce, plaintext, aad);
 
         expect(toHex(dartResult), equals(pythonResult),

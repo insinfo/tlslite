@@ -2,7 +2,7 @@ import 'dart:typed_data';
 
 import 'aes.dart';
 import 'cryptomath.dart';
-import 'python_aes.dart' as python_aes;
+import 'dart_aes.dart' as dart_aes;
 
 class AESCCM {
   AESCCM(
@@ -29,12 +29,12 @@ class AESCCM {
       name = 'aes256ccm';
     }
 
-    _ctr = python_aes.Python_AES_CTR(
+    _ctr = dart_aes.Dart_AES_CTR.Dart_AES_CTR(
       Uint8List.fromList(this.key),
       aesModeCTR_OR_GCM,
       Uint8List(16),
     );
-    _cbc = python_aes.Python_AES(
+    _cbc = dart_aes.Dart_AES(
       Uint8List.fromList(this.key),
       aesModeCBC,
       Uint8List(16),
@@ -51,8 +51,8 @@ class AESCCM {
   // ignore: unused_field
   final RawAesEncrypt _rawAesEncrypt;
 
-  late final python_aes.Python_AES_CTR _ctr;
-  late final python_aes.Python_AES _cbc;
+  late final dart_aes.Dart_AES_CTR _ctr;
+  late final dart_aes.Dart_AES _cbc;
 
   Uint8List seal(Uint8List nonce, Uint8List msg, Uint8List aad) {
     _checkNonce(nonce);

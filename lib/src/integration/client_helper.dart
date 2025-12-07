@@ -3,7 +3,7 @@
 import '../checker.dart';
 import '../handshake_settings.dart';
 import '../session.dart';
-import '../tlsconnection.dart';
+import '../tls_connection.dart';
 import '../utils/dns_utils.dart';
 import '../x509certchain.dart';
 

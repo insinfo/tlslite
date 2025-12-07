@@ -54,7 +54,7 @@ class Poly1305 {
     return out;
   }
 
-  /// Exposed for testing compatibility with Python helper.
+  /// Exposed for testing compatibility with dart helper.
   static BigInt leBytesToNum(Uint8List bytes) => _leBytesToNum(bytes);
   static Uint8List numTo16LeBytes(BigInt value) => _numTo16LeBytes(value);
 

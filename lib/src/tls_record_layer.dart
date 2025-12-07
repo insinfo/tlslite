@@ -14,9 +14,7 @@ import 'tls_protocol.dart';
 import 'utils/codec.dart';
 import 'utils/cryptomath.dart';
 
-/// Dart translation of tlslite-ng's ``tlsrecordlayer.py``.
-///
-/// The Python implementation exposes a large surface area that spans buffered
+/// The implementation exposes a large surface area that spans buffered
 /// socket semantics, record-layer framing, handshake digest tracking, and a
 /// variety of TLS 1.2/1.3 protocol quirks. Porting everything verbatim would be
 /// unwieldy, so the approach here is incremental: first capture the shared
@@ -28,7 +26,7 @@ class TLSRecordLayer {
         _recordLayer = RecordLayer(socket),
         _defragmenter = Defragmenter(),
         _handshakeHash = HandshakeHashes() {
-    // Match the static sizing hints from tlslite-ng so that once the
+    // Match the static sizing hints from so that once the
     // handshake/message code lands the buffering behaviour stays consistent.
     _defragmenter.addStaticSize(ContentType.change_cipher_spec, 1);
     _defragmenter.addStaticSize(ContentType.alert, 2);
@@ -119,10 +117,9 @@ class TLSRecordLayer {
   }
 
   /// Maximum plaintext payload per record.
-  int get recordSize =>
-      _userRecordLimit < _recordLayer.sendRecordLimit
-          ? _userRecordLimit
-          : _recordLayer.sendRecordLimit;
+  int get recordSize => _userRecordLimit < _recordLayer.sendRecordLimit
+      ? _userRecordLimit
+      : _recordLayer.sendRecordLimit;
 
   set recordSize(int value) {
     if (value <= 0) {
@@ -171,7 +168,7 @@ class TLSRecordLayer {
   /// Name of the negotiated symmetric cipher (if any).
   String? getCipherName() => _recordLayer.getCipherName();
 
-  /// Backend selected for the symmetric cipher (python/openssl/etc.).
+  /// Backend selected for the symmetric cipher (/openssl/etc.).
   String? getCipherImplementation() => _recordLayer.getCipherImplementation();
 
   /// ``send`` compatibility wrapper.
@@ -186,7 +183,7 @@ class TLSRecordLayer {
   /// ``recv`` compatibility wrapper.
   Future<Uint8List> recv(int bufsize) => read(max: bufsize);
 
-  /// Equivalent of Python's ``recv_into`` helper.
+  /// Equivalent of ``recv_into`` helper.
   Future<int?> recvInto(Uint8List buffer) async {
     final chunk = await read(max: buffer.length, min: 0);
     if (chunk.isEmpty) {
@@ -200,9 +197,6 @@ class TLSRecordLayer {
   Future<void> close() async {
     await _shutdown(resumable: true);
   }
-
-  /// -----------------------------------------------------------------------
-  /// Internal primitives ported from tlslite-ng
 
   /// Prepare for a new handshake (initial or renegotiation).
   void handshakeStart({required bool client}) {
@@ -222,7 +216,7 @@ class TLSRecordLayer {
     closed = false;
   }
 
-  /// Mirror ``TLSRecordLayer.calcPendingStates`` from Python.
+  /// Mirror ``TLSRecordLayer.calcPendingStates`` from .
   void calcPendingStates(
     int cipherSuite,
     Uint8List masterSecret,
@@ -288,8 +282,7 @@ class TLSRecordLayer {
 
     var tryOnce = true;
     try {
-      while ((_readBuffer.length < min ||
-              (_readBuffer.isEmpty && tryOnce)) &&
+      while ((_readBuffer.length < min || (_readBuffer.isEmpty && tryOnce)) &&
           !closed) {
         tryOnce = false;
         final shouldRetry = await _pumpApplicationData(
@@ -337,7 +330,8 @@ class TLSRecordLayer {
     yield null;
   }
 
-  Future<void> sendHeartbeatRequest(Uint8List payload, int paddingLength) async {
+  Future<void> sendHeartbeatRequest(
+      Uint8List payload, int paddingLength) async {
     if (paddingLength < 0) {
       throw ArgumentError.value(paddingLength, 'paddingLength', 'must be >= 0');
     }
@@ -357,7 +351,8 @@ class TLSRecordLayer {
       );
     }
 
-    final padding = paddingLength == 0 ? Uint8List(0) : getRandomBytes(paddingLength);
+    final padding =
+        paddingLength == 0 ? Uint8List(0) : getRandomBytes(paddingLength);
     final heartbeat = tlsmsg.TlsHeartbeat(
       messageType: HeartbeatMessageType.heartbeat_request,
       payload: payload,
@@ -412,14 +407,16 @@ class TLSRecordLayer {
       throw TLSClosedConnectionError('attempt to write to closed connection');
     }
     if (!_isTls13Connection) {
-      throw TLSIllegalParameterException('KeyUpdate is only defined for TLS 1.3');
+      throw TLSIllegalParameterException(
+          'KeyUpdate is only defined for TLS 1.3');
     }
 
     final activeSession = session;
     if (activeSession == null) {
       throw TLSInternalError('Cannot send KeyUpdate without an active session');
     }
-    if (activeSession.clAppSecret.isEmpty || activeSession.srAppSecret.isEmpty) {
+    if (activeSession.clAppSecret.isEmpty ||
+        activeSession.srAppSecret.isEmpty) {
       throw TLSInternalError(
         'Cannot send KeyUpdate before application traffic secrets are available',
       );
@@ -567,11 +564,10 @@ class TLSRecordLayer {
     }
 
     Uint8List remaining = payload;
-    final needsFirstByteMasking =
-        randomizeFirstBlock &&
-            version <= const TlsProtocolVersion(3, 1) &&
-            _recordLayer.isCBCMode() &&
-            contentType == ContentType.application_data;
+    final needsFirstByteMasking = randomizeFirstBlock &&
+        version <= const TlsProtocolVersion(3, 1) &&
+        _recordLayer.isCBCMode() &&
+        contentType == ContentType.application_data;
 
     if (needsFirstByteMasking) {
       final firstByte = Uint8List.fromList(<int>[remaining.first]);
@@ -775,9 +771,8 @@ class TLSRecordLayer {
 
       final recordType = _resolveRecordType(header);
 
-      final isTls13Ccs =
-          version > const TlsProtocolVersion(3, 3) &&
-              recordType == ContentType.change_cipher_spec;
+      final isTls13Ccs = version > const TlsProtocolVersion(3, 3) &&
+          recordType == ContentType.change_cipher_spec;
       if (recordType == ContentType.application_data || isTls13Ccs) {
         if (isTls13Ccs) {
           _recordLayer.earlyDataOk = earlyDataOk;
@@ -826,8 +821,7 @@ class TLSRecordLayer {
       );
     }
 
-    if (header is! RecordHeader2 &&
-        !ContentType.all.contains(header.type)) {
+    if (header is! RecordHeader2 && !ContentType.all.contains(header.type)) {
       await _sendError(
         AlertDescription.unexpected_message,
         'Received record with unknown ContentType',
@@ -878,8 +872,7 @@ class TLSRecordLayer {
     throw TLSRemoteAlert(description, level);
   }
 
-  bool get _isTls13Connection =>
-      version > const TlsProtocolVersion(3, 3);
+  bool get _isTls13Connection => version > const TlsProtocolVersion(3, 3);
 
   bool _isRenegotiationAttempt(int? handshakeType) {
     if (handshakeType == null) {
@@ -908,8 +901,6 @@ class TLSRecordLayer {
   }
 
   String _describeHandshakeTypes(Set<int> handshakeTypes) {
-    return handshakeTypes
-        .map((type) => HandshakeType.toStr(type))
-        .join(', ');
+    return handshakeTypes.map((type) => HandshakeType.toStr(type)).join(', ');
   }
 }

@@ -1,6 +1,4 @@
-// Author: Trevor Perrin
-// Ported to Dart from tlslite-ng
-// See the LICENSE file for legal information regarding use of this file.
+
 
 /// TLS Lite + POP3 client with TLS support.
 library;
@@ -12,7 +10,7 @@ import 'dart:typed_data';
 
 import '../checker.dart';
 import '../handshake_settings.dart';
-import '../tlsconnection.dart';
+import '../tls_connection.dart';
 import '../x509certchain.dart';
 import 'client_helper.dart';
 

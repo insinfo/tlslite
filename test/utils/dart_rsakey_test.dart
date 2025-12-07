@@ -7,7 +7,7 @@ import 'package:tlslite/src/utils/keyfactory.dart';
 import 'package:tlslite/src/utils/rsakey.dart';
 
 void main() {
-  late PythonRSAKey key;
+  late DartRSAKey key;
 
   setUp(() {
     key = _buildSampleKey();
@@ -16,12 +16,12 @@ void main() {
 
   tearDown(resetRsaRandomBytes);
 
-  test('MGF1 matches python vector', () {
+  test('MGF1 matches dart vector', () {
     final mask = key.MGF1(_hexBytes(_mgfSeedHex), 107, 'sha1');
     expect(mask, _hexBytes(_mgfExpectedHex));
   });
 
-  test('EMSA_PSS_encode matches python vector with patched RNG', () {
+  test('EMSA_PSS_encode matches dart vector with patched RNG', () {
     final salt = _hexBytes(_pssSaltHex);
     var randomCalled = false;
     overrideRsaRandomBytes((length) {
@@ -29,14 +29,14 @@ void main() {
       expect(length, salt.length);
       return Uint8List.fromList(salt);
     });
-    final mHash = secureHash(_pythonMessageForPss(), 'sha1');
+    final mHash = secureHash(_dartMessageForPss(), 'sha1');
     final em = key.EMSA_PSS_encode(mHash, 1023, 'sha1', saltLen: 10);
     expect(randomCalled, isTrue, reason: 'salt RNG override not used');
     expect(em, _hexBytes(_pssEncodedHex));
   });
 
   test('EMSA_PSS_verify accepts known vector', () {
-    final mHash = secureHash(_pythonMessageForPss(), 'sha1');
+    final mHash = secureHash(_dartMessageForPss(), 'sha1');
     expect(
       key.EMSA_PSS_verify(mHash, _hexBytes(_pssEncodedHex), 1023, 'sha1',
           saltLen: 10),
@@ -73,7 +73,7 @@ void main() {
   test('write serializes private key to PKCS#1 PEM', () {
     final pemData = key.write();
     expect(pemData, contains('-----BEGIN RSA PRIVATE KEY-----'));
-    final parsed = parsePrivateKey(pemData) as PythonRSAKey;
+    final parsed = parsePrivateKey(pemData) as DartRSAKey;
     expect(parsed.n, equals(key.n));
     expect(parsed.e, equals(key.e));
     expect(parsed.privateExponent, equals(key.privateExponent));
@@ -86,33 +86,33 @@ void main() {
       pemData,
       private: true,
       passwordCallback: () => 'hunter2',
-    ) as PythonRSAKey;
+    ) as DartRSAKey;
     expect(parsed.privateExponent, equals(key.privateExponent));
   });
 
   test('write serializes public key to SPKI PEM', () {
-    final publicOnly = PythonRSAKey(n: key.n, e: key.e);
+    final publicOnly = DartRSAKey(n: key.n, e: key.e);
     final pemData = publicOnly.write();
     expect(pemData, contains('-----BEGIN PUBLIC KEY-----'));
-    final parsed = parseAsPublicKey(pemData) as PythonRSAKey;
+    final parsed = parseAsPublicKey(pemData) as DartRSAKey;
     expect(parsed.n, equals(publicOnly.n));
     expect(parsed.e, equals(publicOnly.e));
     expect(parsed.hasPrivateKey(), isFalse);
   });
 }
 
-PythonRSAKey _buildSampleKey() {
+DartRSAKey _buildSampleKey() {
   final n = _hexBigInt(_nHex);
   final e = _hexBigInt(_eHex);
   final d = _hexBigInt(_dHex);
   final p = _hexBigInt(_pHex);
   final q = _hexBigInt(_qHex);
-  return PythonRSAKey(n: n, e: e, d: d, p: p, q: q);
+  return DartRSAKey(n: n, e: e, d: d, p: p, q: q);
 }
 
 Uint8List _pythonMessage() => _hexBytes(_pkcs1MessageHex);
 
-Uint8List _pythonMessageForPss() => _hexBytes(_pssMessageHex);
+Uint8List _dartMessageForPss() => _hexBytes(_pssMessageHex);
 
 Uint8List _hexBytes(String hex) {
   final cleaned = hex.replaceAll(RegExp(r'\s+'), '');

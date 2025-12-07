@@ -3,9 +3,9 @@ import 'dart:typed_data';
 import 'cryptomath.dart';
 import 'der.dart';
 
-part 'python_dsakey.dart';
+part 'dart_dsakey.dart';
 
-/// Abstract base class for DSA keys matching tlslite-ng semantics.
+/// Abstract base class for DSA keys matching semantics.
 abstract class DSAKey {
   BigInt get p;
   BigInt get q;

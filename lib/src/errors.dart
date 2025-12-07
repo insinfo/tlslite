@@ -1,16 +1,9 @@
-import 'constants.dart'; // Importando as definições de AlertDescription e AlertLevel
-
-// PORT STATUS: Error handling fully integrated with:
-// - recordlayer.dart/tls_record_layer.dart for protocol exceptions
-// - Alert sending/receiving in tlsconnection.dart
-// - All TLS error types ported from tlslite-ng
-
-// --- Base Exceptions ---
+import 'constants.dart';
 
 /// Metaclasse para exceções TLS Lite.
 ///
 /// Procure por [TLSError] para exceções que devem ser
-/// capturadas pelos consumidores do tlslite.
+/// capturadas pelos consumidores 
 class BaseTLSException implements Exception {
   final String? message;
   BaseTLSException([this.message]);
@@ -33,11 +26,11 @@ class EncryptionError extends BaseTLSException {
 class TLSError extends BaseTLSException {
   TLSError([String? message]) : super(message);
   // O método toString herdado de BaseTLSException já replica
-  // razoavelmente o comportamento de repr(self) do Python.
+  // razoavelmente o comportamento
 }
 
 /// Uma tentativa foi feita para usar a conexão depois que ela foi fechada.
-/// Nota: No Python, isso também herda de socket.error. Dart não suporta
+/// Nota: isso também herda de socket.error. Dart não suporta
 /// herança múltipla, então aqui estende apenas TLSError.
 class TLSClosedConnectionError extends TLSError {
   TLSClosedConnectionError([String? message]) : super(message);
@@ -147,7 +140,8 @@ class TLSAuthorizationError extends TLSAuthenticationError {
 /// é inválida.
 class TLSValidationError extends TLSAuthenticationError {
   /// Contém informações sobre esta falha de validação
-  final dynamic info; // Pode ser Map<String, dynamic>? se a estrutura for conhecida
+  final dynamic
+      info; // Pode ser Map<String, dynamic>? se a estrutura for conhecida
 
   TLSValidationError(String msg, {this.info}) : super(msg);
 
@@ -186,53 +180,53 @@ class TLSInternalError extends TLSError {
 
 /// Exceções usadas internamente para lidar com erros em mensagens recebidas.
 class TLSProtocolException extends BaseTLSException {
-   TLSProtocolException([String? message]) : super(message);
+  TLSProtocolException([String? message]) : super(message);
 }
 
 /// Os parâmetros especificados na mensagem estavam incorretos ou inválidos.
 class TLSIllegalParameterException extends TLSProtocolException {
-   TLSIllegalParameterException([String? message]) : super(message);
+  TLSIllegalParameterException([String? message]) : super(message);
 }
 
 /// A codificação da mensagem recebida não corresponde à especificação.
 class TLSDecodeError extends TLSProtocolException {
-   TLSDecodeError([String? message]) : super(message);
+  TLSDecodeError([String? message]) : super(message);
 }
 
 /// A mensagem recebida foi inesperada ou a análise do Inner Plaintext
 /// falhou.
 class TLSUnexpectedMessage extends TLSProtocolException {
-   TLSUnexpectedMessage([String? message]) : super(message);
+  TLSUnexpectedMessage([String? message]) : super(message);
 }
 
 /// O tamanho do registro recebido era muito grande.
 class TLSRecordOverflow extends TLSProtocolException {
-   TLSRecordOverflow([String? message]) : super(message);
+  TLSRecordOverflow([String? message]) : super(message);
 }
 
 /// A descriptografia dos dados não foi bem-sucedida.
 class TLSDecryptionFailed extends TLSProtocolException {
-   TLSDecryptionFailed([String? message]) : super(message);
+  TLSDecryptionFailed([String? message]) : super(message);
 }
 
 /// MAC inválido (ou preenchimento no caso de mac-then-encrypt).
 class TLSBadRecordMAC extends TLSProtocolException {
-   TLSBadRecordMAC([String? message]) : super(message);
+  TLSBadRecordMAC([String? message]) : super(message);
 }
 
 /// Os parâmetros selecionados pelo usuário são muito fracos.
 class TLSInsufficientSecurity extends TLSProtocolException {
-   TLSInsufficientSecurity([String? message]) : super(message);
+  TLSInsufficientSecurity([String? message]) : super(message);
 }
 
 /// A identidade PSK ou SRP é desconhecida.
 class TLSUnknownPSKIdentity extends TLSProtocolException {
-   TLSUnknownPSKIdentity([String? message]) : super(message);
+  TLSUnknownPSKIdentity([String? message]) : super(message);
 }
 
 /// Não foi possível encontrar um conjunto aceitável de parâmetros de handshake.
 class TLSHandshakeFailure extends TLSProtocolException {
-   TLSHandshakeFailure([String? message]) : super(message);
+  TLSHandshakeFailure([String? message]) : super(message);
 }
 
 // --- Encryption Errors (Subtypes) ---

@@ -1,13 +1,13 @@
 import 'package:test/test.dart';
 
 import 'package:tlslite/src/utils/keyfactory.dart';
-import 'package:tlslite/src/utils/python_ecdsakey.dart';
+import 'package:tlslite/src/utils/dart_ecdsakey.dart';
 
 void main() {
-  late PythonECDSAKey privateKey;
+  late DartECDSAKey privateKey;
 
   setUp(() {
-    privateKey = PythonECDSAKey(
+    privateKey = DartECDSAKey(
       curveName: 'secp256r1',
       secretMultiplier: BigInt.from(123456789),
     );
@@ -16,7 +16,7 @@ void main() {
   test('write serializes EC private key to PEM', () {
     final pemData = privateKey.write();
     expect(pemData, contains('-----BEGIN EC PRIVATE KEY-----'));
-    final parsed = parsePrivateKey(pemData) as PythonECDSAKey;
+    final parsed = parsePrivateKey(pemData) as DartECDSAKey;
     expect(parsed.curveName, equals(privateKey.curveName));
     expect(parsed.secretMultiplier, equals(privateKey.secretMultiplier));
     expect(parsed.publicPointX, equals(privateKey.publicPointX));
@@ -30,20 +30,20 @@ void main() {
       pemData,
       private: true,
       passwordCallback: () => 'hunter2',
-    ) as PythonECDSAKey;
+    ) as DartECDSAKey;
     expect(parsed.curveName, equals(privateKey.curveName));
     expect(parsed.secretMultiplier, equals(privateKey.secretMultiplier));
   });
 
   test('write serializes EC public key to SPKI PEM', () {
-    final publicOnly = PythonECDSAKey(
+    final publicOnly = DartECDSAKey(
       pointX: privateKey.publicPointX,
       pointY: privateKey.publicPointY,
       curveName: privateKey.curveName,
     );
     final pemData = publicOnly.write();
     expect(pemData, contains('-----BEGIN PUBLIC KEY-----'));
-    final parsed = parseAsPublicKey(pemData) as PythonECDSAKey;
+    final parsed = parseAsPublicKey(pemData) as DartECDSAKey;
     expect(parsed.curveName, equals(publicOnly.curveName));
     expect(parsed.hasPrivateKey(), isFalse);
     expect(parsed.publicPointX, equals(publicOnly.publicPointX));

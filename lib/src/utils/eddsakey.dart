@@ -6,7 +6,7 @@ import 'der.dart';
 import 'pem.dart';
 import 'pkcs8.dart';
 
-part 'python_eddsakey.dart';
+part 'dart_eddsakey.dart';
 
 /// Abstract base class for EdDSA keys (Ed25519 / Ed448).
 abstract class EdDSAKey {

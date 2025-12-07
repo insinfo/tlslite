@@ -14,14 +14,14 @@ void main() {
       expect(() => Poly1305(Uint8List(16)), throwsArgumentError);
     });
 
-    test('leBytesToNum matches Python helper', () {
+    test('leBytesToNum matches dart helper', () {
       expect(Poly1305.leBytesToNum(hex('04030201')),
           equals(BigInt.from(0x01020304)));
       expect(Poly1305.leBytesToNum(hex('0807060504030201')),
           equals(BigInt.parse('0x0102030405060708')));
     });
 
-    test('numTo16LeBytes matches Python helper', () {
+    test('numTo16LeBytes matches dart helper', () {
       expect(
         Poly1305.numTo16LeBytes(BigInt.from(0x01020304)),
         equals(hex('04030201000000000000000000000000')),

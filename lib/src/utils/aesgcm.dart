@@ -3,9 +3,9 @@ import 'dart:typed_data';
 import 'aes.dart';
 import 'constanttime.dart';
 import 'cryptomath.dart';
-import 'python_aes.dart' as python_aes;
+import 'dart_aes.dart' as dart_aes;
 
-/// Pure Dart port of tlslite's AES-GCM implementation (slow, but dependency-free).
+/// Pure Dart AES-GCM implementation (slow, but dependency-free).
 class AESGCM {
   AESGCM(Uint8List key, this.implementation, RawAesEncrypt rawAesEncrypt)
       : key = Uint8List.fromList(key),
@@ -17,7 +17,7 @@ class AESGCM {
     } else {
       throw ArgumentError('AES-GCM key must be 16 or 32 bytes long');
     }
-    _ctr = python_aes.Python_AES_CTR(
+    _ctr = dart_aes.Dart_AES_CTR.Dart_AES_CTR(
       Uint8List.fromList(this.key),
       aesModeCTR_OR_GCM,
       Uint8List(16),
@@ -42,7 +42,7 @@ class AESGCM {
   final Uint8List key;
 
   final RawAesEncrypt _rawAesEncrypt;
-  late final python_aes.Python_AES_CTR _ctr;
+  late final dart_aes.Dart_AES_CTR _ctr;
   late final List<BigInt> _productTable;
 
   Uint8List seal(Uint8List nonce, Uint8List plaintext, Uint8List data) {

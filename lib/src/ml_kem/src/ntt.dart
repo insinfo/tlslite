@@ -1,7 +1,7 @@
 /// Number-Theoretic Transform (NTT) for ML-KEM.
 /// 
 /// This implementation uses non-Montgomery arithmetic to be compatible
-/// with the Python reference (kyber-py) and FIPS 203 test vectors.
+/// with the reference (kyber-py) and FIPS 203 test vectors.
 library;
 
 import 'dart:typed_data';

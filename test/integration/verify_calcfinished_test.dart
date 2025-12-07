@@ -20,7 +20,7 @@ String bytesToHex(Uint8List bytes) {
 
 void main() {
   test('calcFinished matches Python', () {
-    // Same test values as Python
+   
     final masterSecret = hexToBytes('0d36cc66603f174aa02ac40bc0b9409c' * 3);  // 48 bytes
     final handshakeHash = hexToBytes('c9aa1a577adc995f6ceac734fa496a69dcc3dc26840725071101a82705142421');  // 32 bytes
     

@@ -109,7 +109,7 @@ List<(int, int)> _resolveVersionPreference(
   return _filterProtocolVersions(seed, minVersion, maxVersion);
 }
 
-const cipherImplementations = ['openssl', 'pycrypto', 'python'];
+const cipherImplementations = ['openssl', 'pycrypto', 'dart'];
 const _certificateTypes = ['x509'];
 
 const rsaSignatureHashes = ['sha512', 'sha384', 'sha256', 'sha224', 'sha1'];

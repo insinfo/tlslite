@@ -4,7 +4,7 @@ import 'package:test/test.dart';
 
 import 'package:tlslite/src/signed.dart';
 import 'package:tlslite/src/utils/eddsakey.dart';
-import 'package:tlslite/src/utils/python_ecdsakey.dart';
+import 'package:tlslite/src/utils/dart_ecdsakey.dart';
 
 void main() {
   group('SignatureSettings.validate', () {
@@ -78,7 +78,7 @@ void main() {
 
   group('SignedObject.verifySignature', () {
     test('verifies ecdsa-with-sha256 signature', () {
-      final signer = PythonECDSAKey(
+      final signer = DartECDSAKey(
         curveName: 'secp256r1',
         secretMultiplier: BigInt.from(42),
       );
@@ -96,7 +96,7 @@ void main() {
 
     test('verifies Ed25519 signature', () {
       final seed = Uint8List.fromList(List<int>.generate(32, (i) => i));
-      final signer = PythonEdDSAKey.ed25519(privateKey: seed);
+      final signer = DartEdDSAKey.ed25519(privateKey: seed);
       final payload = Uint8List.fromList('ed25519 payload'.codeUnits);
       final signature = signer.hashAndSign(payload);
       final signed = SignedObject()
@@ -115,7 +115,7 @@ void main() {
         ..signatureAlgorithm = Uint8List.fromList(
           [0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0b],
         );
-      final ecdsaKey = PythonECDSAKey(
+      final ecdsaKey = DartECDSAKey(
         curveName: 'secp256r1',
         secretMultiplier: BigInt.from(7),
       );

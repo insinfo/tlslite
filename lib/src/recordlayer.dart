@@ -159,7 +159,7 @@ class ConnectionState {
   ConnectionState copy() {
     final ret = ConnectionState();
     ret.macContext = macContext?.copy();
-    ret.encContext = encContext; // Ciphers might be mutable? Python uses copy.copy().
+    ret.encContext = encContext; // Ciphers might be mutable?  uses copy.copy().
     // In Dart, if encContext has state, we might need to copy it.
     // Most cipher implementations here seem to be stateful (e.g. CBC residue).
     // We need to check if we can copy them.

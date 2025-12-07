@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:test/test.dart';
 import 'package:tlslite/src/utils/aesgcm.dart';
-import 'package:tlslite/src/utils/python_aesgcm.dart' as python_aesgcm;
+import 'package:tlslite/src/utils/dart_aesgcm.dart' as dart_aesgcm;
 import 'package:tlslite/src/utils/rijndael.dart';
 
 void main() {
@@ -11,7 +11,7 @@ void main() {
     test('constructor accepts 16-byte key', () {
       final key = Uint8List(16);
       expect(
-        () => AESGCM(key, 'python', Rijndael(Uint8List.fromList(key), blockSize: 16).encrypt),
+        () => AESGCM(key, 'dart', Rijndael(Uint8List.fromList(key), blockSize: 16).encrypt),
         returnsNormally,
       );
     });
@@ -19,14 +19,14 @@ void main() {
     test('constructor rejects invalid key length', () {
       final key = Uint8List(8);
       expect(
-        () => AESGCM(key, 'python', Rijndael(Uint8List(16), blockSize: 16).encrypt),
+        () => AESGCM(key, 'dart', Rijndael(Uint8List(16), blockSize: 16).encrypt),
         throwsArgumentError,
       );
     });
 
     test('seal basic example', () {
       final key = Uint8List.fromList(List<int>.filled(16, 0x01));
-      final aes = python_aesgcm.newAESGCM(key);
+      final aes = dart_aesgcm.newAESGCM(key);
       final nonce = Uint8List.fromList(List<int>.filled(12, 0x02));
       final plaintext = asciiBytes('text to encrypt.');
       final ciphertext = aes.seal(nonce, plaintext, Uint8List(0));
@@ -34,13 +34,13 @@ void main() {
     });
 
     test('seal throws on invalid nonce length', () {
-      final aes = python_aesgcm.newAESGCM(Uint8List(16));
+      final aes = dart_aesgcm.newAESGCM(Uint8List(16));
       expect(() => aes.seal(Uint8List(11), Uint8List(0), Uint8List(0)), throwsArgumentError);
     });
 
     test('open basic example', () {
       final key = Uint8List.fromList(List<int>.filled(16, 0x01));
-      final aes = python_aesgcm.newAESGCM(key);
+      final aes = dart_aesgcm.newAESGCM(key);
       final nonce = Uint8List.fromList(List<int>.filled(12, 0x02));
       final ciphertext = hex('27816817e65a295cf28e6d46cb910e757a313af67da75c40ba11d872df234bd4');
       final plaintext = aes.open(nonce, ciphertext, Uint8List(0));
@@ -49,8 +49,8 @@ void main() {
 
     test('open returns null with incorrect key', () {
       final key = Uint8List.fromList(List<int>.filled(16, 0x01));
-      final aes = python_aesgcm.newAESGCM(key);
-      final wrong = python_aesgcm.newAESGCM(Uint8List.fromList(List<int>.filled(16, 0x01)..[15] = 0));
+      final aes = dart_aesgcm.newAESGCM(key);
+      final wrong = dart_aesgcm.newAESGCM(Uint8List.fromList(List<int>.filled(16, 0x01)..[15] = 0));
       final nonce = Uint8List.fromList(List<int>.filled(12, 0x02));
       final ciphertext = aes.seal(nonce, asciiBytes('text to encrypt.'), Uint8List(0));
       expect(wrong.open(nonce, ciphertext, Uint8List(0)), isNull);
@@ -58,7 +58,7 @@ void main() {
 
     test('open returns null with incorrect nonce', () {
       final key = Uint8List.fromList(List<int>.filled(16, 0x01));
-      final aes = python_aesgcm.newAESGCM(key);
+      final aes = dart_aesgcm.newAESGCM(key);
       final nonce = Uint8List.fromList(List<int>.filled(12, 0x02));
       final ciphertext = aes.seal(nonce, asciiBytes('text to encrypt.'), Uint8List(0));
       final otherNonce = Uint8List.fromList(List<int>.filled(11, 0x02) + [0x01]);
@@ -66,18 +66,18 @@ void main() {
     });
 
     test('open throws on invalid nonce length', () {
-      final aes = python_aesgcm.newAESGCM(Uint8List(16));
+      final aes = dart_aesgcm.newAESGCM(Uint8List(16));
       expect(() => aes.open(Uint8List(11), Uint8List(16), Uint8List(0)), throwsArgumentError);
     });
 
     test('open returns null on short ciphertext', () {
-      final aes = python_aesgcm.newAESGCM(Uint8List(16));
+      final aes = dart_aesgcm.newAESGCM(Uint8List(16));
       expect(aes.open(Uint8List(12), Uint8List(15), Uint8List(0)), isNull);
     });
 
     test('RFC 5116 vector 1', () {
       final key = Uint8List(16);
-      final aes = python_aesgcm.newAESGCM(key);
+      final aes = dart_aesgcm.newAESGCM(key);
       final nonce = Uint8List(12);
       final result = aes.seal(nonce, Uint8List(0), Uint8List(0));
       expect(result, equals(hex('58e2fccefa7e3061367f1d57a4e7455a')));
@@ -85,7 +85,7 @@ void main() {
 
     test('RFC 5116 vector 2', () {
       final key = Uint8List(16);
-      final aes = python_aesgcm.newAESGCM(key);
+      final aes = dart_aesgcm.newAESGCM(key);
       final nonce = Uint8List(12);
       final plaintext = Uint8List(16);
       final result = aes.seal(nonce, plaintext, Uint8List(0));
@@ -94,7 +94,7 @@ void main() {
 
     test('RFC 5116 vector 3', () {
       final key = hex('feffe9928665731c6d6a8f9467308308');
-      final aes = python_aesgcm.newAESGCM(key);
+      final aes = dart_aesgcm.newAESGCM(key);
       final nonce = hex('cafebabefacedbaddecaf888');
       final plaintext = hex(
         'd9313225f88406e5a55909c5aff5269a'
@@ -117,7 +117,7 @@ void main() {
 
     test('RFC 5116 vector 4', () {
       final key = hex('feffe9928665731c6d6a8f9467308308');
-      final aes = python_aesgcm.newAESGCM(key);
+      final aes = dart_aesgcm.newAESGCM(key);
       final nonce = hex('cafebabefacedbaddecaf888');
       final plaintext = hex(
         'd9313225f88406e5a55909c5aff5269a'
@@ -140,18 +140,18 @@ void main() {
     });
 
     test('AES-256 name reported correctly', () {
-      final aes = python_aesgcm.newAESGCM(Uint8List(32));
+      final aes = dart_aesgcm.newAESGCM(Uint8List(32));
       expect(aes.name, equals('aes256gcm'));
     });
 
     test('RFC 5116 vector 13 (AES256)', () {
-      final aes = python_aesgcm.newAESGCM(Uint8List(32));
+      final aes = dart_aesgcm.newAESGCM(Uint8List(32));
       final result = aes.seal(Uint8List(12), Uint8List(0), Uint8List(0));
       expect(result, equals(hex('530f8afbc74536b9a963b4f1c4cb738b')));
     });
 
     test('RFC 5116 vector 14 (AES256)', () {
-      final aes = python_aesgcm.newAESGCM(Uint8List(32));
+      final aes = dart_aesgcm.newAESGCM(Uint8List(32));
       final result = aes.seal(Uint8List(12), Uint8List(16), Uint8List(0));
       expect(result, equals(hex('cea7403d4d606b6e074ec5d3baf39d18d0d1c8a799996bf0265b98b5d48ab919')));
     });

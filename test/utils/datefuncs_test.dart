@@ -1,5 +1,5 @@
 import 'package:test/test.dart';
-import 'package:tlslite/src/utils/datefuncs.dart';
+import 'package:tlslite/src/utils/date_funcs.dart';
 
 void main() {
   group('datefuncs', () {

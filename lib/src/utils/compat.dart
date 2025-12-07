@@ -2,13 +2,9 @@ import 'dart:convert'; // For ascii, utf8, base64
 import 'dart:io'; // For stdin, Platform
 import 'dart:typed_data'; // For Uint8List, ByteData
 import 'package:convert/convert.dart' show hex;
-// import 'package:crypto/crypto.dart' show Hmac, sha256;
-//import 'package:pointycastle/pointycastle.dart';
-
-// --- String / Bytes Conversion ---
 
 /// Converts an ASCII string to bytes (Uint8List).
-/// Replaces Python's compatAscii2Bytes for Python 3.
+/// Replaces dart's compatAscii2Bytes for dart 3.
 Uint8List asciiToBytes(String val) {
   // Consider potential errors if val contains non-ASCII characters
   try {
@@ -20,7 +16,7 @@ Uint8List asciiToBytes(String val) {
 }
 
 /// Converts bytes (Uint8List) representing ASCII characters to a String.
-/// Replaces Python's compat_b2a.
+/// Replaces dart's compat_b2a.
 String bytesToAscii(Uint8List val) {
   // Consider potential errors if bytes are not valid ASCII
   try {
@@ -32,7 +28,7 @@ String bytesToAscii(Uint8List val) {
 }
 
 /// In Dart, crypto libraries like package:crypto expect List<int> (which
-/// Uint8List implements). No special conversion like Python's compatHMAC needed.
+/// Uint8List implements). No special conversion like dart's compatHMAC needed.
 /// Just pass the Uint8List key/message directly.
 // void exampleHmacUsage(Uint8List key, Uint8List message) {
 //   // Requires package:crypto
@@ -44,7 +40,7 @@ String bytesToAscii(Uint8List val) {
 // --- Base16 / Base64 Encoding ---
 
 /// Decodes a hexadecimal string (ASCII) into bytes (Uint8List).
-/// Replaces Python's a2b_hex.
+/// Replaces dart's a2b_hex.
 /// Throws [FormatException] if the input string is not valid hex.
 Uint8List hexDecode(String hexString) {
   try {
@@ -57,14 +53,14 @@ Uint8List hexDecode(String hexString) {
 }
 
 /// Encodes bytes (Uint8List) into a hexadecimal string (lowercase ASCII).
-/// Replaces Python's b2a_hex.
+/// Replaces dart's b2a_hex.
 String hexEncode(Uint8List bytes) {
   return hex.encode(bytes);
 }
 
 /// Decodes a base64 string (ASCII) into bytes (Uint8List).
 /// Handles standard base64 encoding.
-/// Replaces Python's a2b_base64.
+/// Replaces dart's a2b_base64.
 /// Throws [FormatException] if the input string is not valid base64.
 Uint8List base64Decode(String base64String) {
   try {
@@ -77,7 +73,7 @@ Uint8List base64Decode(String base64String) {
 
 /// Encodes bytes (Uint8List) into a base64 string (ASCII).
 /// Uses standard base64 encoding (may include padding '=').
-/// Replaces Python's b2a_base64.
+/// Replaces dart's b2a_base64.
 String base64Encode(Uint8List bytes) {
   // Standard base64 encoder in dart:convert
   // Note: This might add line breaks depending on the encoder used.
@@ -88,14 +84,14 @@ String base64Encode(Uint8List bytes) {
 // --- Input / Output ---
 
 /// Reads a line of text from standard input synchronously.
-/// Similar to Python's raw_input / input().
+/// Similar to dart's raw_input / input().
 String? readLineSync(String prompt) {
   stdout.write(prompt);
   return stdin.readLineSync();
 }
 
 /// Reads all available bytes from standard input asynchronously until EOF.
-/// Replaces Python's readStdinBinary.
+/// Replaces dart's readStdinBinary.
 Future<Uint8List> readStdinBinary() async {
   final builder = BytesBuilder();
   await stdin.forEach((chunk) {
@@ -129,7 +125,7 @@ Uint8List readStdinBinarySync() {
 /// Use `int` directly. Replaces `compatLong`.
 
 /// Returns the minimum number of bits required to represent an integer.
-/// Equivalent to Python's `int.bit_length()`.
+/// Equivalent to dart's `int.bit_length()`.
 int bitLength(int val) {
   return val.bitLength;
 }
@@ -143,7 +139,7 @@ int byteLength(int val) {
 }
 
 /// Converts bytes (Uint8List) to a non-negative integer.
-/// Replaces Python's `bytes_to_int`.
+/// Replaces dart's `bytes_to_int`.
 /// Supports 'big' and 'little' endianness.
 int bytesToInt(Uint8List val, {Endian endian = Endian.big}) {
   if (val.isEmpty) {
@@ -169,7 +165,7 @@ int bytesToInt(Uint8List val, {Endian endian = Endian.big}) {
 }
 
 /// Converts a non-negative integer to bytes (Uint8List).
-/// Replaces Python's `int_to_bytes`.
+/// Replaces dart's `int_to_bytes`.
 /// Supports 'big' and 'little' endianness.
 /// If `length` is null, the minimum number of bytes is used.
 Uint8List intToBytes(int val, {int? length, Endian endian = Endian.big}) {
@@ -226,7 +222,7 @@ Uint8List intToBytes(int val, {int? length, Endian endian = Endian.big}) {
 // --- Miscellaneous ---
 
 /// Formats an error and its stack trace into a string.
-/// Replaces Python's `formatExceptionTrace`.
+/// Replaces dart's `formatExceptionTrace`.
 String formatExceptionTrace(Object error, StackTrace stackTrace) {
   // Customize formatting as needed
   return 'Error: $error\nStackTrace:\n$stackTrace';
@@ -234,7 +230,7 @@ String formatExceptionTrace(Object error, StackTrace stackTrace) {
 
 /// Returns a high-resolution timestamp in seconds (as double).
 /// Uses Stopwatch for monotonic time measurement.
-/// Similar intent to Python's time.perf_counter() or time.clock().
+/// Similar intent to dart's time.perf_counter() or time.clock().
 double highResTimeStamp() {
   // Note: This starts measuring from an arbitrary point.
   // If you need time since epoch, use DateTime.now().microsecondsSinceEpoch
@@ -256,7 +252,7 @@ double elapsedSeconds() {
 }
 
 /// Removes all whitespace characters from the input string.
-/// Replaces Python's `remove_whitespace`.
+/// Replaces dart's `remove_whitespace`.
 String removeWhitespace(String text) {
   // RegExp r'\s+' matches one or more whitespace characters
   return text.replaceAll(RegExp(r'\s+'), '');

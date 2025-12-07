@@ -61,7 +61,7 @@ void tryDecrypt({
   ]);
 
   final nonce = buildNonce(serverIV, seqnum);
-  final cipher = Chacha20Poly1305(serverKey, 'python');
+  final cipher = Chacha20Poly1305(serverKey, 'dart');
   final opened = cipher.open(nonce, ciphertextWithTag, aad);
 
   print('--- $label ---');

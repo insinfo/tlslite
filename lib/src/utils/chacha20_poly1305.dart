@@ -10,7 +10,7 @@ class Chacha20Poly1305 {
     if (key.length != 32) {
       throw ArgumentError('ChaCha20-Poly1305 key must be 32 bytes long');
     }
-    if (implementation != 'python') {
+    if (implementation != 'dart') {
       throw ArgumentError('Unsupported implementation: $implementation');
     }
   }

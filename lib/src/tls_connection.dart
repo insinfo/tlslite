@@ -30,7 +30,7 @@ import 'x509.dart';
 
 import 'utils/binary_io.dart';
 
-/// Port of tlslite-ng's TLSConnection with full TLS 1.2/1.3 handshake support,
+/// TlsConnection with full TLS 1.0/1.3 handshake support,
 /// session caching, PSK resumption, and SSLv2/SSLv3 record interoperability.
 class TlsConnection extends MessageSocket {
   TlsConnection(Socket socket, {SessionCache? sessionCache})
@@ -3117,7 +3117,7 @@ class TlsConnection extends MessageSocket {
     return true;
   }
 
-  /// Compute Finished.verify_data mirroring tlslite-ng for TLS 1.2 and 1.3.
+  /// Compute Finished.verify_data mirroring for TLS 1.2 and 1.3.
   Uint8List buildFinishedVerifyData(
       {required bool forClient, HandshakeHashes? handshakeSnapshot}) {
     if (_isTls13Plus()) {

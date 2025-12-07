@@ -9,7 +9,7 @@ import 'messages.dart';
 /// Define o modo de operação esperado para o engine TLS puro Dart.
 enum PureDartTlsMode { client, server }
 
-/// Configurações provisórias utilizadas enquanto o porte de tlslite-ng progride.
+/// Configurações provisórias utilizadas
 ///
 /// NOTE: Aligns with HandshakeSettings from handshake_settings.dart.
 class PureDartTlsConfig {

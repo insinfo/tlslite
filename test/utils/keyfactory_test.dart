@@ -3,12 +3,12 @@ import 'package:tlslite/src/utils/keyfactory.dart';
 import 'package:tlslite/src/utils/rsakey.dart';
 
 void main() {
-  group('parsePEMKey (python impl)', () {
+  group('parsePEMKey (dart impl)', () {
     test('parses PKCS#8 without newlines', () {
       final key = parsePEMKey(
         _pkcs8WithNewlines.replaceAll('\n', ''),
         private: true,
-        implementations: const ['python'],
+        implementations: const ['dart'],
       );
       final rsaKey = _expectRsaKey(key);
       expect(rsaKey.bitLength, equals(1024));
@@ -19,7 +19,7 @@ void main() {
       final key = parsePEMKey(
         _pkcs8WithNewlines,
         private: true,
-        implementations: const ['python'],
+        implementations: const ['dart'],
       );
       final rsaKey = _expectRsaKey(key);
       expect(rsaKey.bitLength, equals(1024));
@@ -30,7 +30,7 @@ void main() {
       final key = parsePEMKey(
         _pkcs1WithNewlines.replaceAll('\n', ''),
         private: true,
-        implementations: const ['python'],
+        implementations: const ['dart'],
       );
       final rsaKey = _expectRsaKey(key);
       expect(rsaKey.bitLength, equals(1024));
@@ -41,7 +41,7 @@ void main() {
       final key = parsePEMKey(
         _pkcs1WithNewlines,
         private: true,
-        implementations: const ['python'],
+        implementations: const ['dart'],
       );
       final rsaKey = _expectRsaKey(key);
       expect(rsaKey.bitLength, equals(1024));
@@ -52,7 +52,7 @@ void main() {
       final key = parsePEMKey(
         _rsaPssPrivateKey,
         private: true,
-        implementations: const ['python'],
+        implementations: const ['dart'],
       );
       final rsaKey = _expectRsaKey(key);
       expect(rsaKey.keyType, equals('rsa-pss'));
@@ -64,7 +64,7 @@ void main() {
       final publicKey = parsePEMKey(
         _pkcs8WithNewlines,
         public: true,
-        implementations: const ['python'],
+        implementations: const ['dart'],
       );
       final rsaKey = _expectRsaKey(publicKey);
       expect(rsaKey.hasPrivateKey(), isFalse);

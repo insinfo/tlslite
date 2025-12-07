@@ -1,7 +1,7 @@
 part of 'dsakey.dart';
 
-class PythonDSAKey extends DSAKey {
-  PythonDSAKey({
+class DartDSAKey extends DSAKey {
+  DartDSAKey({
     required BigInt p,
     required BigInt q,
     required BigInt g,

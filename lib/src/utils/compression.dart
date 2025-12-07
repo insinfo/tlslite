@@ -10,7 +10,7 @@ import '../zstd/zstd_encoder.dart';
 
 /// Holds references to optional compression/decompression helpers.
 ///
-/// Keys mirror the Python implementation so higher level code can probe for
+/// Keys mirror the dart implementation so higher level code can probe for
 /// availability (e.g., 'brotli_compress', 'zstd_accepts_limit').  Values are
 /// nullable so the map can be filled dynamically by future platform specific
 /// integrations.
@@ -55,7 +55,7 @@ bool _isAtLeastTls13((int, int) version) {
   return version.$1 > 3 || (version.$1 == 3 && version.$2 >= 4);
 }
 
-/// Implements the logic from tlslite-ng to select the certificate compression
+/// Implements the logic select the certificate compression
 /// algorithm advertised by both peers. Returns the numeric ID or null when no
 /// overlap exists (or when TLS < 1.3 is negotiated).
 int? chooseCompressionSendAlgo(

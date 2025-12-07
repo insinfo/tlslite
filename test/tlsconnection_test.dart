@@ -17,7 +17,7 @@ import 'package:tlslite/src/recordlayer.dart';
 import 'package:tlslite/src/session.dart';
 import 'package:tlslite/src/sessioncache.dart';
 import 'package:tlslite/src/tls_protocol.dart';
-import 'package:tlslite/src/tlsconnection.dart';
+import 'package:tlslite/src/tls_connection.dart';
 import 'package:tlslite/src/utils/codec.dart';
 import 'package:tlslite/src/utils/cryptomath.dart';
 

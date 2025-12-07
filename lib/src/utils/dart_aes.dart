@@ -4,35 +4,35 @@ import 'aes.dart'; // Contém a classe base AES
 import 'rijndael.dart'; // Contém a implementação do bloco Rijndael/AES
 import 'cryptomath.dart'; // Contém bytesToNumber e numberToByteArray
 
-/// Factory function to create a new Python AES cipher instance.
+/// Factory function to create a new dart AES cipher instance.
 ///
 /// - [key]: The secret key for the cipher.
 /// - [mode]: The cipher mode (2 for CBC, 6 for CTR).
 /// - [iv]: The initialization vector (CBC) or nonce (CTR).
 AES newAES(Uint8List key, int mode, Uint8List iv) {
-  // IV parameter name matches the Python interface
+  // IV parameter name matches the dart interface
   // ignore: non_constant_identifier_names
   final Uint8List IV = iv;
 
   if (mode == aesModeCBC) {
     // Mode 2
-    return Python_AES(key, mode, IV);
+    return Dart_AES(key, mode, IV);
   } else if (mode == aesModeCTR_OR_GCM) {
     // Mode 6
-    return Python_AES_CTR(key, mode, IV);
+    return Dart_AES_CTR.Dart_AES_CTR(key, mode, IV);
   } else {
     throw UnimplementedError(
-        "AES mode $mode not implemented in python_aes.dart");
+        "AES mode $mode not implemented in dart_aes.dart");
   }
 }
 
 /// Pure Dart implementation of AES in CBC mode.
-class Python_AES extends AES {
+class Dart_AES extends AES {
   late final Rijndael _rijndael;
   // Assumindo que a classe base AES tem 'Uint8List iv'
   // O IV aqui representa o estado *atual* do vetor de encadeamento.
 
-  Python_AES(Uint8List key, int mode, Uint8List iv)
+  Dart_AES(Uint8List key, int mode, Uint8List iv)
       // mode é sempre CBC (2) para esta classe
       : super(key, aesModeCBC, iv, "dart") {
     // Cria uma cópia da chave para garantir imutabilidade da entrada
@@ -135,14 +135,14 @@ class Python_AES extends AES {
 }
 
 /// Pure Dart implementation of AES in CTR mode.
-class Python_AES_CTR extends AES {
+class Dart_AES_CTR extends AES {
   late final Rijndael _rijndael;
   // O 'iv' da classe base armazena o nonce inicial
   late Uint8List _counter; // O bloco de contador completo (nonce + counter)
   late final int
       _counterBytesLength; // Quantidade de bytes dedicados ao contador real
 
-  Python_AES_CTR(Uint8List key, int mode, Uint8List nonce)
+  Dart_AES_CTR.Dart_AES_CTR(Uint8List key, int mode, Uint8List nonce)
       // mode é sempre CTR (6) para esta classe
       : super(key, aesModeCTR_OR_GCM, nonce, "dart") {
     if (nonce.length > 16) {
@@ -209,7 +209,7 @@ class Python_AES_CTR extends AES {
     // Se a parte do contador virou zero E _counterBytesLength > 0, houve overflow LÓGICO.
     // (Se _counterBytesLength == 0, o contador nunca muda, então não há overflow).
     if (_counterBytesLength > 0 && counterPartIsZero) {
-      // Uma verificação mais rigorosa (como a Python) seria ver se os bytes ANTES
+      // Uma verificação mais rigorosa (como a dart) seria ver se os bytes ANTES
       // da conversão estavam todos 0xFF na parte do contador. Mas checar se
       // viraram 0 após o incremento cobre o caso de estouro lógico.
       throw StateError("CTR counter part overflowed (would reuse keystream)");
@@ -243,7 +243,7 @@ class Python_AES_CTR extends AES {
 
       processedBytes += bytesToUse;
       // Incrementa o contador para o próximo bloco, mesmo que este tenha sido o último.
-      // A implementação Python avança o contador após gerar cada bloco de keystream,
+      // A implementação dart avança o contador após gerar cada bloco de keystream,
       // garantindo que chamadas subsequentes continuem do ponto correto.
       try {
         _counterUpdate();
@@ -263,7 +263,7 @@ class Python_AES_CTR extends AES {
     // Esta implementação continua o contador de onde parou.
     // Para usar em decrypt isoladamente, você precisaria reinicializar o contador
     // com o nonce original antes de chamar encrypt.
-    // Ex: Python_AES_CTR cipher = ...; cipher.decrypt(data); // Ok se for a primeira op
+    // Ex: Dart_AES_CTR cipher = ...; cipher.decrypt(data); // Ok se for a primeira op
     //     cipher.encrypt(data2); // Continua o contador
     //     cipher.decrypt(data3); // Continua o contador de novo
     return encrypt(ciphertext);

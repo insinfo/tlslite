@@ -32,7 +32,7 @@ class Checker {
 
     if (x509Fingerprint != null) {
       X509CertChain? chain;
-      if (connection.client == true) { // connection._client in python
+      if (connection.client == true) { // connection._client in 
         chain = connection.session.serverCertChain;
       } else {
         chain = connection.session.clientCertChain;
@@ -45,7 +45,7 @@ class Checker {
         }
       } else {
         // chain is null
-        // In python: elif chain: raise TLSAuthenticationTypeError() else: raise TLSNoAuthenticationError()
+        // In : elif chain: raise TLSAuthenticationTypeError() else: raise TLSNoAuthenticationError()
         // If chain is null, it means no authentication.
         throw TLSNoAuthenticationError();
       }

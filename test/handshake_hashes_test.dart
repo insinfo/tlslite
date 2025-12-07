@@ -120,7 +120,7 @@ void main() {
 
     test('digestSSL calculates SSLv3 digest', () {
       final hashes = HandshakeHashes();
-      // Python test uses empty update
+      
       
       final masterSecret = Uint8List(48); // Zeros
       final label = Uint8List(0); // Empty

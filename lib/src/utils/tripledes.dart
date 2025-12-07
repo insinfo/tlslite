@@ -6,7 +6,7 @@ const int tripleDesModeCBC = 2;
 
 /// Abstract base class for Triple DES implementations.
 ///
-/// Mirrors the Python tlslite.utils.tripledes interface by validating
+/// 
 /// parameters and exposing metadata shared across concrete backends.
 abstract class TripleDES {
   TripleDES(
@@ -39,13 +39,13 @@ abstract class TripleDES {
   @protected
   Uint8List iv;
 
-  /// Human readable implementation label (e.g. "python").
+  /// Human readable implementation label (e.g. "dart").
   final String implementation;
 
   /// Triple DES always operates on 8-byte blocks.
   static const int blockSize = 8;
 
-  /// Cipher metadata for consumers mirroring the Python object API.
+  /// Cipher metadata for consumers mirroring the dart object API.
   final bool isBlockCipher = true;
   final bool isAEAD = false;
   final String name = '3des';

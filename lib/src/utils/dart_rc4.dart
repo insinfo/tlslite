@@ -3,13 +3,13 @@ import 'dart:typed_data';
 import 'rc4.dart';
 
 RC4 newRC4(Uint8List key) {
-  return PythonRC4(key);
+  return DartRC4(key);
 }
 
-class PythonRC4 extends RC4 {
-  PythonRC4(Uint8List keyBytes)
+class DartRC4 extends RC4 {
+  DartRC4(Uint8List keyBytes)
       : _state = Uint8List.fromList(List<int>.generate(256, (i) => i)),
-        super(keyBytes, 'python') {
+        super(keyBytes, 'dart') {
     var j = 0;
     for (var i = 0; i < 256; i++) {
       j = (j + _state[i] + keyBytes[i % keyBytes.length]) & 0xff;

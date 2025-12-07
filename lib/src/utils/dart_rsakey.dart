@@ -1,7 +1,7 @@
 part of 'rsakey.dart';
 
-class PythonRSAKey extends RSAKey {
-  PythonRSAKey({
+class DartRSAKey extends RSAKey {
+  DartRSAKey({
     BigInt? n,
     BigInt? e,
     BigInt? d,
@@ -121,7 +121,7 @@ class PythonRSAKey extends RSAKey {
     return pem(derBytes, label);
   }
 
-  static PythonRSAKey generate(int bits, {String keyType = 'rsa'}) {
+  static DartRSAKey generate(int bits, {String keyType = 'rsa'}) {
     while (true) {
       final p = getRandomPrime(bits ~/ 2);
       final q = getRandomPrime(bits ~/ 2);
@@ -133,7 +133,7 @@ class PythonRSAKey extends RSAKey {
         final dP = d % (p - BigInt.one);
         final dQ = d % (q - BigInt.one);
         final qInv = invMod(q, p);
-        return PythonRSAKey(
+        return DartRSAKey(
           n: n,
           e: e,
           d: d,
@@ -149,7 +149,7 @@ class PythonRSAKey extends RSAKey {
   }
 
   @override
-  String toString() => 'PythonRSAKey(len=${bitLength})';
+  String toString() => 'DartRSAKey(len=${bitLength})';
 
   Uint8List _encodePrivateKeyDer() {
     if (_p == BigInt.zero || _q == BigInt.zero || _d == BigInt.zero) {

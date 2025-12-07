@@ -2,16 +2,16 @@ import 'dart:typed_data';
 
 import 'package:test/test.dart';
 import 'package:tlslite/src/utils/cipherfactory.dart' as cipherfactory;
-import 'package:tlslite/src/utils/python_tripledes.dart' as python_tripledes;
+import 'package:tlslite/src/utils/dart_tripledes.dart' as dart_tripledes;
 
 void main() {
-  group('PythonTripleDES', () {
+  group('DartTripleDES', () {
     test('factory constructor exposes metadata', () {
       final key = hex('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
       final iv = hex('bbbbbbbbbbbbbbbb');
-      final cipher = python_tripledes.newTripleDES(key, iv);
+      final cipher = dart_tripledes.newTripleDES(key, iv);
       expect(cipher.name, equals('3des'));
-      expect(cipher.implementation, equals('python'));
+      expect(cipher.implementation, equals('dart'));
       expect(cipher.isBlockCipher, isTrue);
       expect(cipher.isAEAD, isFalse);
     });
@@ -19,21 +19,21 @@ void main() {
     test('rejects invalid key length', () {
       final shortKey = Uint8List(8);
       final iv = Uint8List(8);
-      expect(() => python_tripledes.newTripleDES(shortKey, iv),
+      expect(() => dart_tripledes.newTripleDES(shortKey, iv),
           throwsArgumentError);
     });
 
     test('rejects invalid IV length', () {
       final key = Uint8List(24);
       final iv = Uint8List(7);
-      expect(() => python_tripledes.newTripleDES(key, iv),
+      expect(() => dart_tripledes.newTripleDES(key, iv),
           throwsArgumentError);
     });
 
     test('supports 16-byte keys by repeating first component', () {
       final key = hex('7ca110454a1a6e577ca110454a1a6e57');
       final iv = hex('55fe072a7351a5c8');
-        var cipher = python_tripledes.newTripleDES(key, iv);
+        var cipher = dart_tripledes.newTripleDES(key, iv);
         final plaintext = hex(
           '800000000000000080000000000000008000000000000000');
         final ciphertext = cipher.encrypt(plaintext);
@@ -42,7 +42,7 @@ void main() {
         equals(hex(
             '56284a04c9b5f7b68f36f6cdf63617d29a1c079ac40cf462')),
       );
-        cipher = python_tripledes.newTripleDES(key, iv);
+        cipher = dart_tripledes.newTripleDES(key, iv);
         expect(cipher.decrypt(ciphertext), equals(plaintext));
     });
 
@@ -50,12 +50,12 @@ void main() {
       final key = hex(
           '010101010101010101010101010101010101010101010101');
       final iv = Uint8List(8);
-      final cipher = python_tripledes.newTripleDES(key, iv);
+      final cipher = dart_tripledes.newTripleDES(key, iv);
       final plaintext = hex('8000000000000000');
       final ciphertext = cipher.encrypt(plaintext);
       expect(ciphertext, equals(hex('95f8a5e5dd31d900')));
       final roundtrip =
-          python_tripledes.newTripleDES(key, iv).decrypt(ciphertext);
+          dart_tripledes.newTripleDES(key, iv).decrypt(ciphertext);
       expect(roundtrip, equals(plaintext));
     });
 
@@ -66,14 +66,14 @@ void main() {
         final plaintext = hex(
           '800000000000000080000000000000008000000000000000');
         final ciphertext =
-          python_tripledes.newTripleDES(key, iv).encrypt(plaintext);
+          dart_tripledes.newTripleDES(key, iv).encrypt(plaintext);
       expect(
         ciphertext,
         equals(hex(
             'a155a6ba61cfda01315d41b7e559807a6e9668aff44c6f0f')),
       );
         final decrypted =
-          python_tripledes.newTripleDES(key, iv).decrypt(ciphertext);
+          dart_tripledes.newTripleDES(key, iv).decrypt(ciphertext);
       expect(decrypted, equals(plaintext));
     });
 
@@ -84,14 +84,14 @@ void main() {
         final plaintext = hex(
           '800000000000000080000000000000008000000000000000');
         final ciphertext =
-          python_tripledes.newTripleDES(key, iv).encrypt(plaintext);
+          dart_tripledes.newTripleDES(key, iv).encrypt(plaintext);
       expect(
         ciphertext,
         equals(hex(
             '9493b0cd54f976adfd267ea433de50193f30c94ba957f714')),
       );
         final decrypted =
-          python_tripledes.newTripleDES(key, iv).decrypt(ciphertext);
+          dart_tripledes.newTripleDES(key, iv).decrypt(ciphertext);
       expect(decrypted, equals(plaintext));
     });
 
@@ -102,30 +102,30 @@ void main() {
         final plaintext = hex(
           '800000000000000080000000000000008000000000000000');
         final ciphertext =
-          python_tripledes.newTripleDES(key, iv).encrypt(plaintext);
+          dart_tripledes.newTripleDES(key, iv).encrypt(plaintext);
       expect(
         ciphertext,
         equals(hex(
             '56284a04c9b5f7b68f36f6cdf63617d29a1c079ac40cf462')),
       );
         final decrypted =
-          python_tripledes.newTripleDES(key, iv).decrypt(ciphertext);
+          dart_tripledes.newTripleDES(key, iv).decrypt(ciphertext);
       expect(decrypted, equals(plaintext));
     });
 
     test('rejects non block-aligned plaintext/ciphertext', () {
       final key = Uint8List(24);
       final iv = Uint8List(8);
-      final cipher = python_tripledes.newTripleDES(key, iv);
+      final cipher = dart_tripledes.newTripleDES(key, iv);
       expect(() => cipher.encrypt(Uint8List(7)), throwsArgumentError);
       expect(() => cipher.decrypt(Uint8List(5)), throwsArgumentError);
     });
 
-    test('cipherfactory returns python implementation', () {
+    test('cipherfactory returns dart implementation', () {
       final key = Uint8List(24);
       final iv = Uint8List(8);
       final cipher = cipherfactory.createTripleDES(key, iv);
-      expect(cipher.implementation, equals('python'));
+      expect(cipher.implementation, equals('dart'));
     });
   });
 }

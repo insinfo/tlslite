@@ -1,5 +1,4 @@
 /// Helper utilities for working with lists and iterable collections.
-/// Ported from tlslite-ng/tlslite/utils/lists.py.
 
 /// Returns the first element from [values] that is also present in [matches].
 /// If no element matches (or [values] is null/empty) this returns null.
@@ -23,7 +22,6 @@ T? getFirstMatching<T>(Iterable<T>? values, Iterable<T>? matches) {
 }
 
 /// Formats [values] as a human-readable list separated by [delim] and [lastDelim].
-/// Mimics the behavior of tlslite's to_str_delimiter helper.
 String toStrDelimiter(
   Iterable<dynamic> values, {
   String delim = ', ',

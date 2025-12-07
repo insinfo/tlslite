@@ -287,7 +287,7 @@ class X509 {
     }
   }
 
-  /// Hex fingerprint of the certificate (SHA-1 as in tlslite-ng).
+  /// Hex fingerprint of the certificate (SHA-1 ).
   String getFingerprint() {
     final digestBytes = Uint8List.fromList(SHA1(bytes));
     return hexEncode(digestBytes);
@@ -378,7 +378,7 @@ class X509 {
     final parser = ASN1Parser(publicKeyBytes);
     final modulus = bytesToNumber(parser.getChild(0).value);
     final exponent = bytesToNumber(parser.getChild(1).value);
-    publicKey = PythonRSAKey(
+    publicKey = DartRSAKey(
       n: modulus,
       e: exponent,
       keyType: certAlg ?? 'rsa',

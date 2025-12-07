@@ -14,7 +14,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:convert';
 
-import 'package:tlslite/src/tlsconnection.dart';
+import 'package:tlslite/src/tls_connection.dart';
 import 'package:tlslite/src/handshake_settings.dart';
 import 'package:tlslite/src/constants.dart';
 import 'package:tlslite/src/recordlayer.dart';

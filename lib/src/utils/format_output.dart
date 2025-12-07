@@ -1,4 +1,4 @@
-/// Formatting helpers ported from tlslite's Python utilities.
+/// Formatting helpers 
 
 /// Returns [text] when it is neither null nor empty; otherwise produces
 /// `'unknown(number)'` with the supplied [number].

@@ -2,8 +2,7 @@ import 'dart:typed_data';
 
 typedef RawAesEncrypt = Uint8List Function(Uint8List block);
 
-/// Abstract class for AES.
-/// Converted to Dart from Python.
+
 
 // Define constants for modes if their meaning is known (e.g., CBC, CTR, GCM)
 // Based on standard libraries, 2 often corresponds to CBC.
@@ -34,7 +33,7 @@ abstract class AES {
   final bool isBlockCipher = true;
 
   /// Indicates if this cipher provides Authenticated Encryption with Associated Data.
-  /// Set to false based on the original Python code for this base class.
+  /// Set to false based on the original code for this base class.
   /// Concrete implementations (like GCM) would override this.
   final bool isAEAD = false;
 
@@ -88,7 +87,7 @@ abstract class AES {
             'Invalid IV length for mode $mode: ${iv.length}. Must be less than or equal to $blockSize bytes.');
       }
       // Note: Mode 6 might allow zero-length IVs depending on the specific mode/implementation.
-      // The original Python code allowed len(IV) <= 16.
+      // The original code allowed len(IV) <= 16.
     }
     // No need to explicitly initialize fields like isBlockCipher, isAEAD, blockSize
     // as they are assigned default values directly in their declaration.
@@ -118,7 +117,7 @@ abstract class AES {
   /// or padding rules depending on the mode of operation (e.g., multiple of
   /// block size for CBC with padding).
   ///
-  /// The original Python code included an assertion: `assert(len(plaintext) % 16 == 0)`
+  /// The original code included an assertion: `assert(len(plaintext) % 16 == 0)`
   /// which implies padding should be handled before calling encrypt in CBC mode.
   /// Implementations should clarify padding requirements.
   ///
@@ -131,7 +130,7 @@ abstract class AES {
   /// The ciphertext length typically needs to be a multiple of the block size,
   /// depending on the mode (e.g., for CBC).
   ///
-  /// The original Python code included an assertion: `assert(len(ciphertext) % 16 == 0)`.
+  /// The original code included an assertion: `assert(len(ciphertext) % 16 == 0)`.
   /// Implementations should clarify length requirements.
   ///
   /// Returns the plaintext as a [Uint8List]. May include padding that needs removal.

@@ -2,7 +2,7 @@ import 'package:test/test.dart';
 
 import 'package:tlslite/src/utils/dsakey.dart';
 import 'package:tlslite/src/utils/eddsakey.dart';
-import 'package:tlslite/src/utils/python_ecdsakey.dart';
+import 'package:tlslite/src/utils/dart_ecdsakey.dart';
 import 'package:tlslite/src/x509.dart';
 import 'package:tlslite/src/x509certchain.dart';
 
@@ -10,8 +10,8 @@ void main() {
   group('X509 DSA certificate', () {
     test('parses public key parameters', () {
       final cert = X509()..parse(_dsaCertPem);
-      expect(cert.publicKey, isA<PythonDSAKey>());
-      final key = cert.publicKey as PythonDSAKey;
+      expect(cert.publicKey, isA<DartDSAKey>());
+      final key = cert.publicKey as DartDSAKey;
       expect(
         key.y,
         equals(
@@ -48,8 +48,8 @@ void main() {
   group('X509 ECDSA certificate', () {
     test('parses public key and supports equality', () {
       final cert = X509()..parse(_ecdsaCertPem);
-      expect(cert.publicKey, isA<PythonECDSAKey>());
-      final key = cert.publicKey as PythonECDSAKey;
+      expect(cert.publicKey, isA<DartECDSAKey>());
+      final key = cert.publicKey as DartECDSAKey;
       expect(
         key.publicPointX,
         equals(
@@ -79,7 +79,7 @@ void main() {
       final chain1 = X509CertChain()..parsePemList(_ecdsaCertPem);
       final chain2 = X509CertChain()..parsePemList(_ecdsaCertPem);
       expect(chain1.getNumCerts(), 1);
-      expect(chain1.getEndEntityPublicKey(), isA<PythonECDSAKey>());
+      expect(chain1.getEndEntityPublicKey(), isA<DartECDSAKey>());
       expect(chain1, equals(chain2));
       expect(chain1.hashCode, equals(chain2.hashCode));
       expect(chain1.getFingerprint(), chain2.getFingerprint());

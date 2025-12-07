@@ -1119,7 +1119,7 @@ class Rijndael {
             _ke[r][i]; // AddRoundKey
       }
       // Atualiza o estado para o próximo round
-      t = List<int>.from(a); // Equivalente a t = a[:] em Python
+      t = List<int>.from(a); // Equivalente a t = a[:] em dart
     }
 
     // Último round é especial (SubBytes, ShiftRows, AddRoundKey - sem MixColumns)

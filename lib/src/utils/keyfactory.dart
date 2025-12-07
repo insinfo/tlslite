@@ -10,7 +10,7 @@ import 'ecdsakey.dart';
 import 'eddsakey.dart';
 import 'pem.dart';
 import 'pkcs8.dart';
-import 'python_ecdsakey.dart';
+import 'dart_ecdsakey.dart';
 import 'rsakey.dart';
 
 export 'curve_oids.dart' show curveNameFromOid, curveOidFromName, decodeOid;
@@ -20,11 +20,11 @@ typedef PasswordCallback = String Function();
 /// Generates an RSA key using the requested implementation list.
 RSAKey generateRSAKey(
   int bits, {
-  List<String> implementations = const ['python'],
+  List<String> implementations = const ['dart'],
 }) {
   for (final impl in implementations) {
-    if (impl.toLowerCase() == 'python') {
-      return PythonRSAKey.generate(bits);
+    if (impl.toLowerCase() == 'dart') {
+      return DartRSAKey.generate(bits);
     }
   }
   throw ArgumentError('No acceptable implementations: $implementations');
@@ -36,15 +36,15 @@ Object parsePEMKey(
   bool private = false,
   bool public = false,
   PasswordCallback? passwordCallback,
-  List<String> implementations = const ['python'],
+  List<String> implementations = const ['dart'],
 }) {
   final accepted =
-      implementations.any((impl) => impl.toLowerCase() == 'python');
+      implementations.any((impl) => impl.toLowerCase() == 'dart');
   if (!accepted) {
     throw ArgumentError('No acceptable implementations: $implementations');
   }
   try {
-    final key = _parsePemWithPurePython(
+    final key = _parsePemWithPureDart(
       pemData,
       passwordCallback: passwordCallback,
     );
@@ -70,11 +70,11 @@ ECDSAKey createPublicECDSAKey(
   BigInt pointX,
   BigInt pointY,
   String curveName, {
-  List<String> implementations = const ['python'],
+  List<String> implementations = const ['dart'],
 }) {
   for (final impl in implementations) {
-    if (impl.toLowerCase() == 'python') {
-      return PythonECDSAKey(
+    if (impl.toLowerCase() == 'dart') {
+      return DartECDSAKey(
           pointX: pointX, pointY: pointY, curveName: curveName);
     }
   }
@@ -86,11 +86,11 @@ DSAKey createPublicDSAKey({
   required BigInt q,
   required BigInt g,
   required BigInt y,
-  List<String> implementations = const ['python'],
+  List<String> implementations = const ['dart'],
 }) {
   for (final impl in implementations) {
-    if (impl.toLowerCase() == 'python') {
-      return PythonDSAKey(p: p, q: q, g: g, y: y);
+    if (impl.toLowerCase() == 'dart') {
+      return DartDSAKey(p: p, q: q, g: g, y: y);
     }
   }
   throw ArgumentError('No acceptable implementations: $implementations');
@@ -99,12 +99,12 @@ DSAKey createPublicDSAKey({
 EdDSAKey createPublicEdDSAKey(
   Uint8List publicKey, {
   String curve = 'Ed25519',
-  List<String> implementations = const ['python'],
+  List<String> implementations = const ['dart'],
 }) {
   for (final impl in implementations) {
-    if (impl.toLowerCase() == 'python') {
+    if (impl.toLowerCase() == 'dart') {
       if (curve == 'Ed25519') {
-        return PythonEdDSAKey.ed25519(publicKey: publicKey);
+        return DartEdDSAKey.ed25519(publicKey: publicKey);
       }
       if (curve == 'Ed448') {
         if (publicKey.length != 57) {
@@ -150,24 +150,24 @@ bool _hasPrivateComponent(Object key) {
 
 Object _stripToPublicKey(Object key) {
   if (key is RSAKey) {
-    return PythonRSAKey(
+    return DartRSAKey(
       n: key.n,
       e: key.e,
       keyType: key.keyType,
     );
   }
-  if (key is PythonECDSAKey) {
-    return PythonECDSAKey(
+  if (key is DartECDSAKey) {
+    return DartECDSAKey(
       pointX: key.publicPointX,
       pointY: key.publicPointY,
       curveName: key.curveName,
     );
   }
-  if (key is PythonDSAKey) {
-    return PythonDSAKey(p: key.p, q: key.q, g: key.g, y: key.y);
+  if (key is DartDSAKey) {
+    return DartDSAKey(p: key.p, q: key.q, g: key.g, y: key.y);
   }
-  if (key is PythonEdDSAKey) {
-    return PythonEdDSAKey.ed25519(publicKey: key.publicKeyBytes);
+  if (key is DartEdDSAKey) {
+    return DartEdDSAKey.ed25519(publicKey: key.publicKeyBytes);
   }
   if (key is Ed448PrivateKey) {
     return Ed448PublicKey(key.publicKeyBytes);
@@ -178,7 +178,7 @@ Object _stripToPublicKey(Object key) {
   return key;
 }
 
-Object _parsePemWithPurePython(
+Object _parsePemWithPureDart(
   String pemData, {
   PasswordCallback? passwordCallback,
 }) {
@@ -239,7 +239,7 @@ Object _parseSubjectPublicKeyInfo(Uint8List derBytes) {
   final publicSequence = ASN1Parser(bitString.value.sublist(1));
   final modulus = bytesToNumber(publicSequence.getChild(0).value);
   final exponent = bytesToNumber(publicSequence.getChild(1).value);
-  return PythonRSAKey(n: modulus, e: exponent, keyType: keyType);
+  return DartRSAKey(n: modulus, e: exponent, keyType: keyType);
 }
 
 Object _parsePkcs8PrivateKey(Uint8List derBytes) {
@@ -326,7 +326,7 @@ RSAKey _parsePkcs1PrivateKey(Uint8List derBytes, {String keyType = 'rsa'}) {
   final dP = bytesToNumber(parser.getChild(6).value);
   final dQ = bytesToNumber(parser.getChild(7).value);
   final qInv = bytesToNumber(parser.getChild(8).value);
-  return PythonRSAKey(
+  return DartRSAKey(
     n: n,
     e: e,
     d: d,
@@ -377,7 +377,7 @@ bool _listsEqual(List<int> a, List<int> b) {
   return true;
 }
 
-PythonDSAKey _parseDsaPublicKey(ASN1Parser spki, ASN1Parser algId) {
+DartDSAKey _parseDsaPublicKey(ASN1Parser spki, ASN1Parser algId) {
   if (algId.getChildCount() < 2) {
     throw const FormatException('DSA parameters missing');
   }
@@ -391,10 +391,10 @@ PythonDSAKey _parseDsaPublicKey(ASN1Parser spki, ASN1Parser algId) {
   }
   final yParser = ASN1Parser(bitString.value.sublist(1));
   final y = bytesToNumber(yParser.value);
-  return PythonDSAKey(p: p, q: q, g: g, y: y);
+  return DartDSAKey(p: p, q: q, g: g, y: y);
 }
 
-PythonECDSAKey _parseEcdsaPublicKey(ASN1Parser spki, ASN1Parser algId) {
+DartECDSAKey _parseEcdsaPublicKey(ASN1Parser spki, ASN1Parser algId) {
   if (algId.getChildCount() != 2) {
     throw const FormatException('EC parameters missing');
   }
@@ -419,7 +419,7 @@ PythonECDSAKey _parseEcdsaPublicKey(ASN1Parser spki, ASN1Parser algId) {
   final coordLen = coords.length ~/ 2;
   final x = bytesToNumber(coords.sublist(0, coordLen));
   final y = bytesToNumber(coords.sublist(coordLen));
-  return PythonECDSAKey(pointX: x, pointY: y, curveName: curveName);
+  return DartECDSAKey(pointX: x, pointY: y, curveName: curveName);
 }
 
 EdDSAKey _parseEdDsaPublicKey(ASN1Parser spki, List<int> oid) {
@@ -432,7 +432,7 @@ EdDSAKey _parseEdDsaPublicKey(ASN1Parser spki, List<int> oid) {
     if (keyBytes.length != 32) {
       throw const FormatException('Ed25519 public keys must be 32 bytes');
     }
-    return PythonEdDSAKey.ed25519(publicKey: Uint8List.fromList(keyBytes));
+    return DartEdDSAKey.ed25519(publicKey: Uint8List.fromList(keyBytes));
   }
   if (_listsEqual(oid, _oidEd448)) {
     if (keyBytes.length != _ed448KeyLengthBytes) {
@@ -443,16 +443,16 @@ EdDSAKey _parseEdDsaPublicKey(ASN1Parser spki, List<int> oid) {
   throw UnsupportedError('Unknown EdDSA curve OID');
 }
 
-PythonDSAKey _parseDsaPkcs8PrivateKey(Uint8List data, ASN1Parser params) {
+DartDSAKey _parseDsaPkcs8PrivateKey(Uint8List data, ASN1Parser params) {
   final p = bytesToNumber(params.getChild(0).value);
   final q = bytesToNumber(params.getChild(1).value);
   final g = bytesToNumber(params.getChild(2).value);
   final x = _extractInteger(data);
   final y = powMod(g, x, p);
-  return PythonDSAKey(p: p, q: q, g: g, x: x, y: y);
+  return DartDSAKey(p: p, q: q, g: g, x: x, y: y);
 }
 
-PythonDSAKey _parseDsaSsLeayKey(Uint8List derBytes) {
+DartDSAKey _parseDsaSsLeayKey(Uint8List derBytes) {
   final parser = ASN1Parser(derBytes);
   final version = bytesToNumber(parser.getChild(0).value);
   if (version != BigInt.zero) {
@@ -463,10 +463,10 @@ PythonDSAKey _parseDsaSsLeayKey(Uint8List derBytes) {
   final g = bytesToNumber(parser.getChild(3).value);
   final y = bytesToNumber(parser.getChild(4).value);
   final x = bytesToNumber(parser.getChild(5).value);
-  return PythonDSAKey(p: p, q: q, g: g, x: x, y: y);
+  return DartDSAKey(p: p, q: q, g: g, x: x, y: y);
 }
 
-PythonECDSAKey _parseEcPrivateKey(ASN1Parser parser, {String? curveName}) {
+DartECDSAKey _parseEcPrivateKey(ASN1Parser parser, {String? curveName}) {
   final version = bytesToNumber(parser.getChild(0).value);
   if (version != BigInt.one) {
     throw const FormatException('Unexpected EC key version');
@@ -496,7 +496,7 @@ PythonECDSAKey _parseEcPrivateKey(ASN1Parser parser, {String? curveName}) {
     pointX = coords.x;
     pointY = coords.y;
   }
-  return PythonECDSAKey(
+  return DartECDSAKey(
     pointX: pointX,
     pointY: pointY,
     curveName: curve,
@@ -527,7 +527,7 @@ PythonECDSAKey _parseEcPrivateKey(ASN1Parser parser, {String? curveName}) {
   return (x: x, y: y);
 }
 
-PythonEdDSAKey _parseEd25519PrivateKey(
+DartEdDSAKey _parseEd25519PrivateKey(
     Uint8List data, Uint8List? publicKeyBytes) {
   final seed = _extractEdPrivateSeed(data, 32,
       error: 'Ed25519 private keys must be 32 bytes');
@@ -538,7 +538,7 @@ PythonEdDSAKey _parseEd25519PrivateKey(
     }
     publicKey = Uint8List.fromList(publicKeyBytes);
   }
-  return PythonEdDSAKey.ed25519(
+  return DartEdDSAKey.ed25519(
     privateKey: seed,
     publicKey: publicKey,
   );

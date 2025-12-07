@@ -2,9 +2,9 @@ import 'dart:collection';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-/// Lightweight port of tlslite-ng's bufferedsocket.py.
+/// Lightweight bufferedsocket
 ///
-/// This class mirrors the "buffered socket" helper used by the Python
+/// This class mirrors the "buffered socket" helper used by the 
 /// implementation but intentionally targets an abstract [socket] that only needs
 /// to expose the handful of methods invoked here. Once the Dart TLS transport
 /// layer solidifies, replace the `dynamic` type with a strongly-typed adapter
@@ -14,7 +14,7 @@ class BufferedSocket {
 
   /// Underlying transport. Must expose `send`, `sendall`, `recv`, `getsockname`,
   /// `getpeername`, `settimeout`, `gettimeout`, `setsockopt`, `shutdown`, and
-  /// `close` with Python-like semantics.
+  /// 
   ///
   /// NOTE: Currently uses dynamic type for flexibility with different socket
   /// implementations (Socket, RawSocket, FFI-backed adapters).

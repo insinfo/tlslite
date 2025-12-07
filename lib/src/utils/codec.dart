@@ -4,7 +4,7 @@ import 'dart:typed_data';
 // --- Custom Exception Classes ---
 
 /// Exception raised in case of decoding errors during parsing.
-/// Similar to Python's DecodeError.
+/// Similar to 's DecodeError.
 class DecodeError implements Exception {
   final String message;
   DecodeError(this.message);
@@ -14,7 +14,7 @@ class DecodeError implements Exception {
 }
 
 /// Exception raised in case of bad certificate data during parsing.
-/// Similar to Python's BadCertificateError.
+/// Similar to s BadCertificateError.
 class BadCertificateError implements Exception {
   final String message;
   BadCertificateError(this.message);
@@ -23,7 +23,7 @@ class BadCertificateError implements Exception {
   String toString() => 'BadCertificateError: $message';
 }
 
-// --- Writer Class (Equivalent to Python's Writer) ---
+// --- Writer Class (Equivalent to dart's Writer) ---
 
 /// Serialisation helper for complex byte-based structures.
 /// Builds a Uint8List incrementally using big-endian format for multi-byte integers.
@@ -42,7 +42,7 @@ class Writer {
   int get length => _builder.length;
 
   /// Adds a single byte (0-255) to the buffer.
-  /// Equivalent to Python's addOne.
+  /// Equivalent to dart's addOne.
   void addOne(int value) {
     if (value < 0 || value > 0xFF) {
       throw ArgumentError("Value $value out of range for uint8 (0-255)");
@@ -51,7 +51,7 @@ class Writer {
   }
 
   /// Adds a two-byte unsigned integer (0-65535) in big-endian format.
-  /// Equivalent to Python's addTwo.
+  /// Equivalent to dart's addTwo.
   void addTwo(int value) {
     if (value < 0 || value > 0xFFFF) {
       throw ArgumentError("Value $value out of range for uint16 (0-65535)");
@@ -62,7 +62,7 @@ class Writer {
   }
 
   /// Adds a three-byte unsigned integer (0-16777215) in big-endian format.
-  /// Equivalent to Python's addThree.
+  /// Equivalent to dart's addThree.
   void addThree(int value) {
     if (value < 0 || value > 0xFFFFFF) {
       throw ArgumentError("Value $value out of range for uint24 (0-16777215)");
@@ -74,7 +74,7 @@ class Writer {
   }
 
   /// Adds a four-byte unsigned integer (0-4294967295) in big-endian format.
-  /// Equivalent to Python's addFour.
+  /// Equivalent to dart's addFour.
   void addFour(int value) {
     if (value < 0 || value > 0xFFFFFFFF) {
       throw ArgumentError(
@@ -96,7 +96,7 @@ class Writer {
     }
     switch (length) {
       case 1:
-        addOne(x); // Use addOne for consistency with Python naming if preferred
+        addOne(x); // Use addOne for consistency with dart naming if preferred
         break;
       case 2:
         addTwo(x); // Use addTwo
@@ -219,7 +219,7 @@ class Writer {
   }
 
   /// Adds a variable length array of bytes, prefixed by its length.
-  /// Equivalent to Python's `add_var_bytes`.
+  /// Equivalent to dart's `add_var_bytes`.
   ///
   /// - `data`: The bytes to add.
   /// - `lengthLength`: Size in bytes of the field used to represent the length
@@ -235,7 +235,7 @@ class Writer {
   }
 }
 
-// --- Parser Class (Equivalent to Python's Parser) ---
+// --- Parser Class (Equivalent to dart's Parser) ---
 
 /// Parser for TLV and LV byte-based encodings.
 /// Reads data sequentially from a Uint8List using big-endian format for multi-byte integers.
@@ -347,7 +347,7 @@ class Parser {
 
   /// Reads a fixed number of bytes from the current position.
   /// Returns a *copy* of the bytes.
-  /// Equivalent to Python's `getFixBytes`.
+  /// Equivalent to dart's `getFixBytes`.
   ///
   /// - `lengthBytes`: Number of bytes to return.
   Uint8List getFixBytes(int lengthBytes) {
@@ -360,7 +360,7 @@ class Parser {
   }
 
   /// Moves the internal pointer ahead `length` bytes without reading data.
-  /// Equivalent to Python's `skip_bytes`.
+  /// Equivalent to dart's `skip_bytes`.
   void skipBytes(int length) {
     if (length < 0) throw ArgumentError("Length to skip cannot be negative");
     _ensureRemaining(length); // Checks if skipping is possible
@@ -551,7 +551,7 @@ class Parser {
 
   /// Returns the total number of bytes remaining in the *entire* buffer
   /// from the current index position.
-  /// Equivalent to Python's `getRemainingLength()`.
+  /// Equivalent to dart's `getRemainingLength()`.
   int getRemainingLength() {
     // Ensure index is not out of bounds (should be caught by _ensureRemaining earlier, but safe check)
     if (_index > _bytes.length) {

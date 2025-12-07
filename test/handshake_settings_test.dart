@@ -25,7 +25,8 @@ void main() {
     });
 
     test('unknown cipher name throws', () {
-      final settings = HandshakeSettings(cipherNames: ['aes256', 'unknown_cipher']);
+      final settings =
+          HandshakeSettings(cipherNames: ['aes256', 'unknown_cipher']);
       expect(() => settings.validate(), throwsArgumentError);
     });
 
@@ -35,27 +36,32 @@ void main() {
     });
 
     test('unknown certificate type throws', () {
-      final settings = HandshakeSettings(certificateTypes: ['x509', 'unknown_type']);
+      final settings =
+          HandshakeSettings(certificateTypes: ['x509', 'unknown_type']);
       expect(() => settings.validate(), throwsArgumentError);
     });
 
     test('unknown curve name throws', () {
-      final settings = HandshakeSettings(eccCurves: ['secp256r1', 'unknown_curve']);
+      final settings =
+          HandshakeSettings(eccCurves: ['secp256r1', 'unknown_curve']);
       expect(() => settings.validate(), throwsArgumentError);
     });
 
     test('unknown DH group throws', () {
-      final settings = HandshakeSettings(dhGroups: ['ffdhe2048', 'unknown_group']);
+      final settings =
+          HandshakeSettings(dhGroups: ['ffdhe2048', 'unknown_group']);
       expect(() => settings.validate(), throwsArgumentError);
     });
 
     test('unknown key exchange throws', () {
-      final settings = HandshakeSettings(keyExchangeNames: ['rsa', 'unknown_kx']);
+      final settings =
+          HandshakeSettings(keyExchangeNames: ['rsa', 'unknown_kx']);
       expect(() => settings.validate(), throwsArgumentError);
     });
 
     test('unknown minVersion throws', () {
-      final settings = HandshakeSettings(minVersion: (1, 1)); // TLS 1.1 is (3, 2). (1, 1) is unknown/old
+      final settings = HandshakeSettings(
+          minVersion: (1, 1)); // TLS 1.1 is (3, 2). (1, 1) is unknown/old
       // Wait, knownVersions = [(3, 0), (3, 1), (3, 2), (3, 3), (3, 4)];
       // (1, 1) is not in knownVersions.
       expect(() => settings.validate(), throwsArgumentError);
@@ -74,7 +80,6 @@ void main() {
       expect(() => settings.validate(), throwsArgumentError);
     });
 
-    // Tests for empty lists that SHOULD throw according to Python but might not in Dart yet
     test('empty cipherNames throws', () {
       final settings = HandshakeSettings(cipherNames: []);
       expect(() => settings.validate(), throwsArgumentError);

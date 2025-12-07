@@ -4,7 +4,7 @@ import 'dart:typed_data';
 
 import 'session.dart';
 
-/// Cache for reusable TLS sessions, mirroring tlslite-ng's SessionCache.
+/// Cache for reusable TLS sessions, mirroring SessionCache.
 class SessionCache {
   SessionCache({int maxEntries = 10000, int maxAgeSeconds = 14400})
       : assert(maxEntries > 0, 'maxEntries must be positive'),

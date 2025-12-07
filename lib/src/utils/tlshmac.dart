@@ -4,7 +4,7 @@ import 'package:crypto/crypto.dart' as crypto;
 
 import 'tlshashlib.dart';
 
-/// Minimal HMAC helper compatible with tlslite's tlshmac module.
+/// Minimal HMAC helper compatible
 class TlsHmac {
   TlsHmac(List<int> key, {dynamic digestmod, List<int>? message})
       : _algorithm = _resolveAlgorithm(digestmod),
@@ -45,7 +45,7 @@ class TlsHmac {
   }
 }
 
-/// Convenience constructor mimicking Python's `hmac.new` helper.
+/// Convenience constructor mimicking dart's `hmac.new` helper.
 TlsHmac newHmac(List<int> key, {dynamic digestmod, List<int>? message}) {
   return TlsHmac(key, digestmod: digestmod, message: message);
 }

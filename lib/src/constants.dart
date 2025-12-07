@@ -1,23 +1,6 @@
 // ignore_for_file: constant_identifier_names, non_constant_identifier_names
 import 'dart:typed_data';
 
-// PORT STATUS: All critical TLS modules have been ported from tlslite-ng.
-//
-// ✅ COMPLETED (core TLS functionality):
-// - mathtls.dart: PRF functions, key derivation, FFDHE parameters, SRP
-// - messages.dart: All TLS message classes (ClientHello, ServerHello, etc.)
-// - recordlayer.dart: Core record layer (RecordSocket, ConnectionState, RecordLayer)
-// - tls_record_layer.dart: Higher-level TLS record operations
-// - extensions.dart: All extension classes
-// - handshake_settings.dart: HandshakeSettings configuration
-// - key_exchange.dart: All key exchange implementations including ML-KEM/PQC
-// - tlsconnection.dart: Main TLS connection API (98% complete)
-// - handshake_helpers.dart, handshake_hashes.dart: Handshake utilities
-// - sessioncache.dart: Session storage
-//
-// 🔜 REMAINING (low priority, optional features):
-// - TACK extension support (utils/tackwrapper.dart) - rarely used
-// - Full certificate path validation (trust anchor verification)
 
 /// Converte uma string hexadecimal em uma lista de bytes (Uint8List).
 Uint8List _hexToBytes(String hexString) {
@@ -688,7 +671,7 @@ class AlgorithmOID {
     map[_hexToBytes('06092a864886f70d01010a')] =
         'rsaEncryptionPss'; // Generic PSS identifier
     // Specific hash OIDs under RSASSA-PSS parameters (less common in cert sig alg field itself)
-    // Example from Python code structure suggests mapping specific DER encodings
+    // Example from  code structure suggests mapping specific DER encodings
     map[_hexToBytes('300b0609608648016503040201')] = SignatureScheme
         .rsa_pss_rsae_sha256; // Check encoding, likely part of PSS params
     map[_hexToBytes('300b0609608648016503040202')] =
@@ -712,7 +695,7 @@ class AlgorithmOID {
     map[_hexToBytes('0609608648016503040302')] =
         SignatureScheme.dsa_sha256; // id-dsa-with-sha256
     // RFC 5754 doesn't define DSA with SHA384/512 OIDs explicitly for certs? Check updates.
-    // Python code includes them, potentially from other contexts.
+    //  code includes them, potentially from other contexts.
     // map[_hexToBytes('0609608648016503040303')] = SignatureScheme.dsa_sha384;
     // map[_hexToBytes('0609608648016503040304')] = SignatureScheme.dsa_sha512;
 
@@ -1201,7 +1184,7 @@ class CertificateCompressionAlgorithm {
 
 // Placeholder for Settings used in filter methods
 class TlsSettings {
-  // Example properties needed based on Python code usage
+  // Example properties needed based on  code usage
   final List<int> maxVersion; // e.g., [3, 4] for TLS 1.3
   final List<int> minVersion; // e.g., [3, 3] for TLS 1.2
   final List<String> macNames; // e.g., ['sha256', 'sha384', 'aead']
@@ -1992,8 +1975,8 @@ class CipherSuite {
 
     // For suites compatible with TLS < 1.2, PRF isn't explicitly SHA256/384
     // Include them if *any* PRF filtering is happening? Or only if specific legacy PRF is requested?
-    // The original python doesn't seem to filter these out based on sha256/sha384 PRF request.
-    // Let's include ssl3Suites regardless of the PRF filter for simplicity matching python intent.
+    // The original  doesn't seem to filter these out based on sha256/sha384 PRF request.
+    // Let's include ssl3Suites regardless of the PRF filter for simplicity matching  intent.
     includeSuites.addAll(CipherSuite.ssl3Suites);
 
     return suites.where((s) => includeSuites.contains(s)).toList();
@@ -2374,7 +2357,7 @@ class CipherSuite {
     if (CipherSuite.md5Suites.contains(ciphersuite)) return "md5";
     // AEAD suites don't have a separate MAC name in this context
     if (CipherSuite.aeadSuites.contains(ciphersuite))
-      return null; // Or "aead"? Python returns None.
+      return null; // Or "aead"?  returns None.
 
     return null; // Not found or AEAD
   }
@@ -2399,7 +2382,7 @@ class Fault {
   ];
 
   static const int badB = 201;
-  static const List<int> serverFaults = [badB]; // Only one listed in Python
+  static const List<int> serverFaults = [badB]; // Only one listed in 
 
   static const int badFinished = 300;
   static const int badMAC = 301;
@@ -2421,7 +2404,7 @@ class Fault {
     badFinished: [AlertDescription.decrypt_error],
     badMAC: [AlertDescription.bad_record_mac],
     badPadding: [AlertDescription.bad_record_mac],
-    // Note: badB is not mapped in the Python code's faultAlerts dictionary
+    // Note: badB is not mapped in the  code's faultAlerts dictionary
   };
 
   /// Human-readable names for the faults.
@@ -2435,6 +2418,6 @@ class Fault {
     badFinished: "bad finished message",
     badMAC: "bad MAC",
     badPadding: "bad padding",
-    // Note: badB is not mapped in the Python code's faultNames dictionary
+    // Note: badB is not mapped in the  code's faultNames dictionary
   };
 }

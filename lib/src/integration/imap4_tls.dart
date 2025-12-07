@@ -10,7 +10,7 @@ import 'dart:typed_data';
 
 import '../checker.dart';
 import '../handshake_settings.dart';
-import '../tlsconnection.dart';
+import '../tls_connection.dart';
 import '../x509certchain.dart';
 import 'client_helper.dart';
 

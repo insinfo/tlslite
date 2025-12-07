@@ -32,6 +32,12 @@
 - ✅ **ServerKeyExchange Verification**: Correct PSS padding with saltLen = hashLen
 - ✅ **Integration Test**: Real-world server `www.riodasostras.rj.gov.br` with RSA-PSS signatures
 
+### ✅ TLS 1.0/1.1 Legacy Signature Support
+- ✅ **Legacy RSA Signatures**: MD5 || SHA1 concatenated hash for ServerKeyExchange
+- ✅ **Legacy DSA/ECDSA Signatures**: SHA1 hash for ServerKeyExchange
+- ✅ **BadSSL.com Tests**: TLS 1.0 (tls-v1-0:1010), TLS 1.1 (tls-v1-1:1011), TLS 1.2 (tls-v1-2:1012)
+- ✅ **Negative Tests**: Correctly reject old TLS versions when client requires >= TLS 1.2
+
 ### ✅ IMPORTANTE  
 4. **handshakesettings.py** → handshake_settings.dart (716 linhas) - ✅ COMPLETO
 5. **tlsrecordlayer.py** → tls_record_layer.dart (1.345 linhas) - ✅ COMPLETO

@@ -8,7 +8,7 @@ import 'pem.dart';
 import 'pkcs8.dart';
 import 'tlshashlib.dart' as tlshash;
 
-part 'python_rsakey.dart';
+part 'dart_rsakey.dart';
 
 typedef RandomBytesGenerator = Uint8List Function(int length);
 
@@ -29,7 +29,7 @@ Uint8List _toUint8List(List<int> data) =>
 
 int _digestSize(String algorithm) => tlshash.newHash(algorithm).digestSize;
 
-/// Base class for RSA keys. Mirrors tlslite-ng's RSAKey API.
+/// Base class for RSA keys.  RSAKey API.
 abstract class RSAKey {
   RSAKey({BigInt? modulus, BigInt? exponent, String keyTypeValue = 'rsa'})
       : n = modulus ?? BigInt.zero,
@@ -446,7 +446,7 @@ abstract class RSAKey {
     if (bits < 512) {
       throw ArgumentError('RSA keys smaller than 512 bits are insecure');
     }
-    return PythonRSAKey.generate(bits, keyType: keyType);
+    return DartRSAKey.generate(bits, keyType: keyType);
   }
 
   Uint8List _addPKCS1Padding(Uint8List bytes, int blockType) {

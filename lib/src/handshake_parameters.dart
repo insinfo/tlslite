@@ -3,7 +3,6 @@ import 'tls_types.dart';
 import 'tls_extensions.dart';
 
 /// Coordinates the key_share negotiation while the full TLS 1.3 key schedule
-/// is still being ported from tlslite-ng.
 class PureDartKeyShareCoordinator {
   PureDartKeyShareCoordinator({required this.mode});
 

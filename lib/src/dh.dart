@@ -9,7 +9,7 @@ import 'utils/cryptomath.dart';
 (BigInt, BigInt) parseBinary(Uint8List data) {
   final parser = ASN1Parser(data);
   
-  // Python code:
+  //  code:
   // prime = parser.getChild(0)
   // gen = parser.getChild(1)
   // return (bytesToNumber(gen.value), bytesToNumber(prime.value))

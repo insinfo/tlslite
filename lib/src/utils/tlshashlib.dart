@@ -2,9 +2,9 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' as crypto;
 
-/// Minimal hashlib-compatible helpers tailored for tlslite's needs.
+/// Minimal hashlib-compatible helpers 
 ///
-/// The original Python module ensures hashes still work in FIPS mode. For the
+/// The original dart module ensures hashes still work in FIPS mode. For the
 /// Dart port we expose a thin wrapper that mimics hashlib's API surface so the
 /// rest of the TLS stack can request digests by algorithm string.
 class TlsHash {

@@ -1,7 +1,7 @@
 part of 'eddsakey.dart';
 
-class PythonEdDSAKey extends EdDSAKey {
-  PythonEdDSAKey._({
+class DartEdDSAKey extends EdDSAKey {
+  DartEdDSAKey._({
     required String curveName,
     required ed.PublicKey publicKey,
     ed.PrivateKey? privateKey,
@@ -10,7 +10,7 @@ class PythonEdDSAKey extends EdDSAKey {
         _privateKey = privateKey,
         _bitLength = curveName == 'Ed25519' ? 256 : 456;
 
-  factory PythonEdDSAKey.ed25519(
+  factory DartEdDSAKey.ed25519(
       {Uint8List? publicKey, Uint8List? privateKey}) {
     if (publicKey == null && privateKey == null) {
       throw ArgumentError(
@@ -32,7 +32,7 @@ class PythonEdDSAKey extends EdDSAKey {
       }
       pubObj = ed.PublicKey(publicKey.toList());
     }
-    return PythonEdDSAKey._(
+    return DartEdDSAKey._(
       curveName: 'Ed25519',
       publicKey: pubObj,
       privateKey: privObj,

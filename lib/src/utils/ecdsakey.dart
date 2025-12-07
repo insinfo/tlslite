@@ -2,7 +2,7 @@ import 'dart:typed_data';
 
 import 'cryptomath.dart';
 
-/// Abstract base class for ECDSA keys, mirroring tlslite-ng's API.
+/// Abstract base class for ECDSA keys
 abstract class ECDSAKey {
   /// Size of the curve order, in bits.
   int get bitLength;

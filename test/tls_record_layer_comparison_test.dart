@@ -27,7 +27,7 @@ String toHex(Uint8List bytes) {
   return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
 }
 
-/// Run Python code and return output
+/// Run code and return output
 Future<String> runPython(String code) async {
   final pythonPath = 'C:/MyDartProjects/tlslite/tlslite-ng';
   final result = await Process.run(
@@ -526,7 +526,7 @@ print("CIPHERTEXT:" + bytearray(ciphertext).hex())
       ]);
 
       // Encrypt
-      final cipher = Chacha20Poly1305(key, 'python');
+      final cipher = Chacha20Poly1305(key, 'dart');
       final ciphertext = cipher.seal(nonce, plaintext, authData);
 
       expect(toHex(nonce), equals(pythonNonce),
@@ -602,7 +602,7 @@ print(bytearray(ciphertext).hex())
           plaintext.length & 0xff
         ]);
 
-        final cipher = Chacha20Poly1305(key, 'python');
+        final cipher = Chacha20Poly1305(key, 'dart');
         final ciphertext = cipher.seal(nonce, plaintext, authData);
 
         expect(toHex(ciphertext), equals(pythonResult),
@@ -677,7 +677,7 @@ print(bytearray(ciphertext).hex())
         plaintextLen & 0xff
       ]);
 
-      final cipher = Chacha20Poly1305(key, 'python');
+      final cipher = Chacha20Poly1305(key, 'dart');
       final decrypted = cipher.open(nonce, ciphertext, authData);
 
       expect(decrypted, isNotNull, reason: 'Decryption should succeed');
@@ -809,7 +809,7 @@ print(bytearray(ciphertext).hex())
         finishedMessage.length & 0xff
       ]);
 
-      final cipher = Chacha20Poly1305(key, 'python');
+      final cipher = Chacha20Poly1305(key, 'dart');
       final ciphertext = cipher.seal(nonce, finishedMessage, authData);
 
       expect(toHex(ciphertext), equals(pythonResult),
@@ -818,8 +818,8 @@ print(bytearray(ciphertext).hex())
   });
 
   group('AES-GCM Record Layer', () {
-    // NOTE: AES-GCM comparison with Python is already covered in crypto_python_comparison_test.dart
-    // The Python API for raw AES in ECB mode is complex, so we skip this specific test
+    // NOTE: AES-GCM comparison with  is already covered in crypto_comparison_test.dart
+    // The  API for raw AES in ECB mode is complex, so we skip this specific test
     // The important record layer logic (nonce, AAD) is tested above with ChaCha20-Poly1305
     test('AES-GCM nonce and AAD construction', () {
       // Just verify our Dart implementation matches expected format

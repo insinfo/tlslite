@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'tripledes.dart';
 
 TripleDES newTripleDES(List<int> key, List<int> iv) {
-  return PythonTripleDES(Uint8List.fromList(key), Uint8List.fromList(iv));
+  return DartTripleDES(Uint8List.fromList(key), Uint8List.fromList(iv));
 }
 
 abstract class _BaseDes {
@@ -1043,14 +1043,14 @@ class Des extends _BaseDes {
   }
 }
 
-class PythonTripleDES extends TripleDES {
-  PythonTripleDES(Uint8List key, Uint8List iv)
+class DartTripleDES extends TripleDES {
+  DartTripleDES(Uint8List key, Uint8List iv)
       : _key1 = Des(key.sublist(0, 8), iv),
         _key2 = Des(key.sublist(8, 16), iv),
         _key3 = key.length == 16
             ? Des(key.sublist(0, 8), iv)
             : Des(key.sublist(16, 24), iv),
-        super(key, tripleDesModeCBC, iv, 'python');
+        super(key, tripleDesModeCBC, iv, 'dart');
 
   final Des _key1;
   final Des _key2;

@@ -1,6 +1,4 @@
-// Author: Trevor Perrin
-// Ported to Dart from tlslite-ng
-// See the LICENSE file for legal information regarding use of this file.
+
 
 /// TLS Lite + Socket Server Mixin for creating TLS servers.
 library;
@@ -9,7 +7,7 @@ import 'dart:async' show unawaited;
 import 'dart:io' show InternetAddress, ServerSocket, Socket;
 
 import '../handshake_settings.dart' show HandshakeSettings;
-import '../tlsconnection.dart' show TlsConnection;
+import '../tls_connection.dart' show TlsConnection;
 import '../x509certchain.dart' show X509CertChain;
 
 /// Mixin that adds TLS support to any TCP server.

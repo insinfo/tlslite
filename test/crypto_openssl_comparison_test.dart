@@ -9,7 +9,7 @@ import 'package:test/test.dart';
 import 'package:tlslite/src/openssl/generated/ffi.dart';
 import 'package:tlslite/src/openssl/openssl_loader.dart';
 import 'package:tlslite/src/utils/chacha20_poly1305.dart';
-import 'package:tlslite/src/utils/python_aesgcm.dart' as python_aesgcm;
+import 'package:tlslite/src/utils/dart_aesgcm.dart' as dart_aesgcm;
 import 'package:tlslite/src/utils/poly1305.dart';
 import 'package:tlslite/src/utils/tlshashlib.dart';
 import 'package:tlslite/src/utils/tlshmac.dart';
@@ -377,7 +377,7 @@ void main() {
       final plaintext = hex(v['plaintext']!);
       final expected = hex(v['expected']!);
 
-      final dart = Chacha20Poly1305(key, 'python');
+      final dart = Chacha20Poly1305(key, 'dart');
       final dartResult = dart.seal(nonce, plaintext, aad);
 
       expect(dartResult, equals(expected), reason: 'Dart ChaCha20-Poly1305 should match RFC 7539');
@@ -396,7 +396,7 @@ void main() {
         final aad = v['aad']!.isNotEmpty ? hex(v['aad']!) : Uint8List(0);
         final plaintext = v['plaintext']!.isNotEmpty ? hex(v['plaintext']!) : Uint8List(0);
 
-        final dart = Chacha20Poly1305(key, 'python');
+        final dart = Chacha20Poly1305(key, 'dart');
         final dartResult = dart.seal(nonce, plaintext, aad);
 
         final opensslResult = openssl.chacha20Poly1305Seal(key, nonce, plaintext, aad);
@@ -423,7 +423,7 @@ void main() {
       final opensslCiphertext = openssl.chacha20Poly1305Seal(key, nonce, plaintext, aad);
 
       // Decrypt with Dart
-      final dart = Chacha20Poly1305(key, 'python');
+      final dart = Chacha20Poly1305(key, 'dart');
       final decrypted = dart.open(nonce, opensslCiphertext, aad);
 
       expect(decrypted, isNotNull, reason: 'Decryption should succeed');
@@ -469,7 +469,7 @@ void main() {
         final plaintext = v['plaintext']!.isNotEmpty ? hex(v['plaintext']!) : Uint8List(0);
         final expected = hex(v['expected']!);
 
-        final aes = python_aesgcm.newAESGCM(key);
+        final aes = dart_aesgcm.newAESGCM(key);
         final result = aes.seal(nonce, plaintext, aad);
 
         expect(result, equals(expected),
@@ -492,7 +492,7 @@ void main() {
         final aad = v['aad']!.isNotEmpty ? hex(v['aad']!) : Uint8List(0);
         final plaintext = v['plaintext']!.isNotEmpty ? hex(v['plaintext']!) : Uint8List(0);
 
-        final aes = python_aesgcm.newAESGCM(key);
+        final aes = dart_aesgcm.newAESGCM(key);
         final dartResult = aes.seal(nonce, plaintext, aad);
 
         final opensslResult = openssl.aes128GcmSeal(key, nonce, plaintext, aad);
@@ -519,7 +519,7 @@ void main() {
       final opensslCiphertext = openssl.aes128GcmSeal(key, nonce, plaintext, aad);
 
       // Decrypt with Dart
-      final aes = python_aesgcm.newAESGCM(key);
+      final aes = dart_aesgcm.newAESGCM(key);
       final decrypted = aes.open(nonce, opensslCiphertext, aad);
 
       expect(decrypted, isNotNull, reason: 'Decryption should succeed');
@@ -676,7 +676,7 @@ void main() {
         final plaintext = Uint8List.fromList(List.generate(size, (i) => i % 256));
         final aad = Uint8List.fromList(List.generate(13, (i) => i * 3));
 
-        final dart = Chacha20Poly1305(key, 'python');
+        final dart = Chacha20Poly1305(key, 'dart');
         final dartResult = dart.seal(nonce, plaintext, aad);
 
         final opensslResult = openssl.chacha20Poly1305Seal(key, nonce, plaintext, aad);
@@ -705,7 +705,7 @@ void main() {
         final plaintext = Uint8List.fromList(List.generate(size, (i) => i % 256));
         final aad = Uint8List.fromList(List.generate(13, (i) => i * 3));
 
-        final aes = python_aesgcm.newAESGCM(key);
+        final aes = dart_aesgcm.newAESGCM(key);
         final dartResult = aes.seal(nonce, plaintext, aad);
 
         final opensslResult = openssl.aes128GcmSeal(key, nonce, plaintext, aad);

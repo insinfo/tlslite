@@ -9,7 +9,7 @@ enum _HandshakePhase {
   complete,
 }
 
-/// Minimal state machine inspired by tlslite-ng's `tlsconnection.py`.
+/// Minimal state machine  
 ///
 /// This focuses on the ordering of ClientHello/ServerHello and Finished
 /// messages, allowing us to determine when the record layer can switch from

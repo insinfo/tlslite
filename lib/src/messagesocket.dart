@@ -123,7 +123,7 @@ class MessageSocket extends RecordLayer {
     await flush();
   }
 
-  /// Blocking variants kept for API parity with tlslite-ng generators.
+  /// Blocking variants kept for API parity with generators.
   Future<(dynamic, Parser)> recvMessageBlocking() {
     return recvMessage();
   }
