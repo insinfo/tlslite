@@ -3,7 +3,7 @@
 /// Compara performance das implementações Montgomery
 
 import 'dart:typed_data';
-import 'package:tlslite/src/utils/montgomery_limbs.dart';
+import 'package:tlslite/src/experimental/montgomery_limbs.dart';
 import 'package:tlslite/src/experimental/montgomery_asm_x86_64.dart';
 
 void main() {

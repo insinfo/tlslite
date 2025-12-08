@@ -3,7 +3,7 @@
 
 import 'dart:typed_data';
 import 'package:test/test.dart';
-import 'package:tlslite/src/utils/montgomery_limbs.dart';
+import 'package:tlslite/src/experimental/montgomery_limbs.dart';
 
 void main() {
   group('BN Basic Operations', () {

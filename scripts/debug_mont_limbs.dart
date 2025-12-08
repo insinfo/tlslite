@@ -1,6 +1,6 @@
 // Debug script for montgomery_limbs
 import 'dart:typed_data';
-import 'package:tlslite/src/utils/montgomery_limbs.dart';
+import 'package:tlslite/src/experimental/montgomery_limbs.dart';
 
 Uint8List bigIntToBytes(BigInt n) {
   if (n == BigInt.zero) return Uint8List(1);

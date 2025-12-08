@@ -4,7 +4,7 @@
 /// contra o BigInt.modPow nativo do Dart.
 
 import 'dart:typed_data';
-import 'package:tlslite/src/utils/montgomery_limbs.dart';
+import 'package:tlslite/src/experimental/montgomery_limbs.dart';
 
 void main() {
   print('='.padRight(70, '='));
