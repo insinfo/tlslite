@@ -1,207 +1,63 @@
 // dart format width=5000
+// Montgomery Multiplication otimizado para RSA
+// referencias C:\MyDartProjects\tlslite\referencias\openssl-master
+// referencias C:\MyDartProjects\tlslite\referencias\sdk-main
+// Baseado em:
+// - Dart SDK bigint_patch.dart (técnicas de half-digit multiplication)
+// - OpenSSL bn_mont.c (algoritmo CIOS Montgomery)
 //
-// Montgomery Multiplication para RSA otimizado
-//
-// Esta implementação usa aritmética de limbs (base 2^32) para evitar BigInt
-// em operações frequentes. Montgomery multiplication converte a exponenciação
-// modular em multiplicações sem divisão.
-//
-// Referência: OpenSSL bn_asm.c, bn_local.h, bn_mont.c
-// Limbs vs BigInt: Limbs é 20.90x mais lento que BigInt
-// No Dart:
-// - int é 64-bit em VM nativa
-// - Usamos limbs de 32-bit para multiplicação 32x32→64 sem overflow
-// - Similar ao BN_LLONG mode do OpenSSL
+// Usa limbs de 32-bit com half-digit (16-bit) multiplication para evitar
+// overflow em multiplicações no Dart VM.
 
 import 'dart:typed_data';
 
 // ============================================================================
-// Constantes e máscaras (similar ao OpenSSL bn_local.h)
+// Constantes
 // ============================================================================
 
-const int _BN_BITS2 = 32; // Bits por limb
-const int _BN_MASK2 = 0xFFFFFFFF; // Máscara para 32 bits
+const int _digitBits = 32;
+const int _digitMask = 0xFFFFFFFF;
 
 // ============================================================================
-// Operações primitivas (similar ao OpenSSL bn_asm.c)
+// Funções de array
 // ============================================================================
 
-/// Extrai low word de um valor 64-bit
+/// Subtração: rp = ap - bp, retorna borrow
 @pragma('vm:prefer-inline')
-int _Lw(int t) => t & _BN_MASK2;
+int _subWords(Uint32List rp, int rpOff, Uint32List ap, int apOff, Uint32List bp, int bpOff, int num) {
+  int borrow = 0;
+  for (int i = 0; i < num; i++) {
+    final diff = ap[apOff + i] - bp[bpOff + i] - borrow;
+    rp[rpOff + i] = diff & _digitMask;
+    borrow = (diff < 0) ? 1 : 0;
+  }
+  return borrow;
+}
 
-/// Extrai high word de um valor 64-bit
+/// Comparação: retorna 1 se a > b, -1 se a < b, 0 se iguais
 @pragma('vm:prefer-inline')
-int _Hw(int t) => (t >> _BN_BITS2) & _BN_MASK2;
-
-/// Multiply-add: r = a * w + r + c, retorna carry
-/// Similar ao macro mul_add do OpenSSL
-@pragma('vm:prefer-inline')
-int _mulAdd(Uint32List r, int rIdx, int a, int w, int c) {
-  // t = w * a + r[rIdx] + c (tudo em 64-bit)
-  final t = w * a + r[rIdx] + c;
-  r[rIdx] = _Lw(t);
-  return _Hw(t);
-}
-
-/// Multiply: r = a * w + c, retorna carry
-/// Similar ao macro mul do OpenSSL
-@pragma('vm:prefer-inline')
-int _mul(Uint32List r, int rIdx, int a, int w, int c) {
-  final t = w * a + c;
-  r[rIdx] = _Lw(t);
-  return _Hw(t);
-}
-
-/// Square: (r1, r0) = a * a
-@pragma('vm:prefer-inline')
-void _sqr(Uint32List r, int rIdx, int a) {
-  final t = a * a;
-  r[rIdx] = _Lw(t);
-  r[rIdx + 1] = _Hw(t);
-}
-
-// ============================================================================
-// Funções de array (similar ao OpenSSL bn_asm.c)
-// ============================================================================
-
-/// bn_mul_add_words: rp += ap * w, retorna carry final
-/// Similar ao OpenSSL bn_mul_add_words
-int bnMulAddWords(Uint32List rp, int rpOff, Uint32List ap, int apOff, int num, int w) {
-  int c = 0;
-  
-  // Unroll por 4 para performance (como OpenSSL)
-  while (num >= 4) {
-    c = _mulAdd(rp, rpOff + 0, ap[apOff + 0], w, c);
-    c = _mulAdd(rp, rpOff + 1, ap[apOff + 1], w, c);
-    c = _mulAdd(rp, rpOff + 2, ap[apOff + 2], w, c);
-    c = _mulAdd(rp, rpOff + 3, ap[apOff + 3], w, c);
-    rpOff += 4;
-    apOff += 4;
-    num -= 4;
-  }
-  
-  while (num > 0) {
-    c = _mulAdd(rp, rpOff, ap[apOff], w, c);
-    rpOff++;
-    apOff++;
-    num--;
-  }
-  
-  return c;
-}
-
-/// bn_mul_words: rp = ap * w, retorna carry final
-int bnMulWords(Uint32List rp, int rpOff, Uint32List ap, int apOff, int num, int w) {
-  int c = 0;
-  
-  while (num >= 4) {
-    c = _mul(rp, rpOff + 0, ap[apOff + 0], w, c);
-    c = _mul(rp, rpOff + 1, ap[apOff + 1], w, c);
-    c = _mul(rp, rpOff + 2, ap[apOff + 2], w, c);
-    c = _mul(rp, rpOff + 3, ap[apOff + 3], w, c);
-    rpOff += 4;
-    apOff += 4;
-    num -= 4;
-  }
-  
-  while (num > 0) {
-    c = _mul(rp, rpOff, ap[apOff], w, c);
-    rpOff++;
-    apOff++;
-    num--;
-  }
-  
-  return c;
-}
-
-/// bn_add_words: rp = ap + bp, retorna carry
-int bnAddWords(Uint32List rp, int rpOff, Uint32List ap, int apOff, Uint32List bp, int bpOff, int num) {
-  int c = 0;
-  
-  while (num >= 4) {
-    int t = ap[apOff + 0] + bp[bpOff + 0] + c;
-    rp[rpOff + 0] = _Lw(t);
-    c = _Hw(t);
-    
-    t = ap[apOff + 1] + bp[bpOff + 1] + c;
-    rp[rpOff + 1] = _Lw(t);
-    c = _Hw(t);
-    
-    t = ap[apOff + 2] + bp[bpOff + 2] + c;
-    rp[rpOff + 2] = _Lw(t);
-    c = _Hw(t);
-    
-    t = ap[apOff + 3] + bp[bpOff + 3] + c;
-    rp[rpOff + 3] = _Lw(t);
-    c = _Hw(t);
-    
-    rpOff += 4;
-    apOff += 4;
-    bpOff += 4;
-    num -= 4;
-  }
-  
-  while (num > 0) {
-    final t = ap[apOff] + bp[bpOff] + c;
-    rp[rpOff] = _Lw(t);
-    c = _Hw(t);
-    rpOff++;
-    apOff++;
-    bpOff++;
-    num--;
-  }
-  
-  return c;
-}
-
-/// bn_sub_words: rp = ap - bp, retorna borrow
-int bnSubWords(Uint32List rp, int rpOff, Uint32List ap, int apOff, Uint32List bp, int bpOff, int num) {
-  int c = 0; // borrow
-  
-  while (num >= 4) {
-    int t = ap[apOff + 0] - bp[bpOff + 0] - c;
-    rp[rpOff + 0] = _Lw(t);
-    c = (t < 0) ? 1 : 0;
-    
-    t = ap[apOff + 1] - bp[bpOff + 1] - c;
-    rp[rpOff + 1] = _Lw(t);
-    c = (t < 0) ? 1 : 0;
-    
-    t = ap[apOff + 2] - bp[bpOff + 2] - c;
-    rp[rpOff + 2] = _Lw(t);
-    c = (t < 0) ? 1 : 0;
-    
-    t = ap[apOff + 3] - bp[bpOff + 3] - c;
-    rp[rpOff + 3] = _Lw(t);
-    c = (t < 0) ? 1 : 0;
-    
-    rpOff += 4;
-    apOff += 4;
-    bpOff += 4;
-    num -= 4;
-  }
-  
-  while (num > 0) {
-    final t = ap[apOff] - bp[bpOff] - c;
-    rp[rpOff] = _Lw(t);
-    c = (t < 0) ? 1 : 0;
-    rpOff++;
-    apOff++;
-    bpOff++;
-    num--;
-  }
-  
-  return c;
-}
-
-/// Compara dois arrays: retorna 1 se a > b, -1 se a < b, 0 se iguais
-int bnCmpWords(Uint32List a, Uint32List b, int num) {
+int _cmpWords(Uint32List a, Uint32List b, int num) {
   for (int i = num - 1; i >= 0; i--) {
     if (a[i] > b[i]) return 1;
     if (a[i] < b[i]) return -1;
   }
   return 0;
+}
+
+/// Adição pública: rp = ap + bp, retorna carry
+int bnAddWords(Uint32List rp, int rpOff, Uint32List ap, int apOff, Uint32List bp, int bpOff, int num) {
+  int carry = 0;
+  for (int i = 0; i < num; i++) {
+    final sum = ap[apOff + i] + bp[bpOff + i] + carry;
+    rp[rpOff + i] = sum & _digitMask;
+    carry = sum >> _digitBits;
+  }
+  return carry;
+}
+
+/// Subtração pública: rp = ap - bp, retorna borrow
+int bnSubWords(Uint32List rp, int rpOff, Uint32List ap, int apOff, Uint32List bp, int bpOff, int num) {
+  return _subWords(rp, rpOff, ap, apOff, bp, bpOff, num);
 }
 
 // ============================================================================
@@ -253,7 +109,7 @@ class BN {
       limb |= bytes[i] << shift;
       shift += 8;
       if (shift >= 32) {
-        bn.d[limbIdx++] = limb & _BN_MASK2;
+        bn.d[limbIdx++] = limb & _digitMask;
         limb = 0;
         shift = 0;
       }
@@ -398,7 +254,7 @@ class MontgomeryCtx {
   /// Cria contexto a partir do módulo
   factory MontgomeryCtx.fromModulus(BN mod) {
     final numLimbs = mod.top;
-    final ri = numLimbs * _BN_BITS2;
+    final ri = numLimbs * _digitBits;
     
     // Calcula n0 = -N^(-1) mod 2^32
     final n0 = _computeN0Inv(mod.d[0]);
@@ -420,13 +276,13 @@ class MontgomeryCtx {
     int x = n0; // x0 = n0 (works because n0 is odd)
     
     // 5 iterações para convergir em 32 bits
-    x = (x * (2 - ((n0 * x) & _BN_MASK2))) & _BN_MASK2;
-    x = (x * (2 - ((n0 * x) & _BN_MASK2))) & _BN_MASK2;
-    x = (x * (2 - ((n0 * x) & _BN_MASK2))) & _BN_MASK2;
-    x = (x * (2 - ((n0 * x) & _BN_MASK2))) & _BN_MASK2;
-    x = (x * (2 - ((n0 * x) & _BN_MASK2))) & _BN_MASK2;
+    x = (x * (2 - ((n0 * x) & _digitMask))) & _digitMask;
+    x = (x * (2 - ((n0 * x) & _digitMask))) & _digitMask;
+    x = (x * (2 - ((n0 * x) & _digitMask))) & _digitMask;
+    x = (x * (2 - ((n0 * x) & _digitMask))) & _digitMask;
+    x = (x * (2 - ((n0 * x) & _digitMask))) & _digitMask;
     
-    return (-x) & _BN_MASK2;
+    return (-x) & _digitMask;
   }
 
   /// Calcula R*R mod N onde R = 2^ri
@@ -446,7 +302,7 @@ class MontgomeryCtx {
       int carry = 0;
       for (int j = 0; j < rr.top; j++) {
         int t = (rr.d[j] << 1) | carry;
-        rr.d[j] = t & _BN_MASK2;
+        rr.d[j] = t & _digitMask;
         carry = t >> 32;
       }
       if (carry != 0) {
@@ -483,10 +339,10 @@ class MontgomeryCtx {
       final bi = i < b.top ? b.d[i] : 0;
       final diff = a.d[i] - bi - borrow;
       if (diff < 0) {
-        a.d[i] = (diff + 0x100000000) & _BN_MASK2;
+        a.d[i] = (diff + 0x100000000) & _digitMask;
         borrow = 1;
       } else {
-        a.d[i] = diff & _BN_MASK2;
+        a.d[i] = diff & _digitMask;
         borrow = 0;
       }
     }
@@ -500,89 +356,109 @@ class MontgomeryCtx {
 
 /// Multiplicação Montgomery: ret = a * b * R^(-1) mod N
 /// Implementa o algoritmo CIOS (Coarsely Integrated Operand Scanning)
+/// Usa multiplicação 32x32 nativa do Dart VM (64-bit integers)
 void bnMontMul(BN ret, BN a, BN b, MontgomeryCtx mont) {
   final n = mont.n;
   final numLimbs = n.top;
   final n0 = mont.n0;
+  final nDigits = n.d;
   
-  // Garante espaço suficiente
+  // Garante espaço suficiente no resultado
   ret.expand(numLimbs + 1);
   
-  // Temp para resultado intermediário (precisa de 2*numLimbs + 1)
-  final t = Uint32List(numLimbs * 2 + 2);
+  // Temp para resultado intermediário (precisa de 2*numLimbs + 2)
+  final tLen = numLimbs * 2 + 2;
+  final t = Uint32List(tLen);
+  
+  // Cache tamanhos
+  final aTop = a.top;
+  final bTop = b.top;
+  final aDigits = a.d;
+  final bDigits = b.d;
   
   // CIOS: Para cada limb de a
   for (int i = 0; i < numLimbs; i++) {
-    final ai = i < a.top ? a.d[i] : 0;
-    
-    // t = t + a[i] * b
+    final ai = (i < aTop) ? aDigits[i] : 0;
+
+    // t = t + ai * b
     int carry = 0;
     for (int j = 0; j < numLimbs; j++) {
-      final bj = j < b.top ? b.d[j] : 0;
-      // Multiplica 32x32 usando int de 64 bits do Dart
-      // ai * bj cabe em 64 bits (32+32=64)
-      final prod = ai * bj; // até 64 bits
-      final sum = t[i + j] + (prod & 0xFFFFFFFF) + carry;
-      t[i + j] = sum & 0xFFFFFFFF;
-      carry = (prod >>> 32) + (sum >>> 32);
+      final bj = (j < bTop) ? bDigits[j] : 0;
+      final sum = t[j] + ai * bj + carry;
+      t[j] = sum & _digitMask;
+      carry = sum >> _digitBits;
     }
-    // Propaga carry para palavras superiores
-    int idx = i + numLimbs;
-    while (carry != 0 && idx < t.length) {
-      final sum = t[idx] + carry;
-      t[idx] = sum & 0xFFFFFFFF;
-      carry = sum >>> 32;
-      idx++;
-    }
-    
-    // m = t[i] * n0 mod 2^32
-    final m = (t[i] * n0) & 0xFFFFFFFF;
-    
+    int acc = t[numLimbs] + carry;
+    t[numLimbs] = acc & _digitMask;
+    int overflow = acc >> _digitBits; // carry que pode sobrar após redução
+
+    // m = t[0] * n0 mod 2^32
+    final m = (t[0] * n0) & _digitMask;
+
     // t = t + m * n
     carry = 0;
     for (int j = 0; j < numLimbs; j++) {
-      final nj = n.d[j];
-      final prod = m * nj;
-      final sum = t[i + j] + (prod & 0xFFFFFFFF) + carry;
-      t[i + j] = sum & 0xFFFFFFFF;
-      carry = (prod >>> 32) + (sum >>> 32);
+      final sum = t[j] + m * nDigits[j] + carry;
+      t[j] = sum & _digitMask;
+      carry = sum >> _digitBits;
     }
-    // Propaga carry
-    idx = i + numLimbs;
-    while (carry != 0 && idx < t.length) {
-      final sum = t[idx] + carry;
-      t[idx] = sum & 0xFFFFFFFF;
-      carry = sum >>> 32;
-      idx++;
+    acc = t[numLimbs] + carry;
+    t[numLimbs] = acc & _digitMask;
+    overflow += acc >> _digitBits;
+
+    // Desloca uma palavra (descarta t[0], equivalente a dividir por R)
+    for (int j = 0; j < numLimbs; j++) {
+      t[j] = t[j + 1];
     }
+    t[numLimbs] = overflow;
   }
-  
-  // Copia resultado (shift right por numLimbs words)
+
+  // Copia resultado (t[0..numLimbs-1])
+  final retDigits = ret.d;
   for (int i = 0; i < numLimbs; i++) {
-    ret.d[i] = t[i + numLimbs];
+    retDigits[i] = t[i];
   }
   ret.top = numLimbs;
-  
-  // Se ret >= n, subtrai n
-  if (t[numLimbs * 2] != 0 || bnCmpWords(ret.d, n.d, numLimbs) >= 0) {
-    bnSubWords(ret.d, 0, ret.d, 0, n.d, 0, numLimbs);
+
+  // Se ret >= n ou sobrou carry, subtrai n
+  if (t[numLimbs] != 0 || _cmpWords(retDigits, nDigits, numLimbs) >= 0) {
+    _subWords(retDigits, 0, retDigits, 0, nDigits, 0, numLimbs);
   }
-  
+
   ret._fixTop();
 }
 
 /// Quadrado Montgomery: ret = a^2 * R^(-1) mod N
 /// Otimizado para quando a == b
+/// Quadrado Montgomery: ret = a^2 * R^(-1) mod N
+/// Otimizado para quando a == b
 void bnMontSqr(BN ret, BN a, MontgomeryCtx mont) {
-  // Por enquanto, usa multiplicação normal
-  // TODO: Otimizar com squaring específico
-  bnMontMul(ret, a, a, mont);
+  // Usa buffer temporário para evitar aliasing
+  final temp = BN(mont.n.top + 1);
+  bnMontMul(temp, a, a, mont);
+  // Copia resultado
+  ret.expand(temp.top);
+  for (int i = 0; i < temp.top; i++) {
+    ret.d[i] = temp.d[i];
+  }
+  ret.top = temp.top;
 }
 
 /// Converte para Montgomery form: ret = a * R mod N
 void bnToMont(BN ret, BN a, MontgomeryCtx mont) {
   // ret = a * R mod N = a * R^2 * R^(-1) mod N
-  bnMontMul(ret, a, mont.rr, mont);
+  // Trata aliasing: se ret == a, usa buffer temporário
+  if (identical(ret, a)) {
+    final temp = BN(mont.n.top + 1);
+    bnMontMul(temp, a, mont.rr, mont);
+    ret.expand(temp.top);
+    for (int i = 0; i < temp.top; i++) {
+      ret.d[i] = temp.d[i];
+    }
+    ret.top = temp.top;
+  } else {
+    bnMontMul(ret, a, mont.rr, mont);
+  }
 }
 
 /// Converte de Montgomery form: ret = a * R^(-1) mod N
@@ -590,7 +466,18 @@ void bnFromMont(BN ret, BN a, MontgomeryCtx mont) {
   // Multiplica por 1 (que não está em Montgomery form)
   final one = BN(1);
   one.setOne();
-  bnMontMul(ret, a, one, mont);
+  // Trata aliasing: se ret == a, usa buffer temporário
+  if (identical(ret, a)) {
+    final temp = BN(mont.n.top + 1);
+    bnMontMul(temp, a, one, mont);
+    ret.expand(temp.top);
+    for (int i = 0; i < temp.top; i++) {
+      ret.d[i] = temp.d[i];
+    }
+    ret.top = temp.top;
+  } else {
+    bnMontMul(ret, a, one, mont);
+  }
 }
 
 // ============================================================================
@@ -631,6 +518,9 @@ void bnModExpMont(BN ret, BN base, BN exp, MontgomeryCtx mont) {
   // Inicializa resultado com 1 em Montgomery form
   final acc = BN(numLimbs);
   acc.copyFrom(table[0]);
+  
+  // Buffer temporário para evitar aliasing
+  final temp = BN(numLimbs + 1);
   
   // Processa expoente do bit mais significativo para o menos significativo
   // usando sliding window
@@ -675,9 +565,14 @@ void bnModExpMont(BN ret, BN base, BN exp, MontgomeryCtx mont) {
         bnMontSqr(acc, acc, mont);
       }
       
-      // Multiplica pelo valor da janela
+      // Multiplica pelo valor da janela (usando temp para evitar aliasing)
       if (window > 0) {
-        bnMontMul(acc, acc, table[window], mont);
+        bnMontMul(temp, acc, table[window], mont);
+        // Copia temp para acc
+        for (int j = 0; j < temp.top; j++) {
+          acc.d[j] = temp.d[j];
+        }
+        acc.top = temp.top;
       }
       
       bitPos -= windowLen;
@@ -708,6 +603,9 @@ void bnModExpMontSimple(BN ret, BN base, BN exp, MontgomeryCtx mont) {
   acc.setOne();
   bnToMont(acc, acc, mont);
   
+  // Buffer temporário para evitar aliasing em multiplicações
+  final temp = BN(numLimbs + 1);
+  
   // Square-and-multiply da esquerda para direita
   for (int i = numBits - 1; i >= 0; i--) {
     // Sempre faz squaring
@@ -717,7 +615,13 @@ void bnModExpMontSimple(BN ret, BN base, BN exp, MontgomeryCtx mont) {
     final limbIdx = i ~/ 32;
     final bitIdx = i % 32;
     if (limbIdx < exp.top && ((exp.d[limbIdx] >> bitIdx) & 1) == 1) {
-      bnMontMul(acc, acc, baseMont, mont);
+      // Usa temp para evitar aliasing: temp = acc * baseMont
+      bnMontMul(temp, acc, baseMont, mont);
+      // Copia temp para acc
+      for (int j = 0; j < temp.top; j++) {
+        acc.d[j] = temp.d[j];
+      }
+      acc.top = temp.top;
     }
   }
   

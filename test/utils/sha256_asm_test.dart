@@ -6,7 +6,7 @@ import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:crypto/crypto.dart' as crypto;
 
-import 'package:tlslite/src/utils/sha256_asm_x86_64.dart';
+import 'package:tlslite/src/experimental/sha256_asm_x86_64.dart';
 
 void main() {
   group('ShaNiSupport', () {

@@ -2,7 +2,7 @@
 // Benchmark: ChaCha20 ASM (SSE2) vs Original
 
 import 'dart:typed_data';
-import 'package:tlslite/src/utils/chacha_asm_x86_64.dart';
+import 'package:tlslite/src/experimental/chacha_asm_x86_64.dart';
 import 'package:tlslite/src/utils/chacha.dart' as original;
 
 void main() {

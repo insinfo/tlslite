@@ -4,7 +4,7 @@
 
 import 'dart:typed_data';
 import 'package:tlslite/src/utils/montgomery_limbs.dart';
-import 'package:tlslite/src/utils/montgomery_asm_x86_64.dart';
+import 'package:tlslite/src/experimental/montgomery_asm_x86_64.dart';
 
 void main() {
   print('='.padRight(70, '='));
@@ -60,15 +60,25 @@ void _benchmarkSize(String name, int bits) {
 
   // Verifica Montgomery ASM Context
   final ctx = MontgomeryAsmContext.fromModulus(modBytes);
-  final asmResult = _bytesToBigInt(ctx.modPow(baseBytes, expBytes));
-  if (asmResult != expected) {
-    print('ERRO Montgomery ASM: resultado incorreto!');
-    print('  Esperado: $expected');
-    print('  Obtido:   $asmResult');
+  try {
+    final asmResultBytes = ctx.modPow(baseBytes, expBytes);
+    final asmResult = _bytesToBigInt(asmResultBytes);
+    if (asmResult != expected) {
+      print('ERRO Montgomery ASM: resultado incorreto!');
+      print('  numLimbs: ${ctx.numLimbs}');
+      print('  Esperado: $expected');
+      print('  Obtido:   $asmResult');
+      ctx.dispose();
+      return;
+    }
+    print('✓ Montgomery ASM Context: OK ${bits == 256 ? "(usando shellcode 4-limbs)" : "(usando shellcode genérico)"}');
+  } catch (e, st) {
+    print('ERRO Montgomery ASM: excecao!');
+    print('  $e');
+    print('  $st');
     ctx.dispose();
     return;
   }
-  print('✓ Montgomery ASM Context: OK ${bits == 256 ? "(usando shellcode 4-limbs)" : "(usando shellcode genérico)"}');
   ctx.dispose();
 
   // Warmup

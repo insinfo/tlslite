@@ -1,4 +1,4 @@
-/// Testes para Montgomery Fast
+/// Testes para Montgomery 
 /// Compara resultados com BigInt nativo para validação
 
 import 'dart:typed_data';

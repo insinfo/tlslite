@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:test/test.dart';
 import 'package:tlslite/src/utils/rijndael_fast.dart';
-import 'package:tlslite/src/utils/rijndael_fast_asm_x86_64.dart';
+import 'package:tlslite/src/experimental/rijndael_fast_asm_x86_64.dart';
 
 Uint8List _hex(String s) {
   s = s.replaceAll(' ', '');

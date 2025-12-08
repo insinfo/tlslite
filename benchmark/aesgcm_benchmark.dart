@@ -3,9 +3,9 @@
 
 import 'dart:typed_data';
 import 'package:tlslite/src/utils/aesgcm.dart';
-import 'package:tlslite/src/utils/aesgcm_asm_x86_64.dart';
+import 'package:tlslite/src/experimental/aesgcm_asm_x86_64.dart';
 import 'package:tlslite/src/utils/rijndael_fast.dart';
-import 'package:tlslite/src/utils/rijndael_fast_asm_x86_64.dart';
+import 'package:tlslite/src/experimental/rijndael_fast_asm_x86_64.dart';
 
 void main() {
   print('=== AES-GCM Benchmark: BigInt vs PCLMULQDQ ===\n');
