@@ -2,6 +2,10 @@
 ///
 /// These tests start an OpenSSL s_server and connect to it with the Dart TLS client
 /// to test real TLS 1.2 handshakes and data exchange.
+// No runner Windows do GitHub o `openssl` do PATH é o do MSYS/Git: o
+// s_server não encerra com Process.kill e os testes travam no stop(). O
+// cliente testado é Dart puro; a interoperabilidade é coberta no Linux e macOS.
+@TestOn('!windows')
 library;
 
 import 'dart:async';

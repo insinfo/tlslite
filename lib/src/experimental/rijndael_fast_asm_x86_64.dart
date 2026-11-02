@@ -27,8 +27,11 @@ class AesNiSupport {
   }
 
   static bool _checkAesNiSupport() {
-    // Só suporta x86_64 Windows/Linux
-    if (!Platform.isWindows && !Platform.isLinux) {
+    // Os shellcodes de AES-NI deste arquivo seguem a convenção de chamada do
+    // Win64 (argumentos em rcx/rdx). No Linux (System V: rdi/rsi) eles leem
+    // lixo e derrubam o processo, então só são usados no Windows x64; nos
+    // demais sistemas fica o fallback em Dart. Ver TODO.md (asmjit).
+    if (!Platform.isWindows) {
       return false;
     }
 

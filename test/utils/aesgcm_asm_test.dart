@@ -46,8 +46,22 @@ void main() {
 
       // H = hash key (não-zero)
       final h = Uint8List.fromList([
-        0x66, 0xe9, 0x4b, 0xd4, 0xef, 0x8a, 0x2c, 0x3b,
-        0x88, 0x4c, 0xfa, 0x59, 0xca, 0x34, 0x2b, 0x2e
+        0x66,
+        0xe9,
+        0x4b,
+        0xd4,
+        0xef,
+        0x8a,
+        0x2c,
+        0x3b,
+        0x88,
+        0x4c,
+        0xfa,
+        0x59,
+        0xca,
+        0x34,
+        0x2b,
+        0x2e
       ]);
 
       final ghash = GhashAsm(h);
@@ -55,8 +69,22 @@ void main() {
       try {
         // Dados de teste
         final data = Uint8List.fromList([
-          0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-          0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f
+          0x00,
+          0x01,
+          0x02,
+          0x03,
+          0x04,
+          0x05,
+          0x06,
+          0x07,
+          0x08,
+          0x09,
+          0x0a,
+          0x0b,
+          0x0c,
+          0x0d,
+          0x0e,
+          0x0f
         ]);
 
         ghash.update(data);
@@ -68,14 +96,17 @@ void main() {
         final result2 = ghash.finalize(0, 16);
 
         expect(result1, equals(result2));
-        print('GHASH result: ${result1.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+        print(
+            'GHASH result: ${result1.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
       } finally {
         ghash.dispose();
       }
     });
   });
 
-  group('AESGCMAsm', () {
+  // Os testes cifram blocos com RijndaelAsmX8664 (AES-NI, só Win64).
+  group('AESGCMAsm',
+      skip: AesNiSupport.isSupported ? null : 'AES-NI indisponível', () {
     test('verifica disponibilidade', () {
       final supported = AESGCMAsm.isSupported;
       print('AES-GCM ASM suportado: $supported');
@@ -90,20 +121,58 @@ void main() {
 
       // Key AES-128
       final key = Uint8List.fromList([
-        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-        0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f
+        0x00,
+        0x01,
+        0x02,
+        0x03,
+        0x04,
+        0x05,
+        0x06,
+        0x07,
+        0x08,
+        0x09,
+        0x0a,
+        0x0b,
+        0x0c,
+        0x0d,
+        0x0e,
+        0x0f
       ]);
 
       // Nonce 12 bytes
       final nonce = Uint8List.fromList([
-        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-        0x08, 0x09, 0x0a, 0x0b
+        0x00,
+        0x01,
+        0x02,
+        0x03,
+        0x04,
+        0x05,
+        0x06,
+        0x07,
+        0x08,
+        0x09,
+        0x0a,
+        0x0b
       ]);
 
       // Plaintext
       final plaintext = Uint8List.fromList([
-        0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
-        0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff
+        0x00,
+        0x11,
+        0x22,
+        0x33,
+        0x44,
+        0x55,
+        0x66,
+        0x77,
+        0x88,
+        0x99,
+        0xaa,
+        0xbb,
+        0xcc,
+        0xdd,
+        0xee,
+        0xff
       ]);
 
       // AAD
