@@ -1,3 +1,10 @@
+## 1.0.2
+
+- `parsePEMKey` now always throws `FormatException` when an encrypted PKCS#8
+  key is decrypted with a wrong password (it could occasionally throw
+  `ArgumentError` or `RangeError` from the ASN.1 parser)
+- Rename the remaining Portuguese parameter names in `ecc.dart`
+
 ## 1.0.1
 
 - Translate the remaining Portuguese documentation, comments and error
