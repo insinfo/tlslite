@@ -16,16 +16,16 @@ export 'ec/ec_curve.dart' show EcCurve, EcPoint;
 export 'ec/ec_curves.dart'
     show allEcCurves, ecCurveNames, ecCurveByName, ecCurveByOid;
 
-/// Returns the domain parameters of the curve called [nomeCurva]
+/// Returns the domain parameters of the curve called [curveName]
 /// (case-insensitive; aliases such as `prime256v1`, `nistp256` or
 /// `brainpoolP256r1tls13` are accepted).
 ///
 /// Throws [ArgumentError] if the curve is unknown or not supported.
-EcCurve getCurveByName(String nomeCurva) {
-  final curve = ecCurveByName(nomeCurva);
+EcCurve getCurveByName(String curveName) {
+  final curve = ecCurveByName(curveName);
   if (curve == null) {
     throw ArgumentError(
-        "Curve named '$nomeCurva' (normalized: '${nomeCurva.toLowerCase()}') "
+        "Curve named '$curveName' (normalized: '${curveName.toLowerCase()}') "
         "is unknown or not supported by this mapping.");
   }
   return curve;
@@ -34,12 +34,12 @@ EcCurve getCurveByName(String nomeCurva) {
 /// Returns the size in bytes of one coordinate of a point on the curve.
 ///
 /// Accepts an [EcPoint] or an [EcCurve].
-int getPointByteSize(dynamic pontoOuCurva) {
-  if (pontoOuCurva is EcPoint) {
-    return pontoOuCurva.curve.fieldBytes;
+int getPointByteSize(dynamic pointOrCurve) {
+  if (pointOrCurve is EcPoint) {
+    return pointOrCurve.curve.fieldBytes;
   }
-  if (pontoOuCurva is EcCurve) {
-    return pontoOuCurva.fieldBytes;
+  if (pointOrCurve is EcCurve) {
+    return pointOrCurve.fieldBytes;
   }
   throw ArgumentError('The input must be an EcPoint or an EcCurve.');
 }
