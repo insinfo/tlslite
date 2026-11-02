@@ -193,7 +193,16 @@ Object _parsePemWithPureDart(
     }
     final password = passwordCallback();
     final decrypted = decodeEncryptedPrivateKey(encrypted, password);
-    return _parsePkcs8PrivateKey(decrypted);
+    // A wrong password can still yield valid PKCS#7 padding (~1/256), leaving
+    // garbage that the ASN.1 parser rejects with non-FormatException errors.
+    try {
+      return _parsePkcs8PrivateKey(decrypted);
+    } on FormatException {
+      rethrow;
+    } catch (_) {
+      throw const FormatException(
+          'Invalid password or corrupted encrypted private key');
+    }
   }
   if (pemSniff(pemData, 'PRIVATE KEY')) {
     final der = dePem(pemData, 'PRIVATE KEY');
