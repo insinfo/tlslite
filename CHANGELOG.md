@@ -1,3 +1,9 @@
+## 1.0.1
+
+- Translate the remaining Portuguese documentation, comments and error
+  messages to English (mostly the experimental assembly code)
+- No functional changes
+
 ## 1.0.0
 
 First public release: a pure-Dart port of

@@ -12,7 +12,7 @@ import 'tls_extensions.dart';
 import 'tls_protocol.dart';
 
 
-/// Content types alinhados com TLS 1.2/1.3.
+/// Record content types, as defined for TLS 1.2/1.3.
 enum TlsContentType {
   changeCipherSpec(tls_constants.ContentType.changeCipherSpec),
   alert(tls_constants.ContentType.alert),
@@ -148,7 +148,7 @@ class TlsRecordHeader {
 
   factory TlsRecordHeader.fromBytes(Uint8List bytes) {
     if (bytes.length != serializedLength) {
-      throw ArgumentError('TLS record header precisa conter 5 bytes');
+      throw ArgumentError('TLS record header must contain 5 bytes');
     }
     final parser = Parser(bytes);
     final typeByte = parser.get(1);
@@ -168,8 +168,8 @@ class TlsPlaintext {
       : fragment = Uint8List.fromList(fragment) {
     if (header.fragmentLength != this.fragment.length) {
       throw ArgumentError(
-        'Comprimento do fragmento (${this.fragment.length}) '
-        'não bate com o header (${header.fragmentLength})',
+        'Fragment length (${this.fragment.length}) '
+        'does not match the header (${header.fragmentLength})',
       );
     }
   }
@@ -185,7 +185,7 @@ class TlsPlaintext {
   }
 }
 
-/// Estrutura base para mensagens TLS em Dart puro.
+/// Base structure for TLS messages in pure Dart.
 abstract class TlsMessage {
   const TlsMessage(this.contentType);
 
@@ -207,7 +207,7 @@ class TlsAlert extends TlsMessage {
 
   static TlsAlert parse(Uint8List bytes) {
     if (bytes.length < serializedLength) {
-      throw DecodeError('Registro de alerta truncado (${bytes.length} < 2)');
+      throw DecodeError('Truncated alert record (${bytes.length} < 2)');
     }
     final parser = Parser(bytes);
     final level = TlsAlertLevel.fromByte(parser.get(1));
@@ -256,14 +256,14 @@ abstract class TlsHandshakeMessage extends TlsMessage {
     final messages = <TlsHandshakeMessage>[];
     while (!parser.isDone) {
       if (parser.getRemainingLength() < 4) {
-        throw DecodeError('Fragmento de handshake truncado');
+        throw DecodeError('Truncated handshake fragment');
       }
       final typeByte = parser.get(1);
       final length = parser.get(3);
       if (parser.getRemainingLength() < length) {
         throw DecodeError(
-          'Fragmento de handshake espera $length bytes, '
-          'restam apenas ${parser.getRemainingLength()}',
+          'Handshake fragment expects $length bytes, '
+          'only ${parser.getRemainingLength()} remain',
         );
       }
       final body = parser.getFixBytes(length);
@@ -284,15 +284,15 @@ abstract class TlsHandshakeMessage extends TlsMessage {
     final parsed = <TlsParsedHandshakeMessage>[];
     while (!parser.isDone) {
       if (parser.getRemainingLength() < 4) {
-        throw DecodeError('Fragmento de handshake truncado');
+        throw DecodeError('Truncated handshake fragment');
       }
       final start = parser.index;
       final typeByte = parser.get(1);
       final length = parser.get(3);
       if (parser.getRemainingLength() < length) {
         throw DecodeError(
-          'Fragmento de handshake espera $length bytes, '
-          'restam apenas ${parser.getRemainingLength()}',
+          'Handshake fragment expects $length bytes, '
+          'only ${parser.getRemainingLength()} remain',
         );
       }
       final body = parser.getFixBytes(length);
@@ -452,7 +452,7 @@ class TlsClientHello extends TlsHandshakeMessage {
         ),
         super(TlsHandshakeType.clientHello) {
     if (this.random.length != 32) {
-      throw ArgumentError('ClientHello.random precisa de 32 bytes');
+      throw ArgumentError('ClientHello.random must be 32 bytes');
     }
   }
 
@@ -498,7 +498,7 @@ class TlsClientHello extends TlsHandshakeMessage {
     final sessionId = parser.getFixBytes(sessionIdLength);
     final cipherSuitesLength = parser.get(2);
     if (cipherSuitesLength % 2 != 0) {
-      throw DecodeError('Lista de cipher_suites com tamanho inválido');
+      throw DecodeError('cipher_suites list has an invalid length');
     }
     final cipherSuites = <int>[];
     for (int i = 0; i < cipherSuitesLength ~/ 2; i++) {
@@ -540,7 +540,7 @@ class TlsClientHello extends TlsHandshakeMessage {
       statusRequest = extensions.first<TlsStatusRequestExtension>();
     }
     if (!parser.isDone) {
-      throw DecodeError('Sobrou payload após ClientHello');
+      throw DecodeError('Trailing payload after ClientHello');
     }
     return TlsClientHello(
       clientVersion: version,
@@ -561,7 +561,7 @@ class TlsClientHello extends TlsHandshakeMessage {
   static TlsClientHello parseSsl2(Uint8List body) {
     final parser = Parser(body);
     if (parser.getRemainingLength() < 6) {
-      throw DecodeError('SSLv2 ClientHello truncado');
+      throw DecodeError('Truncated SSLv2 ClientHello');
     }
     final clientVersion = TlsProtocolVersion(parser.get(1), parser.get(1));
     final cipherSpecsLength = parser.get(2);
@@ -571,10 +571,10 @@ class TlsClientHello extends TlsHandshakeMessage {
         cipherSpecsLength + sessionIdLength + challengeLength;
     if (parser.getRemainingLength() < expectedLength) {
       throw DecodeError(
-          'SSLv2 ClientHello incompleto (faltam ${expectedLength - parser.getRemainingLength()} bytes)');
+          'Incomplete SSLv2 ClientHello (${expectedLength - parser.getRemainingLength()} bytes missing)');
     }
     if (cipherSpecsLength % 3 != 0) {
-      throw DecodeError('SSLv2 cipher_specs precisa ser múltiplo de 3 bytes');
+      throw DecodeError('SSLv2 cipher_specs must be a multiple of 3 bytes');
     }
     final cipherSpecs = parser.getFixBytes(cipherSpecsLength);
     final sessionId = parser.getFixBytes(sessionIdLength);
@@ -593,12 +593,12 @@ class TlsClientHello extends TlsHandshakeMessage {
     }
     if (cipherSuites.isEmpty) {
       throw DecodeError(
-          'SSLv2 ClientHello não contém cipher suites compatíveis com TLS');
+          'SSLv2 ClientHello contains no TLS-compatible cipher suites');
     }
 
     if (challengeLength < 16 || challengeLength > 32) {
       throw DecodeError(
-          'SSLv2 ClientHello challenge precisa ter entre 16 e 32 bytes');
+          'SSLv2 ClientHello challenge must be between 16 and 32 bytes');
     }
     Uint8List random;
     if (challengeLength == 32) {
@@ -678,7 +678,7 @@ class TlsServerHello extends TlsHandshakeMessage {
         ),
         super(TlsHandshakeType.serverHello) {
     if (this.random.length != 32) {
-      throw ArgumentError('ServerHello.random precisa de 32 bytes');
+      throw ArgumentError('ServerHello.random must be 32 bytes');
     }
   }
 
@@ -740,7 +740,7 @@ class TlsServerHello extends TlsHandshakeMessage {
       }
     }
     if (!parser.isDone) {
-      throw DecodeError('Sobrou payload após ServerHello');
+      throw DecodeError('Trailing payload after ServerHello');
     }
     return TlsServerHello(
       serverVersion: version,
@@ -864,10 +864,10 @@ class TlsCertificate extends TlsHandshakeMessage {
         consumed += 3 + certLength;
       }
       if (consumed != totalLength) {
-        throw DecodeError('Lista de certificados truncada');
+        throw DecodeError('Truncated certificate list');
       }
       if (!parser.isDone) {
-        throw DecodeError('Sobrou payload após Certificate (TLS 1.2).');
+        throw DecodeError('Trailing payload after Certificate (TLS 1.2).');
       }
       return TlsCertificate.tls12(
         version: version,
@@ -890,10 +890,10 @@ class TlsCertificate extends TlsHandshakeMessage {
       );
     }
     if (consumed != entriesLength) {
-      throw DecodeError('Lista de CertificateEntry truncada');
+      throw DecodeError('Truncated CertificateEntry list');
     }
     if (!parser.isDone) {
-      throw DecodeError('Sobrou payload após Certificate (TLS 1.3).');
+      throw DecodeError('Trailing payload after Certificate (TLS 1.3).');
     }
     return TlsCertificate.tls13(
       version: version,
@@ -990,7 +990,7 @@ class TlsCertificateRequest extends TlsHandshakeMessage {
         consumed += ca.length + 2;
       }
       if (!parser.isDone) {
-        throw DecodeError('Sobrou payload após CertificateRequest');
+        throw DecodeError('Trailing payload after CertificateRequest');
       }
       return TlsCertificateRequest(
         version: version,
@@ -1004,7 +1004,7 @@ class TlsCertificateRequest extends TlsHandshakeMessage {
     final extensionsLength = parser.get(2);
     final bytes = parser.getFixBytes(extensionsLength);
     if (!parser.isDone) {
-      throw DecodeError('Sobrou payload após CertificateRequest TLS 1.3');
+      throw DecodeError('Trailing payload after CertificateRequest TLS 1.3');
     }
     final block = TlsExtensionBlock.fromBytes(
       bytes,
@@ -1079,7 +1079,7 @@ class TlsCertificateVerify extends TlsHandshakeMessage {
     }
     final signature = parser.getVarBytes(2);
     if (!parser.isDone) {
-      throw DecodeError('Sobrou payload após CertificateVerify');
+      throw DecodeError('Trailing payload after CertificateVerify');
     }
     return TlsCertificateVerify(
       version: version,
@@ -1109,7 +1109,7 @@ class TlsKeyUpdate extends TlsHandshakeMessage {
 
   static TlsKeyUpdate parseBody(Uint8List body) {
     if (body.length != 1) {
-      throw DecodeError('KeyUpdate precisa conter exatamente 1 byte');
+      throw DecodeError('KeyUpdate must contain exactly 1 byte');
     }
     final value = body[0];
     final requested =
@@ -1212,7 +1212,7 @@ class TlsEncryptedExtensions extends TlsHandshakeMessage {
     final extensionsLength = parser.get(2);
     final bytes = parser.getFixBytes(extensionsLength);
     if (!parser.isDone) {
-      throw DecodeError('Sobrou payload após EncryptedExtensions');
+      throw DecodeError('Trailing payload after EncryptedExtensions');
     }
     final block = TlsExtensionBlock.fromBytes(
       bytes,
@@ -1266,7 +1266,7 @@ class TlsNewSessionTicket extends TlsHandshakeMessage {
       final extensionsLength = parser.get(2);
       final extensions = parser.getFixBytes(extensionsLength);
       if (!parser.isDone) {
-        throw DecodeError('Sobrou payload após NewSessionTicket');
+        throw DecodeError('Trailing payload after NewSessionTicket');
       }
       return TlsNewSessionTicket(
         ticketLifetime: lifetime,
@@ -1290,7 +1290,7 @@ class TlsNewSessionTicket extends TlsHandshakeMessage {
     final lifetime = parser.get(4);
     final ticket = parser.getVarBytes(2);
     if (!parser.isDone) {
-      throw DecodeError('Sobrou payload após NewSessionTicket (TLS 1.2)');
+      throw DecodeError('Trailing payload after NewSessionTicket (TLS 1.2)');
     }
     return TlsNewSessionTicket(
       ticketLifetime: lifetime,
@@ -1326,7 +1326,7 @@ class TlsChangeCipherSpec extends TlsMessage {
   TlsChangeCipherSpec({this.value = 1})
       : super(TlsContentType.changeCipherSpec) {
     if (value != 1) {
-      throw ArgumentError('ChangeCipherSpec.value precisa ser 1');
+      throw ArgumentError('ChangeCipherSpec.value must be 1');
     }
   }
 
@@ -1334,7 +1334,7 @@ class TlsChangeCipherSpec extends TlsMessage {
 
   static TlsChangeCipherSpec parse(Uint8List fragment) {
     if (fragment.length != 1) {
-      throw DecodeError('ChangeCipherSpec deve conter 1 byte');
+      throw DecodeError('ChangeCipherSpec must contain 1 byte');
     }
     return TlsChangeCipherSpec(value: fragment[0]);
   }
@@ -1353,7 +1353,7 @@ class TlsHelloRequest extends TlsHandshakeMessage {
 
   static TlsHelloRequest parse(Uint8List body) {
     if (body.isNotEmpty) {
-      throw DecodeError('HelloRequest deve ter corpo vazio');
+      throw DecodeError('HelloRequest must have an empty body');
     }
     return TlsHelloRequest();
   }
@@ -1368,7 +1368,7 @@ class TlsServerHelloDone extends TlsHandshakeMessage {
 
   static TlsServerHelloDone parse(Uint8List body) {
     if (body.isNotEmpty) {
-      throw DecodeError('ServerHelloDone deve ter corpo vazio');
+      throw DecodeError('ServerHelloDone must have an empty body');
     }
     return TlsServerHelloDone();
   }
@@ -1695,7 +1695,7 @@ class TlsCertificateStatus extends TlsHandshakeMessage {
     final ocspResponse = parser.getVarBytes(3);
     
     if (!parser.isDone) {
-      throw DecodeError('Sobrou payload após CertificateStatus');
+      throw DecodeError('Trailing payload after CertificateStatus');
     }
     
     return TlsCertificateStatus(
@@ -1727,7 +1727,7 @@ class TlsNextProtocol extends TlsHandshakeMessage {
     parser.getVarBytes(1); // padding
     
     if (!parser.isDone) {
-      throw DecodeError('Sobrou payload após NextProtocol');
+      throw DecodeError('Trailing payload after NextProtocol');
     }
     
     return TlsNextProtocol(nextProto: nextProto);

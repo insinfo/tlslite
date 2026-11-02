@@ -5,10 +5,10 @@
 import 'dart:typed_data';
 
 
-/// Converte uma string hexadecimal em uma lista de bytes (Uint8List).
+/// Converts a hexadecimal string into a list of bytes (Uint8List).
 Uint8List _hexToBytes(String hexString) {
   hexString =
-      hexString.replaceAll(RegExp(r'\s+'), ''); // Remove espaços/novas linhas
+      hexString.replaceAll(RegExp(r'\s+'), ''); // Remove spaces/newlines
   if (hexString.length % 2 != 0) {
     throw FormatException("Hex string must have an even number of characters");
   }
@@ -20,29 +20,29 @@ Uint8List _hexToBytes(String hexString) {
   return result;
 }
 
-/// Constantes usadas em vários lugares.
+/// Constants used in various places.
 
-/// Número da versão do protocolo usado para negociar TLS 1.3 entre implementações
-/// da especificação de rascunho
-/// DEPRECIADO!
+/// Protocol version number used to negotiate TLS 1.3 between implementations
+/// of the draft specification.
+/// DEPRECATED!
 const List<int> tls13Draft = [3, 4];
 
-/// Valor ServerHello.random significando que a mensagem é um HelloRetryRequest
+/// ServerHello.random value meaning that the message is a HelloRetryRequest.
 final Uint8List tls13Hrr = _hexToBytes(
     "CF21AD74E59A6111BE1D8C021E65B891C2A211167ABB8C5E079E09E2C8A8339C");
 
-/// Últimos bytes de ServerHello.random a serem usados ao negociar TLS 1.1 ou
-/// anterior enquanto suporta TLS 1.2 ou superior
+/// Last bytes of ServerHello.random to be used when negotiating TLS 1.1 or
+/// earlier while supporting TLS 1.2 or later.
 final Uint8List tls11DowngradeSentinel = _hexToBytes("444F574E47524400");
 
-/// Últimos bytes de ServerHello.random a serem usados ao negociar TLS 1.2
-/// enquanto suporta TLS 1.3 ou superior
+/// Last bytes of ServerHello.random to be used when negotiating TLS 1.2
+/// while supporting TLS 1.3 or later.
 final Uint8List tls12DowngradeSentinel = _hexToBytes("444F574E47524401");
 
 final Uint8List rsaPssOid = _hexToBytes('06092a864886f70d01010a');
 
-/// Classe base (conceitual) para diferentes enums de IDs TLS
-/// Em Dart, usamos classes com constantes estáticas e mapas para lookup reverso.
+/// (Conceptual) base class for the different TLS ID enums.
+/// In Dart, we use classes with static constants and maps for reverse lookup.
 abstract class _TLSEnumHelper {
   static String? intToName(int value, Map<int, String> map) {
     return map[value];
@@ -62,11 +62,11 @@ class CertificateType {
     openpgp: 'openpgp',
   };
 
-  /// Converte o tipo numérico para representação de string (nome se encontrado, null caso contrário)
+  /// Converts the numeric type to its string representation (the name if found, null otherwise).
   static String? toRepr(int value) =>
       _TLSEnumHelper.intToName(value, _intToNameMap);
 
-  /// Converte o tipo numérico para string legível por humanos, se possível
+  /// Converts the numeric type to a human-readable string, if possible.
   static String toStr(int value) =>
       _TLSEnumHelper.intToString(value, _intToNameMap);
 }
@@ -97,7 +97,7 @@ class ClientCertificateType {
 }
 
 class SSL2HandshakeType {
-  /// Tipos de mensagem do Protocolo SSL2 Handshake.
+  /// Message types of the SSL2 Handshake Protocol.
   static const int error = 0;
   static const int clientHello = 1;
   static const int clientMasterKey = 2;
@@ -127,7 +127,7 @@ class SSL2HandshakeType {
 }
 
 class SSL2ErrorDescription {
-  /// Descrições de mensagens de erro do protocolo SSL2 Handshake
+  /// Error message descriptions of the SSL2 Handshake protocol.
   static const int noCipher = 0x0001;
   static const int noCertificate = 0x0002;
   static const int badCertificate = 0x0004;
@@ -147,7 +147,7 @@ class SSL2ErrorDescription {
 }
 
 class HandshakeType {
-  /// Tipos de mensagem no protocolo TLS Handshake
+  /// Message types in the TLS Handshake protocol.
   static const int helloRequest = 0;
   static const int clientHello = 1;
   static const int serverHello = 2;
@@ -197,7 +197,7 @@ class HandshakeType {
 }
 
 class ContentType {
-  /// Tipos de conteúdo da camada de registro TLS para payloads
+  /// TLS record layer content types for payloads.
   static const int changeCipherSpec = 20;
   static const int alert = 21;
   static const int handshake = 22;
@@ -213,17 +213,17 @@ class ContentType {
     heartbeat: 'heartbeat',
   };
 
-  /// Converte o tipo numérico para representação de nome
+  /// Converts the numeric type to its name representation.
   static String? toRepr(int value) =>
       _TLSEnumHelper.intToName(value, _intToNameMap);
 
-  /// Converte o tipo numérico para string legível por humanos, se possível
+  /// Converts the numeric type to a human-readable string, if possible.
   static String toStr(int value) =>
       _TLSEnumHelper.intToString(value, _intToNameMap);
 }
 
 class ExtensionType {
-  /// Valores do registro de Tipo de Extensão TLS
+  /// Values of the TLS ExtensionType registry.
   static const int serverName = 0; // RFC 6066 / 4366
   static const int maxFragmentLength = 1; // RFC 6066 / 4366
   static const int statusRequest = 5; // RFC 6066 / 4366
@@ -297,7 +297,7 @@ class ExtensionType {
 }
 
 class HashAlgorithm {
-  /// IDs de algoritmo de hash usados no TLSv1.2
+  /// Hash algorithm IDs used in TLSv1.2.
   static const int none = 0;
   static const int md5 = 1;
   static const int sha1 = 2;
@@ -327,12 +327,12 @@ class HashAlgorithm {
   static String toStr(int value) =>
       _TLSEnumHelper.intToString(value, _intToNameMap);
 
-  /// Retorna o identificador numérico para o nome do hash informado.
+  /// Returns the numeric identifier for the given hash name.
   static int? fromName(String name) => _nameToIntMap[name.toLowerCase()];
 }
 
 class SignatureAlgorithm {
-  /// Algoritmos de assinatura usados no TLSv1.2
+  /// Signature algorithms used in TLSv1.2.
   static const int anonymous = 0;
   static const int rsa = 1;
   static const int dsa = 2;
@@ -355,23 +355,23 @@ class SignatureAlgorithm {
       _TLSEnumHelper.intToString(value, _intToNameMap);
 }
 
-/// Representa um valor de esquema de assinatura (par hash, sig)
+/// Represents a signature scheme value (hash, sig pair).
 class _SignatureSchemeValue {
   final int hashAlgorithm;
   final int signatureAlgorithm;
-  final int value; // Valor combinado como em TLS (hash << 8 | sig)
+  final int value; // Combined value as in TLS (hash << 8 | sig)
 
   const _SignatureSchemeValue(this.hashAlgorithm, this.signatureAlgorithm)
       : value = (hashAlgorithm << 8) | signatureAlgorithm;
 
-  // Permite comparar com o valor numérico combinado
+  // Allows comparison with the combined numeric value
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is _SignatureSchemeValue &&
           runtimeType == other.runtimeType &&
           value == other.value ||
-      other is int && value == other; // Permite comparar com int diretamente
+      other is int && value == other; // Allows comparing with an int directly
 
   @override
   int get hashCode => value.hashCode;
@@ -382,9 +382,9 @@ class _SignatureSchemeValue {
 }
 
 class SignatureScheme {
-  /// Esquema de assinatura usado para sinalizar algoritmos de assinatura suportados.
-  /// Este é o substituto para as listas HashAlgorithm e SignatureAlgorithm.
-  /// Introduzido com TLSv1.3.
+  /// Signature scheme used to signal supported signature algorithms.
+  /// This is the replacement for the HashAlgorithm and SignatureAlgorithm lists.
+  /// Introduced with TLSv1.3.
 
   static const _SignatureSchemeValue rsaPkcs1Sha1 = _SignatureSchemeValue(
       HashAlgorithm.sha1, SignatureAlgorithm.rsa); // 0x0201
@@ -529,7 +529,7 @@ class SignatureScheme {
   static int? signatureIdFromName(String schemeName) =>
       _lookup(schemeName)?.signatureAlgorithm;
 
-  /// Converte o valor numérico (_SignatureSchemeValue ou int) para representação de nome
+  /// Converts the numeric value (_SignatureSchemeValue or int) to its name representation.
   static String? toRepr(dynamic value) {
     int? intValue;
     if (value is _SignatureSchemeValue) {
@@ -543,11 +543,11 @@ class SignatureScheme {
     return null;
   }
 
-  /// Converte o valor numérico (_SignatureSchemeValue ou int) para string legível por humanos, se possível
+  /// Converts the numeric value (_SignatureSchemeValue or int) to a human-readable string, if possible.
   static String toStr(dynamic value) => toRepr(value) ?? value.toString();
 
-  /// Retorna o nome do algoritmo de assinatura usado no esquema.
-  /// Ex: para "rsa_pkcs1_sha1" retorna "rsa"
+  /// Returns the name of the signature algorithm used in the scheme.
+  /// E.g. for "rsa_pkcs1_sha1" it returns "rsa".
   static String getKeyType(String schemeName) {
     final normalized = schemeName.toLowerCase();
     if (normalized == "ed25519" || normalized == "ed448") {
@@ -556,11 +556,11 @@ class SignatureScheme {
     if (!_nameToValueMap.containsKey(normalized)) {
       throw ArgumentError('"$schemeName" scheme is unknown');
     }
-    // Heurística baseada nos nomes comuns
+    // Heuristic based on the common names
     if (normalized.startsWith('rsa_')) return 'rsa';
     if (normalized.startsWith('ecdsa_')) return 'ecdsa';
     if (normalized.startsWith('dsa_')) return 'dsa';
-    // Casos especiais ou fallback (pode precisar de ajuste)
+    // Special cases or fallback (may need adjustment)
     if (normalized.contains('rsa')) return 'rsa';
     if (normalized.contains('ecdsa')) return 'ecdsa';
     if (normalized.contains('dsa')) return 'dsa';
@@ -568,27 +568,27 @@ class SignatureScheme {
     throw ArgumentError('Could not determine key type for "$schemeName"');
   }
 
-  /// Retorna o nome do esquema de padding usado no esquema de assinatura.
+  /// Returns the name of the padding scheme used in the signature scheme.
   static String getPadding(String schemeName) {
     final normalized = schemeName.toLowerCase();
     if (!_nameToValueMap.containsKey(normalized)) {
       throw ArgumentError('"$schemeName" scheme is unknown');
     }
     final parts = normalized.split('_');
-    // Heurística: rsa_pkcs1_..., rsa_pss_...
+    // Heuristic: rsa_pkcs1_..., rsa_pss_...
     if (parts.length >= 2 && parts[0] == 'rsa') {
       if (parts[1] == 'pkcs1') return 'pkcs1';
-      if (parts[1] == 'pss') return 'pss'; // Pode ser pss_rsae ou pss_pss
+      if (parts[1] == 'pss') return 'pss'; // May be pss_rsae or pss_pss
     }
-    // Outros não usam padding explícito no nome geralmente
-    // Ou o padding está implícito no tipo de chave (ex: ecdsa)
-    // Retornar uma string vazia ou null pode ser apropriado
-    return ''; // Ou lançar erro se padding for sempre esperado para RSA
+    // Others usually do not name an explicit padding,
+    // or the padding is implied by the key type (e.g. ecdsa).
+    // Returning an empty string (or null) may be appropriate.
+    return ''; // Or throw if padding is always expected for RSA
   }
 
-  /// Retorna o nome do hash usado no esquema de assinatura.
+  /// Returns the name of the hash used in the signature scheme.
   static String getHash(String schemeName) {
-    // Hash não explícito para EDDSA, veja RFC 8422
+    // No explicit hash for EdDSA, see RFC 8422
     final normalized = schemeName.toLowerCase();
     if (normalized == "ed25519" || normalized == "ed448") {
       return "intrinsic";
@@ -598,26 +598,26 @@ class SignatureScheme {
       throw ArgumentError('"$schemeName" scheme is unknown');
     }
 
-    // Para PSS, o hash está ligado ao MGF e não é o mesmo que o "HashAlgorithm" no valor TLS
+    // For PSS, the hash is tied to the MGF and is not the same as the "HashAlgorithm" in the TLS value
     if (normalized.contains("_pss_")) {
       if (normalized.endsWith("_sha256")) return "sha256";
       if (normalized.endsWith("_sha384")) return "sha384";
       if (normalized.endsWith("_sha512")) return "sha512";
-      return "intrinsic"; // Ou outro valor indicando que depende dos params PSS
+      return "intrinsic"; // Or another value indicating that it depends on the PSS params
     }
-    // Para Brainpool TLS1.3, o nome já inclui o hash
+    // For Brainpool TLS1.3, the name already includes the hash
     if (normalized.contains("tls13")) {
       if (normalized.endsWith("_sha256")) return "sha256";
       if (normalized.endsWith("_sha384")) return "sha384";
       if (normalized.endsWith("_sha512")) return "sha512";
     }
 
-    // Usa o mapeamento reverso de HashAlgorithm
+    // Use the HashAlgorithm reverse mapping
     return HashAlgorithm.toStr(value.hashAlgorithm);
   }
 }
 
-/// conjunto de esquemas específicos do TLS 1.3 para curvas Brainpool
+/// Set of TLS 1.3 specific schemes for Brainpool curves.
 final Set<_SignatureSchemeValue> tls13BrainpoolSigSchemes =
     Set.unmodifiable([
   SignatureScheme.ecdsaBrainpoolP256r1tls13Sha256,
@@ -626,23 +626,23 @@ final Set<_SignatureSchemeValue> tls13BrainpoolSigSchemes =
 ]);
 
 class AlgorithmOID {
-  /// OIDs de Algoritmo como definidos em rfc5758(ecdsa),
+  /// Algorithm OIDs as defined in rfc5758(ecdsa),
   /// rfc5754(rsa, sha), rfc3447(rss-pss).
-  /// A chave é o OID codificado em DER em bytes (Uint8List) e
-  /// o valor é o id do algoritmo (SignatureSchemeValue ou um par legado).
+  /// The key is the DER-encoded OID as bytes (Uint8List) and
+  /// the value is the algorithm id (SignatureSchemeValue or a legacy pair).
 
-  // Nota: A comparação de chaves Uint8List em Map requer cuidados.
-  // Usar String codificada em Base64 pode ser mais robusto, ou uma classe wrapper.
-  // Mantendo Uint8List por enquanto para tradução direta.
+  // Note: comparing Uint8List keys in a Map requires care.
+  // A Base64-encoded String or a wrapper class could be more robust.
+  // Keeping Uint8List for now for a direct translation.
 
-  // É crucial que as instâncias de Uint8List usadas como chaves sejam canônicas
-  // (ou seja, sempre criadas da mesma forma para o mesmo valor lógico).
-  // _hexToBytes garante isso.
+  // It is crucial that the Uint8List instances used as keys are canonical
+  // (that is, always created the same way for the same logical value).
+  // _hexToBytes guarantees this.
 
   static final Map<Uint8List, dynamic> oid = _initializeOidMap();
 
   static Map<Uint8List, dynamic> _initializeOidMap() {
-    // Usando um método estático para inicialização para melhor legibilidade
+    // Use a static method for initialization for better readability
     final map = <Uint8List, dynamic>{};
 
     map[_hexToBytes('06072a8648ce3d0401')] = SignatureScheme.ecdsaSha1;
@@ -734,7 +734,7 @@ class AlgorithmOID {
 }
 
 class GroupName {
-  /// Nome dos grupos suportados para troca de chaves (EC)DH
+  /// Names of the supported groups for (EC)DH key exchange.
   // RFC4492 - Deprecated/Obsolete curves often removed
   static const int sect163k1 = 1;
   static const int sect163r1 = 2;
@@ -883,39 +883,39 @@ class GroupName {
       entry.value.toLowerCase(): entry.key,
   };
 
-  /// Converte o tipo numérico para representação de nome
+  /// Converts the numeric type to its name representation.
   static String? toRepr(int value) =>
       _TLSEnumHelper.intToName(value, _intToNameMap);
 
-  /// Converte o tipo numérico para string legível por humanos, se possível
+  /// Converts the numeric type to a human-readable string, if possible.
   static String toStr(int value) =>
       _TLSEnumHelper.intToString(value, _intToNameMap);
 
-  /// Resolve o identificador numérico a partir do nome textual do grupo.
+  /// Resolves the numeric identifier from the textual group name.
   static int? valueOf(String name) => _nameToIntMap[name.toLowerCase()];
 }
 
-// grupos proibidos pela RFC 8446 seção B.3.1.4
-// (Curvas arbitrárias e obsoletas/fracas nomeadas)
+// Groups forbidden by RFC 8446 section B.3.1.4
+// (arbitrary curves and obsolete/weak named curves)
 final Set<int> tls13ForbiddenGroups = Set.unmodifiable([
   ...List<int>.generate(
       0x17 - 1,
       (i) =>
           i +
-          1), // 1 a 22 (sect163k1 a secp256k1) - Inclui curvas não recomendadas
+          1), // 1 to 22 (sect163k1 to secp256k1) - includes non-recommended curves
   ...List<int>.generate(
       0x1D - 0x1A,
       (i) =>
           i +
-          0x1A), // 26 a 28 (brainpoolP*r1) - Permitidas se explicitamente listadas e acordadas
+          0x1A), // 26 to 28 (brainpoolP*r1) - allowed if explicitly listed and agreed
   0xff01, 0xff02 // explicit_prime, explicit_char2
 ]);
-// Nota: A proibição real em TLS 1.3 é mais sobre não usar curvas arbitrárias
-// e focar nas recomendadas (secp256r1, secp384r1, secp521r1, x25519, x448, ffdhe*)
-// Esta lista parece refletir as curvas nomeadas *não* recomendadas.
+// Note: the actual TLS 1.3 prohibition is more about not using arbitrary curves
+// and focusing on the recommended ones (secp256r1, secp384r1, secp521r1, x25519, x448, ffdhe*).
+// This list appears to reflect the *non*-recommended named curves.
 
 class ECPointFormat {
-  /// Nomes e IDs dos formatos de ponto EC suportados.
+  /// Names and IDs of the supported EC point formats.
   static const int uncompressed = 0;
   static const int ansiX962CompressedPrime = 1;
   static const int ansiX962CompressedChar2 = 2;
@@ -932,17 +932,17 @@ class ECPointFormat {
     ansiX962CompressedChar2: 'ansiX962_compressed_char2',
   };
 
-  /// Converte o tipo numérico para representação de nome.
+  /// Converts the numeric type to its name representation.
   static String? toRepr(int value) =>
       _TLSEnumHelper.intToName(value, _intToNameMap);
 
-  /// Converte o tipo numérico para string legível por humanos, se possível.
+  /// Converts the numeric type to a human-readable string, if possible.
   static String toStr(int value) =>
       _TLSEnumHelper.intToString(value, _intToNameMap);
 }
 
 class ECCurveType {
-  /// Tipos de curvas ECC suportadas em TLS do RFC4492
+  /// Types of ECC curves supported in TLS, from RFC4492.
   static const int explicitPrime = 1;
   static const int explicitChar2 = 2;
   static const int namedCurve = 3;
@@ -960,7 +960,7 @@ class ECCurveType {
 }
 
 class NameType {
-  /// Tipo de entradas na extensão Server Name Indication.
+  /// Type of entries in the Server Name Indication extension.
   static const int hostName = 0;
 
   static const Map<int, String> _intToNameMap = {
@@ -974,7 +974,7 @@ class NameType {
 }
 
 class CertificateStatusType {
-  /// Tipo de respostas nas mensagens status_request e CertificateStatus.
+  /// Type of responses in the status_request and CertificateStatus messages.
   static const int ocsp = 1;
 
   static const Map<int, String> _intToNameMap = {
@@ -988,7 +988,7 @@ class CertificateStatusType {
 }
 
 class HeartbeatMode {
-  /// Tipos de modos heartbeat do RFC 6520
+  /// Heartbeat mode types from RFC 6520.
   static const int peerAllowedToSend = 1;
   static const int peerNotAllowedToSend = 2;
 
@@ -1004,7 +1004,7 @@ class HeartbeatMode {
 }
 
 class HeartbeatMessageType {
-  /// Tipos de mensagens heartbeat do RFC 6520
+  /// Heartbeat message types from RFC 6520.
   static const int heartbeatRequest = 1;
   static const int heartbeatResponse = 2;
 
@@ -1020,7 +1020,7 @@ class HeartbeatMessageType {
 }
 
 class KeyUpdateMessageType {
-  /// Tipos de mensagens keyupdate do RFC 8446
+  /// KeyUpdate message types from RFC 8446.
   static const int updateNotRequested = 0;
   static const int updateRequested = 1;
 
@@ -1036,7 +1036,7 @@ class KeyUpdateMessageType {
 }
 
 class AlertLevel {
-  /// Enumeração de níveis do protocolo TLS Alert
+  /// Enumeration of the TLS Alert protocol levels.
   static const int warning = 1;
   static const int fatal = 2;
 
@@ -1052,24 +1052,24 @@ class AlertLevel {
 }
 
 class AlertDescription {
-  /// Descrições de Alerta TLS
+  /// TLS Alert descriptions.
   ///
-  /// `bad_record_mac`: Um registro TLS falhou ao descriptografar corretamente.
-  /// Se isso ocorrer durante um handshake SRP, provavelmente indica uma senha incorreta.
-  /// Também pode indicar um erro de implementação ou alguma adulteração dos dados em trânsito.
-  /// Este alerta será sinalizado pelo servidor se a senha SRP estiver incorreta.
-  /// Também pode ser sinalizado pelo servidor se o nome de usuário SRP for desconhecido
-  /// para o servidor, mas ele não deseja revelar esse fato.
+  /// `bad_record_mac`: a TLS record failed to decrypt properly.
+  /// If this occurs during an SRP handshake, it most likely indicates a bad password.
+  /// It may also indicate an implementation error or some tampering with the data in transit.
+  /// This alert will be signalled by the server if the SRP password is bad.
+  /// It may also be signalled by the server if the SRP username is unknown
+  /// to the server, but it does not wish to reveal that fact.
   ///
-  /// `handshake_failure`: Ocorreu um problema durante o handshake.
-  /// Isso geralmente indica falta de conjuntos de cifras comuns entre cliente e servidor,
-  /// ou algum outro desacordo (sobre parâmetros SRP ou tamanhos de chave, por exemplo).
+  /// `handshake_failure`: a problem occurred during the handshake.
+  /// This typically indicates a lack of common cipher suites between client and server,
+  /// or some other disagreement (about SRP parameters or key sizes, for example).
   ///
-  /// `protocol_version`: A versão SSL/TLS da outra parte era inaceitável.
-  /// Indica que o cliente e o servidor não conseguiram concordar sobre qual versão
-  /// de SSL ou TLS usar.
+  /// `protocol_version`: the other party's SSL/TLS version was unacceptable.
+  /// This indicates that the client and server could not agree on which version
+  /// of SSL or TLS to use.
   ///
-  /// `user_canceled`: O handshake está sendo cancelado por algum motivo.
+  /// `user_canceled`: the handshake is being cancelled for some reason.
 
   static const int closeNotify = 0;
   static const int unexpectedMessage = 10;
@@ -1151,7 +1151,7 @@ class AlertDescription {
 }
 
 class PskKeyExchangeMode {
-  /// Valores usados na extensão PSK Key Exchange Modes.
+  /// Values used in the PSK Key Exchange Modes extension.
   static const int pskKe = 0; // PSK-only key establishment
   static const int pskDheKe = 1; // PSK with (EC)DHE key establishment
 
@@ -1167,8 +1167,8 @@ class PskKeyExchangeMode {
 }
 
 class CertificateCompressionAlgorithm {
-  /// Algoritmos de compressão usados para a compressão de certificados
-  /// do RFC 8879.
+  /// Compression algorithms used for certificate compression
+  /// from RFC 8879.
   static const int zlib = 1;
   static const int brotli = 2;
   static const int zstd = 3;

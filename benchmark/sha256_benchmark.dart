@@ -9,16 +9,16 @@ void main() {
   print('=== SHA-256 Benchmark ===\n');
 
   final shaNiSupported = ShaNiSupport.isSupported;
-  print('SHA-NI suportado: $shaNiSupported');
+  print('SHA-NI supported: $shaNiSupported');
   if (!shaNiSupported) {
-    print('⚠️  SHA-NI não disponível. Usando implementação software otimizada.');
+    print('⚠️  SHA-NI not available. Using the optimized software implementation.');
   }
   print('');
 
-  // Tamanhos de dados para teste
+  // Data sizes to test
   final dataSizes = [64, 256, 1024, 4096, 16384, 65536];
 
-  print('Benchmark Results (hashes/segundo):');
+  print('Benchmark Results (hashes/second):');
   print('─' * 70);
   print('${'Data Size'.padRight(12)} | ${'crypto (pkg)'.padRight(15)} | ${'Sha256Asm'.padRight(15)} | Ratio');
   print('─' * 70);
@@ -104,7 +104,7 @@ void main() {
   print('  HmacSha256Asm:  ${asmHmacOps.toStringAsFixed(0)} ops/sec');
   print('  Ratio: ${(asmHmacOps / cryptoHmacOps).toStringAsFixed(2)}x');
 
-  print('\n✅ Benchmark concluído!');
+  print('\n✅ Benchmark finished!');
 }
 
 int _calculateIterations(int dataSize) {

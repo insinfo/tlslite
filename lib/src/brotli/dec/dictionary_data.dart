@@ -63,7 +63,7 @@ class DictionaryData {
         offset++;
       }
       for (int j = 0; j < flip; ++j) {
-        // 236 em decimal é 0xEC. Em operações bitwise com bytes, o resultado é o mesmo.
+        // 236 decimal is 0xEC. In bitwise operations on bytes, the result is the same.
         dict[offset] = (dict[offset] ^ 236);
         offset++;
       }
@@ -73,15 +73,15 @@ class DictionaryData {
       sizeBits[i] = sizeBitsData.codeUnitAt(i) - 65;
     }
 
-    // Em Dart, Uint8List já é o buffer, usamos setAll para copiar os dados.
+    // In Dart, the Uint8List already is the buffer; use setAll to copy the data.
     dictionary.setAll(0, dict);
   }
 
-  // Variável para armazenar o estado se já foi inicializado
+  // Tracks whether the dictionary has already been initialized
   static bool _initialized = false;
 
-  /// Método para inicializar o dicionário (substitui o bloco static do Java).
-  /// Deve ser chamado antes de usar o Dictionary.
+  /// Initializes the dictionary (replaces the Java static initializer block).
+  /// Must be called before using [Dictionary].
   static void init() {
     if (_initialized) return;
 
@@ -91,9 +91,9 @@ class DictionaryData {
     _unpackDictionaryData(dictionaryData, data0, data1, skipFlip,
         dictionarySizeBits, sizeBitsData);
 
-    // Utils.flipBuffer(dictionaryData); // Não necessário em Dart para Uint8List/List
+    // Utils.flipBuffer(dictionaryData); // Not needed in Dart for Uint8List/List
 
-    // Assumindo que a classe Dictionary existe e tem o método setData
+    // Hand the unpacked data to Dictionary.setData
     Dictionary.setData(dictionaryData, dictionarySizeBits);
     
     _initialized = true;

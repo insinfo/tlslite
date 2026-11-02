@@ -24,12 +24,12 @@ BigInt _random(Random rng, int bits) {
 }
 
 void main() {
-  test('modPow igual a BigInt.modPow em módulos ímpares de 1 a 64 limbs', () {
+  test('modPow matches BigInt.modPow for odd moduli of 1 to 64 limbs', () {
     final rng = Random(42);
     for (var limbs = 1; limbs <= 64; limbs++) {
       final bits = limbs * 32;
       final cases = [
-        // Todos os bits em 1: produtos 32x32 no limite de 2^64.
+        // All bits set: 32x32 products at the 2^64 limit.
         (BigInt.one << bits) - BigInt.one,
         _random(rng, bits) | (BigInt.one << (bits - 1)) | BigInt.one,
       ];

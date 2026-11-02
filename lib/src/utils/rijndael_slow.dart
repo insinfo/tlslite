@@ -5,33 +5,33 @@
 // dart format width=5000
 import 'dart:typed_data';
 
-/// Uma implementação pura em Dart (lenta) do Rijndael com uma interface decente.
+/// A (slow) pure Dart implementation of Rijndael with a decent interface.
 ///
-/// Para incluir:
+/// To include:
 ///
 /// ```dart
 /// import 'rijndael.dart';
 /// ```
 ///
-/// Para configurar uma chave:
+/// To set up a key:
 ///
 /// ```dart
 /// var r = Rijndael(key, blockSize: 16);
 /// ```
 ///
-/// `key` deve ser um Uint8List de comprimento 16, 24 ou 32.
-/// `blockSize` deve ser 16, 24 ou 32. O padrão é 16.
+/// `key` must be a Uint8List of length 16, 24 or 32.
+/// `blockSize` must be 16, 24 or 32. The default is 16.
 ///
-/// Para usar:
+/// To use:
 ///
 /// ```dart
 /// Uint8List ciphertext = r.encrypt(plaintext);
 /// Uint8List plaintext = r.decrypt(ciphertext);
 /// ```
 ///
-/// Se algum dos Uint8List tiver o comprimento errado, uma exceção ArgumentError será lançada.
+/// If any of the Uint8Lists has the wrong length, an ArgumentError is thrown.
 
-// --- Constantes ---
+// --- Constants ---
 
 final List<List<List<int>>> _shifts = [
   // Preserve formatting
@@ -49,7 +49,7 @@ final List<List<List<int>>> _shifts = [
   ]
 ];
 
-// [tamanhoChave][tamanhoBloco]
+// [keySize][blockSize]
 final Map<int, Map<int, int>> _numRounds = {
   // Preserve formatting
   16: {16: 10, 24: 12, 32: 14},
@@ -94,7 +94,7 @@ final List<int> _s = [
   65, 153, 45, 15, 176, 84, 187, 22
 ];
 
-// Inversa da S-box
+// Inverse S-box
 final List<int> _si = [
   // Preserve formatting
   82, 9, 106, 213, 48, 54, 165, 56,
@@ -131,7 +131,7 @@ final List<int> _si = [
   225, 105, 20, 99, 85, 33, 12, 125
 ];
 
-// Tabelas pré-calculadas T1-T8 (para MixColumns / InvMixColumns)
+// Precomputed tables T1-T8 (for MixColumns / InvMixColumns)
 final List<int> _t1 = [
   // Preserve formatting
   0xc66363a5, 0xf87c7c84, 0xee777799, 0xf67b7b8d,
@@ -669,7 +669,7 @@ final List<int> _t8 = [
   0xcb84617b, 0x32b670d5, 0x6c5c7448, 0xb85742d0
 ];
 
-// Tabelas U para InvMixColumns na expansão de chave de decriptação
+// U tables for InvMixColumns in the decryption key expansion
 final List<int> _u1 = [
   // Preserve formattin
   0x0, 0xe090d0b, 0x1c121a16, 0x121b171d,
@@ -939,7 +939,7 @@ final List<int> _u4 = [
   0x5d80be9f, 0x548db591, 0x4f9aa883, 0x4697a38d
 ];
 
-// Constantes Round (Rcon)
+// Round constants (Rcon)
 final List<int> _rcon = [
   // Preserve formattin
   0x1, 0x2, 0x4, 0x8, 0x10, 0x20, 0x40, 0x80,
@@ -948,52 +948,52 @@ final List<int> _rcon = [
   0xb3, 0x7d, 0xfa, 0xef, 0xc5, 0x91
 ];
 
-/// Implementação da cifra de bloco AES (formalmente conhecida como Rijndael).
+/// Implementation of the AES block cipher (formerly known as Rijndael).
 ///
-/// Suporta tamanhos de chave de 128, 192 e 256 bits, bem como os
-/// tamanhos de bloco não padrão de 192 e 256 bits (o tamanho de bloco
-/// padrão de 128 bits é o default).
+/// Supports key sizes of 128, 192 and 256 bits, as well as the
+/// non-standard block sizes of 192 and 256 bits (the standard block
+/// size of 128 bits is the default).
 ///
-/// Pode processar dados apenas um bloco por vez, não realiza encadeamento
-/// de cifras de bloco ou preenchimento de texto simples (padding).
+/// It can only process data one block at a time; it does not perform
+/// block cipher chaining or plaintext padding.
 class Rijndael {
-  /// O tamanho dos blocos criptografados, em bytes.
+  /// The size of the encrypted blocks, in bytes.
   final int blockSize;
 
-  /// Esquema de chaves para criptografia.
+  /// Encryption key schedule.
   late final List<List<int>> _ke;
 
-  /// Esquema de chaves para decriptografia.
+  /// Decryption key schedule.
   late final List<List<int>> _kd;
 
-  /// Inicializa o objeto, deriva as chaves para criptografia e decriptografia.
+  /// Initializes the object and derives the encryption and decryption keys.
   ///
-  /// Lança um [ArgumentError] se `key` ou `blockSize` tiverem tamanhos inválidos.
+  /// Throws an [ArgumentError] if `key` or `blockSize` has an invalid size.
   ///
-  /// - [key]: A chave secreta como [Uint8List] (16, 24 ou 32 bytes).
-  /// - [blockSize]: O tamanho do bloco em bytes (16, 24 ou 32). Padrão é 16.
+  /// - [key]: the secret key as a [Uint8List] (16, 24 or 32 bytes).
+  /// - [blockSize]: the block size in bytes (16, 24 or 32). Defaults to 16.
   Rijndael(Uint8List key, {this.blockSize = 16}) {
     if (blockSize != 16 && blockSize != 24 && blockSize != 32) {
-      throw ArgumentError('Tamanho de bloco inválido: $blockSize');
+      throw ArgumentError('Invalid block size: $blockSize');
     }
     if (key.length != 16 && key.length != 24 && key.length != 32) {
-      throw ArgumentError('Tamanho de chave inválido: ${key.length}');
+      throw ArgumentError('Invalid key size: ${key.length}');
     }
 
     final int rounds = _numRounds[key.length]![blockSize]!;
     final int bc =
-        blockSize ~/ 4; // Número de colunas (palavras de 32 bits) no bloco
+        blockSize ~/ 4; // Number of columns (32-bit words) in the block
     final int kc =
-        key.length ~/ 4; // Número de colunas (palavras de 32 bits) na chave
+        key.length ~/ 4; // Number of columns (32-bit words) in the key
 
-    // Chaves de round para criptografia
+    // Round keys for encryption
     _ke = List.generate(rounds + 1, (_) => List.filled(bc, 0));
-    // Chaves de round para decriptografia
+    // Round keys for decryption
     _kd = List.generate(rounds + 1, (_) => List.filled(bc, 0));
 
     final int roundKeyCount = (rounds + 1) * bc;
 
-    // Copia os bytes do material do usuário para inteiros temporários
+    // Copy the bytes of the user key material into temporary integers
     final List<int> tk = List.filled(kc, 0);
     for (int i = 0; i < kc; i++) {
       tk[i] = (key[i * 4] << 24) |
@@ -1002,7 +1002,7 @@ class Rijndael {
           key[i * 4 + 3];
     }
 
-    // Copia os valores para os arrays de chaves de round
+    // Copy the values into the round key arrays
     int t = 0;
     int j = 0;
     while (j < kc && t < roundKeyCount) {
@@ -1015,7 +1015,7 @@ class Rijndael {
     int tt = 0;
     int rconPointer = 0;
     while (t < roundKeyCount) {
-      // Extrapola usando phi (a função de evolução da chave de round)
+      // Extrapolate using phi (the round key evolution function)
       tt = tk[kc - 1];
 
       // RotWord and SubWord combined, then XOR with Rcon
@@ -1048,7 +1048,7 @@ class Rijndael {
         }
       }
 
-      // Copia os valores para os arrays de chaves de round
+      // Copy the values into the round key arrays
       j = 0;
       while (j < kc && t < roundKeyCount) {
         _ke[t ~/ bc][t % bc] = tk[j];
@@ -1058,7 +1058,7 @@ class Rijndael {
       }
     }
 
-    // InvMixColumn onde necessário para as chaves de decriptografia
+    // InvMixColumn where needed for the decryption keys
     for (int r = 1; r < rounds; r++) {
       for (j = 0; j < bc; j++) {
         tt = _kd[r][j];
@@ -1070,19 +1070,19 @@ class Rijndael {
     }
   }
 
-  /// Criptografa um único bloco de texto simples.
+  /// Encrypts a single block of plaintext.
   ///
-  /// Lança um [ArgumentError] se `plaintext` tiver o tamanho incorreto.
+  /// Throws an [ArgumentError] if `plaintext` has the wrong length.
   Uint8List encrypt(Uint8List plaintext) {
     if (plaintext.length != blockSize) {
       throw ArgumentError(
-          'Comprimento de bloco incorreto, esperado $blockSize, obteve ${plaintext.length}');
+          'wrong block length, expected $blockSize got ${plaintext.length}');
     }
 
     final int bc = blockSize ~/ 4;
     final int rounds = _ke.length - 1;
 
-    // Seleciona os shifts corretos baseados no tamanho do bloco
+    // Select the correct shifts based on the block size
     final int sc; // Shift count index
     if (bc == 4) {
       sc = 0;
@@ -1097,10 +1097,10 @@ class Rijndael {
     final int s3 = _shifts[sc][3][0];
 
     List<int> a = List.filled(bc, 0);
-    // Array de trabalho temporário
+    // Temporary work array
     List<int> t = List.filled(bc, 0);
 
-    // Converte plaintext para inteiros + chave de round 0 (AddRoundKey)
+    // Convert the plaintext to integers + round key 0 (AddRoundKey)
     for (int i = 0; i < bc; i++) {
       t[i] = ((plaintext[i * 4] << 24) |
               (plaintext[i * 4 + 1] << 16) |
@@ -1109,25 +1109,25 @@ class Rijndael {
           _ke[0][i];
     }
 
-    // Aplica as transformações de round (SubBytes, ShiftRows, MixColumns, AddRoundKey)
+    // Apply the round transformations (SubBytes, ShiftRows, MixColumns, AddRoundKey)
     for (int r = 1; r < rounds; r++) {
       for (int i = 0; i < bc; i++) {
-        // Usa tabelas T pré-calculadas que combinam SubBytes, ShiftRows e MixColumns
+        // Use the precomputed T tables that combine SubBytes, ShiftRows and MixColumns
         a[i] = (_t1[(t[i] >> 24) & 0xFF] ^
                 _t2[(t[(i + s1) % bc] >> 16) & 0xFF] ^
                 _t3[(t[(i + s2) % bc] >> 8) & 0xFF] ^
                 _t4[t[(i + s3) % bc] & 0xFF]) ^
             _ke[r][i]; // AddRoundKey
       }
-      // Atualiza o estado para o próximo round
-      t = List<int>.from(a); // Equivalente a t = a[:] em dart
+      // Update the state for the next round
+      t = List<int>.from(a); // Equivalent to Python's t = a[:]
     }
 
-    // Último round é especial (SubBytes, ShiftRows, AddRoundKey - sem MixColumns)
+    // The last round is special (SubBytes, ShiftRows, AddRoundKey - no MixColumns)
     final List<int> resultBytes = [];
     for (int i = 0; i < bc; i++) {
       final int tt = _ke[rounds][i];
-      // Aplica SubBytes e AddRoundKey byte a byte
+      // Apply SubBytes and AddRoundKey byte by byte
       resultBytes.add((_s[(t[i] >> 24) & 0xFF] ^ (tt >> 24)) & 0xFF);
       resultBytes
           .add((_s[(t[(i + s1) % bc] >> 16) & 0xFF] ^ (tt >> 16)) & 0xFF);
@@ -1137,10 +1137,9 @@ class Rijndael {
     return Uint8List.fromList(resultBytes);
   }
 
-  /// Decriptografa um bloco de texto cifrado.
-  ///
-  /// Lança um [ArgumentError] se `ciphertext` tiver o tamanho incorreto.
   /// Decrypts a single block of ciphertext.
+  ///
+  /// Throws an [ArgumentError] if `ciphertext` has the wrong length.
   Uint8List decrypt(Uint8List ciphertext) {
     if (ciphertext.length != blockSize) {
       throw ArgumentError(

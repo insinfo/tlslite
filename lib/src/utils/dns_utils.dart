@@ -2,90 +2,91 @@
 // (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
 // Modified in 2025-2026 by Isaque Neves.
 
-import 'dart:convert'; // Para ascii
-import 'dart:typed_data'; // Para Uint8List
+import 'dart:convert'; // For ascii
+import 'dart:typed_data'; // For Uint8List
 
-/// Verifica se o parâmetro é um nome de host (hostname) DNS válido.
+/// Checks whether the argument is a valid DNS hostname.
 ///
-/// Segue regras comuns de validação, incluindo RFC 1035/1123 para caracteres e estrutura.
+/// Follows common validation rules, including RFC 1035/1123 for characters
+/// and structure.
 ///
-/// [hostnameInput]: A String ou Uint8List (assumido como ASCII) para verificar.
-/// Retorna `true` se for um nome de host válido, `false` caso contrário.
+/// [hostnameInput]: the String or Uint8List (assumed to be ASCII) to check.
+/// Returns `true` if it is a valid hostname, `false` otherwise.
 bool isValidHostname(Object hostnameInput) {
   String hostname;
 
-  // 1. Trata o tipo de entrada e decodifica se for Uint8List (ASCII)
+  // 1. Handle the input type and decode it if it is a Uint8List (ASCII)
   if (hostnameInput is String) {
     hostname = hostnameInput;
   } else if (hostnameInput is Uint8List) {
     try {
-      // Tenta decodificar como ASCII estrito
+      // Try to decode as strict ASCII
       hostname = ascii.decode(hostnameInput, allowInvalid: false);
     } on FormatException {
-      return false; // Falha na decodificação ASCII
+      return false; // ASCII decoding failed
     }
   } else {
-    // Tipo de entrada inválido
+    // Invalid input type
     return false;
-    // Alternativamente, poderia lançar um ArgumentError:
+    // Alternatively, this could throw an ArgumentError:
     // throw ArgumentError("Input must be a String or Uint8List representing ASCII");
   }
 
-  // Hostname não pode ser vazio após a decodificação
+  // The hostname cannot be empty after decoding
   if (hostname.isEmpty) {
     return false;
   }
 
-  // 2. Remove um ponto final, se presente
-  // Nomes de host FQDN podem terminar com '.', representando a raiz.
-  // Para validação de rótulos (labels), removemos esse ponto final.
+  // 2. Strip a trailing dot, if present
+  // FQDN hostnames may end with '.', representing the root.
+  // For label validation, we remove that trailing dot.
   if (hostname.endsWith('.')) {
     hostname = hostname.substring(0, hostname.length - 1);
-    // Se o hostname era apenas '.', agora está vazio, o que é inválido
+    // If the hostname was just '.', it is now empty, which is invalid
     if (hostname.isEmpty) {
       return false;
     }
   }
 
-  // 3. Verifica o comprimento total (RFC 1035)
-  // O comprimento máximo total de um nome de host na representação
-  // de texto (com pontos) é 253 caracteres (excluindo o ponto final da raiz).
+  // 3. Check the total length (RFC 1035)
+  // The maximum total length of a hostname in its text representation
+  // (with dots) is 253 characters (excluding the trailing root dot).
   if (hostname.length > 253) {
     return false;
   }
 
-  // 4. Verifica se é totalmente numérico com pontos (para evitar confusão com IP)
-  // Esta não é uma regra estrita de RFC, mas uma prática comum.
+  // 4. Reject all-numeric names with dots (to avoid confusion with IP addresses)
+  // This is not a strict RFC rule, but a common practice.
   final numericRegex = RegExp(r'^[\d.]+$');
   if (numericRegex.hasMatch(hostname)) {
     return false;
   }
 
-  // 5. Valida cada rótulo (label) individualmente
+  // 5. Validate each label individually
   final labels = hostname.split('.');
 
-  // Não pode haver rótulos vazios (ex: "host..name")
+  // There must be no empty labels (e.g. "host..name")
   if (labels.any((label) => label.isEmpty)) {
     return false;
   }
 
-  // Regex para caracteres permitidos em cada rótulo (RFC 1123 amplia RFC 952/1035)
-  // Permite letras (a-z, A-Z), números (0-9) e hífen (-)
-  // Comprimento de 1 a 63 caracteres.
-  // Não verifica início/fim com hífen aqui; faremos isso separadamente.
+  // Regex for the characters allowed in each label (RFC 1123 extends RFC 952/1035)
+  // Allows letters (a-z, A-Z), digits (0-9) and hyphen (-)
+  // Length from 1 to 63 characters.
+  // Leading/trailing hyphens are not checked here; that is done separately.
   final labelRegex = RegExp(r'^[a-zA-Z0-9-]{1,63}$');
 
-  // Verifica cada rótulo
+  // Check each label
   return labels.every((label) {
-    // Verifica caracteres e comprimento com a regex
+    // Check characters and length with the regex
     if (!labelRegex.hasMatch(label)) {
       return false;
     }
-    // Verifica se o rótulo começa ou termina com hífen (RFC 1123)
+    // Check whether the label starts or ends with a hyphen (RFC 1123)
     if (label.startsWith('-') || label.endsWith('-')) {
       return false;
     }
-    // Se passou em todas as verificações para este rótulo
+    // The label passed all checks
     return true;
   });
 }

@@ -207,9 +207,9 @@ class SocketNative implements RawTransport {
 
   int? _fd; // Unix file descriptor
   bool _closed = false;
-  final int _family; // AF_INET ou AF_INET6
-  final int _type; // SOCK_STREAM ou SOCK_DGRAM
-  double? _timeout; // Timeout em segundos
+  final int _family; // AF_INET or AF_INET6
+  final int _type; // SOCK_STREAM or SOCK_DGRAM
+  double? _timeout; // Timeout in seconds
   SocketBlockingMode _mode = SocketBlockingMode.blocking;
 
   @override
@@ -227,7 +227,7 @@ class SocketNative implements RawTransport {
     final buffer = calloc<Uint8>(inet6AddrStrLen);
 
     if (_family == afInet) {
-      // Para IPv4, aloca SockaddrIn.
+      // For IPv4, allocate a SockaddrIn.
       final addr = calloc<SockaddrIn>();
       final addrLen = calloc<Int32>()..value = sizeOf<SockaddrIn>();
       final handle = Platform.isWindows ? _socketHandle : _fd;
@@ -238,7 +238,7 @@ class SocketNative implements RawTransport {
         calloc.free(buffer);
         _throwWithOsError('getsockname');
       }
-      // O campo s_addr começa aos 4 bytes.
+      // The s_addr field starts at byte 4.
       final ptr = addr.cast<Uint8>() + 4;
       final convResult = _inetNtop(afInet, ptr, buffer.cast(), inet6AddrStrLen);
       if (convResult == nullptr) {
@@ -252,7 +252,7 @@ class SocketNative implements RawTransport {
       calloc.free(addr);
       calloc.free(addrLen);
     } else {
-      // Para IPv6, aloca SockAddrIn6.
+      // For IPv6, allocate a SockAddrIn6.
       final addr = calloc<SockAddrIn6>();
       final addrLen = calloc<Int32>()..value = sizeOf<SockAddrIn6>();
       final handle = Platform.isWindows ? _socketHandle : _fd;
@@ -263,7 +263,7 @@ class SocketNative implements RawTransport {
         calloc.free(buffer);
         _throwWithOsError('getsockname');
       }
-      // O campo sin6_addr inicia aos 8 bytes (2+2+4).
+      // The sin6_addr field starts at byte 8 (2+2+4).
       const sin6AddrOffset = 8;
       final ptr = addr.cast<Uint8>() + sin6AddrOffset;
       final convResult =
@@ -284,7 +284,7 @@ class SocketNative implements RawTransport {
     return (host, port);
   }
 
-  /// Construtor principal
+  /// Main constructor.
   SocketNative(int family, int type, int protocol,
       {SocketBlockingMode blockingMode = SocketBlockingMode.blocking})
       : _family = family,
@@ -341,7 +341,7 @@ class SocketNative implements RawTransport {
   @override
   bool get isClosed => _closed;
 
-  // **1. Suporte a gethostname()**
+  // **1. gethostname() support**
   static String gethostname() {
     final buffer = calloc<Uint8>(256);
     final result = _gethostname(buffer, 256);
@@ -354,12 +354,12 @@ class SocketNative implements RawTransport {
     return hostname;
   }
 
-  // **2. Suporte a settimeout()**
+  // **2. settimeout() support**
   void settimeout(double? timeout) {
     _timeout = timeout;
   }
 
-  // **3. Suporte a sendall()**
+  // **3. sendall() support**
   void sendall(Uint8List data) {
     final sent = send(data);
     if (sent != data.length) {
@@ -367,7 +367,7 @@ class SocketNative implements RawTransport {
     }
   }
 
-  // **4. Suporte a UDP (SOCK_DGRAM)**
+  // **4. UDP (SOCK_DGRAM) support**
   (Uint8List, String, int) recvfrom(int bufferSize) {
     if (_type != sockDgram) {
       throw SocketException('recvfrom is only for UDP sockets');
@@ -522,7 +522,7 @@ class SocketNative implements RawTransport {
         calloc.free(addr);
         throw SocketException('Invalid address');
       }
-      // Atribui o endereço binário ao campo s_addr
+      // Assign the binary address to the s_addr field
       addr.ref.sAddr = ipBuffer.value;
       calloc.free(ipBuffer);
 
@@ -537,7 +537,7 @@ class SocketNative implements RawTransport {
       addr.ref.sin6Family = afInet6;
       addr.ref.sin6Port = _htons(port);
 
-      // Aloca buffer temporário para receber os 16 bytes do endereço IPv6
+      // Allocate a temporary buffer to receive the 16 bytes of the IPv6 address
       final temp = calloc<Uint8>(16);
       final hostPtr = host.toNativeUtf8();
       final ip = _inetPton(afInet6, hostPtr, temp);
@@ -548,14 +548,14 @@ class SocketNative implements RawTransport {
         throw SocketException('Invalid address');
       }
 
-      // Cálculo de offset: sin6_family(2 bytes) + sin6_port(2 bytes) + sin6_flowinfo(4 bytes) = 8 bytes
-      // Logo, o campo sin6_addr começa no offset 8
+      // Offset calculation: sin6_family(2 bytes) + sin6_port(2 bytes) + sin6_flowinfo(4 bytes) = 8 bytes
+      // So the sin6_addr field starts at offset 8
       const sin6AddrOffset = 8;
 
-      // Ponteiro para o início da estrutura
+      // Pointer to the start of the structure
       final addrPtr = addr.cast<Uint8>();
 
-      // Copia os 16 bytes do buffer temporário (temp) para o campo sin6_addr
+      // Copy the 16 bytes from the temporary buffer (temp) into the sin6_addr field
       for (int i = 0; i < 16; i++) {
         addrPtr.elementAt(sin6AddrOffset + i).value = temp[i];
       }
@@ -575,7 +575,7 @@ class SocketNative implements RawTransport {
       addr.ref.sinFamily = afInet;
       addr.ref.sinPort = _htons(port);
 
-      // Aloca buffer temporário para receber o endereço IPv4.
+      // Allocate a temporary buffer to receive the IPv4 address.
       final ipBuffer = calloc<Uint32>();
       final hostPtr = host.toNativeUtf8();
       final ip = _inetPton(afInet, hostPtr, ipBuffer.cast());
@@ -586,7 +586,7 @@ class SocketNative implements RawTransport {
         calloc.free(addr);
         throw SocketException('Invalid address');
       }
-      // Copia o valor convertido para o campo s_addr.
+      // Copy the converted value into the s_addr field.
       addr.ref.sAddr = ipBuffer.value;
       calloc.free(ipBuffer);
 
@@ -601,7 +601,7 @@ class SocketNative implements RawTransport {
       addr.ref.sin6Family = afInet6;
       addr.ref.sin6Port = _htons(port);
 
-      // Aloca buffer temporário de 16 bytes para o endereço IPv6.
+      // Allocate a 16-byte temporary buffer for the IPv6 address.
       final temp = calloc<Uint8>(16);
       final hostPtr = host.toNativeUtf8();
       final ip = _inetPton(afInet6, hostPtr, temp);
@@ -613,11 +613,11 @@ class SocketNative implements RawTransport {
         throw SocketException('Invalid address');
       }
 
-      // Cálculo de offset para sin6_addr: sin6_family(2) + sin6_port(2) + sin6_flowinfo(4) = 8 bytes
+      // Offset calculation for sin6_addr: sin6_family(2) + sin6_port(2) + sin6_flowinfo(4) = 8 bytes
       const sin6AddrOffset = 8;
       final addrPtr = addr.cast<Uint8>();
 
-      // Copia os 16 bytes de temp para o campo sin6_addr.
+      // Copy the 16 bytes from temp into the sin6_addr field.
       for (int i = 0; i < 16; i++) {
         addrPtr.elementAt(sin6AddrOffset + i).value = temp[i];
       }
@@ -686,7 +686,7 @@ class SocketNative implements RawTransport {
     }
   }
 
-  // **6. Modos não bloqueantes**
+  // **6. Non-blocking modes**
   void setblocking(bool flag) {
     setBlockingMode(
         flag ? SocketBlockingMode.blocking : SocketBlockingMode.nonBlocking);

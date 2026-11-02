@@ -4,29 +4,29 @@ import 'package:tlslite/src/ffi/native_memory.dart';
 import 'generated/ffi.dart';
 import 'openssl_loader.dart';
 
-/// Constantes – os valores abaixo devem corresponder aos valores definidos na sua binding.
+/// Constants – the values below must match the values defined in the OpenSSL bindings.
 const int osslParamUnsignedInteger = 1;
-const int evpPkeyKeypair = 1; // Seleção para criação de par de chaves
+const int evpPkeyKeypair = 1; // Selection for key pair creation
 const int bioCtrlInfo = 3;
 const int evpPkeyRsa = 6;
 
-/// Funções auxiliares para construir os parâmetros OSSL_PARAM para chave RSA.
+/// Builds the OSSL_PARAM array for RSA key generation.
 Pointer<OSSL_PARAM> constructParams(int bits, int pubexp) {
-  // Alocamos um array com 3 parâmetros: "rsa_bits", "rsa_pubexp" e o marcador de fim.
+  // Allocate an array of 3 parameters: "rsa_bits", "rsa_pubexp" and the end marker.
   const paramCount = 3;
   final params = calloc<OSSL_PARAM>(paramCount);
 
-  // Primeiro parâmetro: "rsa_bits"
+  // First parameter: "rsa_bits"
   final keyBits = "rsa_bits".toNativeUtf8();
   params[0].key = keyBits.cast<Char>();
   params[0].data_type = osslParamUnsignedInteger;
-  // Aloca memória para armazenar o valor dos bits (uint32)
+  // Allocate memory to hold the bit count (uint32)
   final bitsPtr = calloc<Uint32>();
   bitsPtr.value = bits;
   params[0].data = bitsPtr.cast<Void>();
   params[0].data_size = sizeOf<Uint32>();
 
-  // Segundo parâmetro: "rsa_pubexp"
+  // Second parameter: "rsa_pubexp"
   final keyPubexp = "rsa_pubexp".toNativeUtf8();
   params[1].key = keyPubexp.cast<Char>();
   params[1].data_type = osslParamUnsignedInteger;
@@ -35,14 +35,14 @@ Pointer<OSSL_PARAM> constructParams(int bits, int pubexp) {
   params[1].data = pubexpPtr.cast<Void>();
   params[1].data_size = sizeOf<Uint32>();
 
-  // Terceiro parâmetro: marca o fim (key == nullptr)
+  // Third parameter: end marker (key == nullptr)
   params[2].key = nullptr;
 
   return params;
 }
 
 void freeParams(Pointer<OSSL_PARAM> params) {
-  // Libera as strings e os dados alocados para os parâmetros
+  // Free the strings and the data allocated for the parameters
   if (params[0].key != nullptr) {
     calloc.free(params[0].key);
     calloc.free(params[0].data);
@@ -54,7 +54,7 @@ void freeParams(Pointer<OSSL_PARAM> params) {
   calloc.free(params);
 }
 
-/// Classe auxiliar para criar certificado autoassinado usando as novas APIs.
+/// Helper class for creating a self-signed certificate with the OpenSSL 3 APIs.
 class X509CertificateBuilder {
   final OpenSsl libcrypt;
   final bool _supportsFromData;
@@ -69,7 +69,7 @@ class X509CertificateBuilder {
     );
   }
 
-  /// Gera um par de chaves RSA e retorna um ponteiro para EVP_PKEY utilizando EVP_PKEY_fromdata.
+  /// Generates an RSA key pair and returns a pointer to an EVP_PKEY, using EVP_PKEY_fromdata when available.
   Pointer<EVP_PKEY> generateKeyPair() {
     if (_supportsFromData) {
       try {
@@ -103,12 +103,12 @@ class X509CertificateBuilder {
     }
 
     if (ctx == nullptr) {
-      throw Exception('Falha ao criar EVP_PKEY_CTX');
+      throw Exception('Failed to create EVP_PKEY_CTX');
     }
 
     if (libcrypt.EVP_PKEY_fromdata_init(ctx) != 1) {
       libcrypt.EVP_PKEY_CTX_free(ctx);
-      throw Exception('Falha ao inicializar EVP_PKEY_fromdata');
+      throw Exception('Failed to initialize EVP_PKEY_fromdata');
     }
 
     final params = constructParams(2048, 65537);
@@ -120,7 +120,7 @@ class X509CertificateBuilder {
 
     if (ret != 1 || pkeyPtr.value == nullptr) {
       calloc.free(pkeyPtr);
-      throw Exception('EVP_PKEY_fromdata falhou');
+      throw Exception('EVP_PKEY_fromdata failed');
     }
 
     final pkey = pkeyPtr.value;
@@ -131,72 +131,72 @@ class X509CertificateBuilder {
   Pointer<EVP_PKEY> _generateLegacyRsa() {
     final rsa = libcrypt.RSA_new();
     if (rsa == nullptr) {
-      throw Exception('Falha ao criar RSA');
+      throw Exception('Failed to create RSA');
     }
     final bn = libcrypt.BN_new();
     if (bn == nullptr) {
       libcrypt.RSA_free(rsa);
-      throw Exception('Falha ao criar BIGNUM');
+      throw Exception('Failed to create BIGNUM');
     }
     const exponent = 65537;
     if (libcrypt.BN_set_word(bn, exponent) != 1) {
       libcrypt.BN_free(bn);
       libcrypt.RSA_free(rsa);
-      throw Exception('Falha ao definir expoente RSA');
+      throw Exception('Failed to set the RSA exponent');
     }
     final generated = libcrypt.RSA_generate_key_ex(rsa, 2048, bn, nullptr);
     libcrypt.BN_free(bn);
     if (generated != 1) {
       libcrypt.RSA_free(rsa);
-      throw Exception('RSA_generate_key_ex falhou');
+      throw Exception('RSA_generate_key_ex failed');
     }
 
     final pkey = libcrypt.EVP_PKEY_new();
     if (pkey == nullptr) {
       libcrypt.RSA_free(rsa);
-      throw Exception('Falha ao criar EVP_PKEY');
+      throw Exception('Failed to create EVP_PKEY');
     }
     final setResult = libcrypt.EVP_PKEY_set1_RSA(pkey, rsa);
     if (setResult != 1) {
       libcrypt.RSA_free(rsa);
       libcrypt.EVP_PKEY_free(pkey);
-      throw Exception('EVP_PKEY_set1_RSA falhou');
+      throw Exception('EVP_PKEY_set1_RSA failed');
     }
     // set1 increments the RSA refcount, so we can free our local handle.
     libcrypt.RSA_free(rsa);
     return pkey;
   }
 
-  /// Cria um certificado X509 autoassinado com validade em [validityDays] dias.
+  /// Creates a self-signed X509 certificate valid for [validityDays] days.
     Pointer<X509> createSelfSignedCertificate(Pointer<EVP_PKEY> key,
       {int validityDays = 365}) {
     final cert = libcrypt.X509_new();
     if (cert == nullptr) {
-      throw Exception('Falha ao criar X509');
+      throw Exception('Failed to create X509');
     }
-    // Define a versão para X509v3 (valor 2).
+    // Set the version to X509v3 (value 2).
     libcrypt.X509_set_version(cert, 2);
 
-    // Define o número de série.
+    // Set the serial number.
     final serial = libcrypt.ASN1_INTEGER_new();
     if (serial == nullptr) {
-      throw Exception('Falha ao criar ASN1_INTEGER');
+      throw Exception('Failed to create ASN1_INTEGER');
     }
     libcrypt.ASN1_INTEGER_set(serial, 1);
     libcrypt.X509_set_serialNumber(cert, serial);
     libcrypt.ASN1_INTEGER_free(serial);
 
-    // Define o período de validade.
+    // Set the validity period.
     libcrypt.X509_gmtime_adj(libcrypt.X509_getm_notBefore(cert), 0);
     libcrypt.X509_gmtime_adj(
       libcrypt.X509_getm_notAfter(cert), validityDays * 24 * 3600);
 
-    // Cria um nome para emissor e sujeito (no caso autoassinado, são iguais).
+    // Create a name for issuer and subject (identical for a self-signed certificate).
     final name = libcrypt.X509_NAME_new();
     if (name == nullptr) {
-      throw Exception('Falha ao criar X509_NAME');
+      throw Exception('Failed to create X509_NAME');
     }
-    const int mbstringAsc = 0x1001; // Valor oficial para ASCII.
+    const int mbstringAsc = 0x1001; // Official value for ASCII.
     final cnKey = 'CN'.toNativeUtf8();
     final cnValue = 'SelfSignedCert'.toNativeUtf8();
     final ret = libcrypt.X509_NAME_add_entry_by_txt(
@@ -204,33 +204,33 @@ class X509CertificateBuilder {
     calloc.free(cnKey);
     calloc.free(cnValue);
     if (ret != 1) {
-      throw Exception('X509_NAME_add_entry_by_txt falhou');
+      throw Exception('X509_NAME_add_entry_by_txt failed');
     }
     libcrypt.X509_set_issuer_name(cert, name);
     libcrypt.X509_set_subject_name(cert, name);
     libcrypt.X509_NAME_free(name);
 
-    // Associa a chave pública.
+    // Attach the public key.
     libcrypt.X509_set_pubkey(cert, key);
 
-    // Assina o certificado com a chave privada usando SHA256.
+    // Sign the certificate with the private key using SHA256.
     final signRet = libcrypt.X509_sign(cert, key, libcrypt.EVP_sha256());
     if (signRet <= 0) {
-      throw Exception('X509_sign falhou');
+      throw Exception('X509_sign failed');
     }
     return cert;
   }
 
-  /// Converte o certificado X509 para uma String no formato PEM.
+  /// Converts the X509 certificate to a PEM-encoded String.
   String x509ToPem(Pointer<X509> cert) {
     final bio = libcrypt.BIO_new(libcrypt.BIO_s_mem());
     if (bio == nullptr) {
-      throw Exception('Falha ao criar BIO');
+      throw Exception('Failed to create BIO');
     }
     try {
       final ret = libcrypt.PEM_write_bio_X509(bio, cert);
       if (ret != 1) {
-        throw Exception('PEM_write_bio_X509 falhou');
+        throw Exception('PEM_write_bio_X509 failed');
       }
       return _readBio(bio);
     } finally {
@@ -238,17 +238,17 @@ class X509CertificateBuilder {
     }
   }
 
-  /// Converte a chave privada para uma String no formato PEM.
+  /// Converts the private key to a PEM-encoded String.
   String privateKeyToPem(Pointer<EVP_PKEY> key) {
     final bio = libcrypt.BIO_new(libcrypt.BIO_s_mem());
     if (bio == nullptr) {
-      throw Exception('Falha ao criar BIO');
+      throw Exception('Failed to create BIO');
     }
     try {
       final ret = libcrypt.PEM_write_bio_PrivateKey(
           bio, key, nullptr, nullptr, 0, nullptr, nullptr);
       if (ret != 1) {
-        throw Exception('PEM_write_bio_PrivateKey falhou');
+        throw Exception('PEM_write_bio_PrivateKey failed');
       }
       return _readBio(bio);
     } finally {
@@ -261,7 +261,7 @@ class X509CertificateBuilder {
     try {
       final length = libcrypt.BIO_ctrl(bio, bioCtrlInfo, 0, outPtr.cast());
       if (length <= 0 || outPtr.value == nullptr) {
-        throw Exception('BIO_get_mem_data falhou');
+        throw Exception('BIO_get_mem_data failed');
       }
       final data = outPtr.value.cast<Uint8>().asTypedList(length);
       return String.fromCharCodes(data);

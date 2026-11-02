@@ -1,42 +1,42 @@
 // dart format width=5000
 //
-// Versão otimizada do Rijndael que usa instruções AES-NI via shell code x86_64
-// Inspirada na implementação do OpenSSL (aesni-x86_64.pl)
+// Optimized Rijndael that uses AES-NI instructions via x86_64 shellcode.
+// Inspired by the OpenSSL implementation (aesni-x86_64.pl).
 //
-// Esta implementação usa instruções de hardware AES-NI quando disponíveis:
-// - aesenc / aesenclast para encriptação
-// - aesdec / aesdeclast para decriptação
-// - aeskeygenassist para expansão de chave
+// This implementation uses the AES-NI hardware instructions when available:
+// - aesenc / aesenclast for encryption
+// - aesdec / aesdeclast for decryption
+// - aeskeygenassist for key expansion
 //
-// IMPORTANTE: Esta implementação só funciona em processadores x86_64 com suporte AES-NI
-// Para verificar suporte: CPUID com EAX=1, verificar bit 25 de ECX
+// IMPORTANT: this implementation only works on x86_64 CPUs with AES-NI support.
+// To check for support: CPUID with EAX=1, check bit 25 of ECX.
 
 import 'dart:ffi' as ffi;
 import 'dart:io' show Platform;
 import 'dart:typed_data';
 import 'package:tlslite/src/ffi/native_memory.dart' as pkgffi;
 
-/// Verifica se a plataforma suporta AES-NI
+/// Checks whether the platform supports AES-NI.
 class AesNiSupport {
   static bool? _supported;
 
-  /// Retorna true se AES-NI é suportado
+  /// Returns true if AES-NI is supported.
   static bool get isSupported {
     _supported ??= _checkAesNiSupport();
     return _supported!;
   }
 
   static bool _checkAesNiSupport() {
-    // Os shellcodes de AES-NI deste arquivo seguem a convenção de chamada do
-    // Win64 (argumentos em rcx/rdx). No Linux (System V: rdi/rsi) eles leem
-    // lixo e derrubam o processo, então só são usados no Windows x64; nos
-    // demais sistemas fica o fallback em Dart. Ver TODO.md (asmjit).
+    // The AES-NI shellcodes in this file follow the Win64 calling convention
+    // (arguments in rcx/rdx). On Linux (System V: rdi/rsi) they would read
+    // garbage and crash the process, so they are only used on Windows x64;
+    // other systems use the Dart fallback. See TODO.md (asmjit).
     if (!Platform.isWindows) {
       return false;
     }
 
     try {
-      // Tenta executar CPUID para verificar suporte AES-NI
+      // Try to run CPUID to check for AES-NI support
       return _executeCpuidCheck();
     } catch (e) {
       return false;
@@ -44,18 +44,18 @@ class AesNiSupport {
   }
 
   static bool _executeCpuidCheck() {
-    // Shell code x86_64 para CPUID
-    // Verifica bit 25 de ECX quando EAX=1
+    // x86_64 shellcode for CPUID
+    // Checks bit 25 of ECX with EAX=1
     //
-    // Código assembly:
-    // push rbx              ; salva rbx (callee-saved)
-    // mov eax, 1            ; função CPUID 1
-    // cpuid                 ; executa CPUID
-    // mov eax, ecx          ; resultado em ecx
+    // Assembly:
+    // push rbx              ; save rbx (callee-saved)
+    // mov eax, 1            ; CPUID leaf 1
+    // cpuid                 ; run CPUID
+    // mov eax, ecx          ; result is in ecx
     // shr eax, 25           ; shift right 25 bits
-    // and eax, 1            ; isola bit 25
-    // pop rbx               ; restaura rbx
-    // ret                   ; retorna
+    // and eax, 1            ; isolate bit 25
+    // pop rbx               ; restore rbx
+    // ret                   ; return
 
     final Uint8List cpuidCode;
 
@@ -89,21 +89,21 @@ class AesNiSupport {
     return result == 1;
   }
 
-  /// Executa shell code e retorna o resultado (valor em EAX/RAX)
+  /// Runs shellcode and returns the result (the value in EAX/RAX).
   static int _executeShellCode(Uint8List code) {
     final execMem = _allocateExecutableMemory(code.length);
     if (execMem == ffi.nullptr) {
-      throw StateError('Falha ao alocar memória executável');
+      throw StateError('Failed to allocate executable memory');
     }
 
     try {
-      // Copia o código para a memória executável
+      // Copy the code into executable memory
       final codePtr = execMem.cast<ffi.Uint8>();
       for (int i = 0; i < code.length; i++) {
         codePtr[i] = code[i];
       }
 
-      // Cria ponteiro de função e executa
+      // Create a function pointer and run it
       final funcPtr = execMem.cast<ffi.NativeFunction<ffi.Int32 Function()>>();
       final func = funcPtr.asFunction<int Function()>();
 
@@ -191,7 +191,7 @@ class AesNiSupport {
   }
 }
 
-/// Gerenciador de memória executável para shell code
+/// Manages executable memory for shellcode.
 class ExecutableMemory {
   final ffi.Pointer<ffi.Void> pointer;
   final int size;
@@ -199,14 +199,14 @@ class ExecutableMemory {
 
   ExecutableMemory._(this.pointer, this.size);
 
-  /// Aloca memória executável e copia o código
+  /// Allocates executable memory and copies the code into it.
   static ExecutableMemory allocate(Uint8List code) {
     final ptr = AesNiSupport._allocateExecutableMemory(code.length);
     if (ptr == ffi.nullptr) {
-      throw StateError('Falha ao alocar memória executável');
+      throw StateError('Failed to allocate executable memory');
     }
 
-    // Copia o código
+    // Copy the code
     final codePtr = ptr.cast<ffi.Uint8>();
     for (int i = 0; i < code.length; i++) {
       codePtr[i] = code[i];
@@ -215,7 +215,7 @@ class ExecutableMemory {
     return ExecutableMemory._(ptr, code.length);
   }
 
-  /// Libera a memória
+  /// Frees the memory.
   void free() {
     if (_freed) return;
     AesNiSupport._freeExecutableMemory(pointer, size);
@@ -225,10 +225,10 @@ class ExecutableMemory {
   bool get isFreed => _freed;
 }
 
-/// Shell codes AES-NI x86_64
+/// x86_64 AES-NI shellcodes.
 ///
-/// Baseados no OpenSSL aesni-x86_64.pl
-/// Usa instruções:
+/// Based on OpenSSL aesni-x86_64.pl.
+/// Uses the instructions:
 /// - movdqu: load/store 128-bit unaligned
 /// - pxor: XOR 128-bit
 /// - aesenc: AES encryption round
@@ -236,37 +236,37 @@ class ExecutableMemory {
 /// - aesdec: AES decryption round
 /// - aesdeclast: AES final decryption round
 class AesNiShellCode {
-  /// Shell code para encriptação de 1 bloco AES-128 (10 rounds)
+  /// Shellcode that encrypts one AES-128 block (10 rounds).
   ///
-  /// Parâmetros (Windows x64):
-  ///   rcx = ponteiro para input (16 bytes)
-  ///   rdx = ponteiro para output (16 bytes)
-  ///   r8  = ponteiro para round keys (176 bytes = 11 * 16)
+  /// Parameters (Windows x64):
+  ///   rcx = pointer to input (16 bytes)
+  ///   rdx = pointer to output (16 bytes)
+  ///   r8  = pointer to round keys (176 bytes = 11 * 16)
   ///
-  /// Código assembly:
+  /// Assembly:
   /// ```asm
-  /// ; Carregar input e round key 0
+  /// ; Load input and round key 0
   /// movdqu xmm0, [rcx]        ; load input
   /// movdqu xmm1, [r8]         ; load key[0]
-  /// pxor   xmm0, xmm1         ; AddRoundKey inicial
+  /// pxor   xmm0, xmm1         ; initial AddRoundKey
   ///
   /// ; Rounds 1-9
   /// movdqu xmm1, [r8+16]
   /// aesenc xmm0, xmm1
   /// movdqu xmm1, [r8+32]
   /// aesenc xmm0, xmm1
-  /// ... (continua para todos os rounds)
+  /// ... (continues for all rounds)
   ///
   /// ; Round 10 (final)
   /// movdqu xmm1, [r8+160]
   /// aesenclast xmm0, xmm1
   ///
-  /// ; Store resultado
+  /// ; Store result
   /// movdqu [rdx], xmm0
   /// ret
   /// ```
   static Uint8List getEncrypt128ShellCode() {
-    // Opcode bytes para instruções AES-NI (Windows x64 calling convention)
+    // Opcode bytes for the AES-NI instructions (Windows x64 calling convention)
     return Uint8List.fromList([
       // movdqu xmm0, [rcx] - load input
       0xF3, 0x0F, 0x6F, 0x01,
@@ -274,7 +274,7 @@ class AesNiShellCode {
       // movdqu xmm1, [r8] - load key[0]
       0xF3, 0x41, 0x0F, 0x6F, 0x08,
 
-      // pxor xmm0, xmm1 - AddRoundKey inicial
+      // pxor xmm0, xmm1 - initial AddRoundKey
       0x66, 0x0F, 0xEF, 0xC1,
 
       // Round 1: movdqu xmm1, [r8+16]; aesenc xmm0, xmm1
@@ -325,16 +325,16 @@ class AesNiShellCode {
     ]);
   }
 
-  /// Shell code para decriptação de 1 bloco AES-128 (10 rounds)
+  /// Shellcode that decrypts one AES-128 block (10 rounds).
   static Uint8List getDecrypt128ShellCode() {
     return Uint8List.fromList([
       // movdqu xmm0, [rcx] - load input
       0xF3, 0x0F, 0x6F, 0x01,
 
-      // movdqu xmm1, [r8] - load key[0] (que é key[10] original)
+      // movdqu xmm1, [r8] - load key[0] (which is the original key[10])
       0xF3, 0x41, 0x0F, 0x6F, 0x08,
 
-      // pxor xmm0, xmm1 - AddRoundKey inicial
+      // pxor xmm0, xmm1 - initial AddRoundKey
       0x66, 0x0F, 0xEF, 0xC1,
 
       // Round 1: movdqu xmm1, [r8+16]; aesdec xmm0, xmm1
@@ -385,7 +385,7 @@ class AesNiShellCode {
     ]);
   }
 
-  /// Shell code para encriptação AES-192 (12 rounds)
+  /// Shellcode for AES-192 encryption (12 rounds).
   static Uint8List getEncrypt192ShellCode() {
     return Uint8List.fromList([
       // movdqu xmm0, [rcx]
@@ -408,7 +408,7 @@ class AesNiShellCode {
     ]);
   }
 
-  /// Shell code para encriptação AES-256 (14 rounds)
+  /// Shellcode for AES-256 encryption (14 rounds).
   static Uint8List getEncrypt256ShellCode() {
     return Uint8List.fromList([
       // movdqu xmm0, [rcx]
@@ -431,7 +431,7 @@ class AesNiShellCode {
     ]);
   }
 
-  /// Gera bytes para N rounds de aesenc
+  /// Generates the bytes for N aesenc rounds.
   static List<int> _generateAesencRounds(int numRounds) {
     final bytes = <int>[];
 
@@ -439,11 +439,11 @@ class AesNiShellCode {
       final offset = i * 16;
 
       if (offset <= 0x7F) {
-        // Offset cabe em 1 byte (disp8)
+        // Offset fits in 1 byte (disp8)
         // movdqu xmm1, [r8+offset]
         bytes.addAll([0xF3, 0x41, 0x0F, 0x6F, 0x48, offset]);
       } else {
-        // Offset precisa de 4 bytes (disp32)
+        // Offset needs 4 bytes (disp32)
         // movdqu xmm1, [r8+offset]
         bytes.addAll([
           0xF3,
@@ -465,7 +465,7 @@ class AesNiShellCode {
     return bytes;
   }
 
-  /// Gera bytes para N rounds de aesdec
+  /// Generates the bytes for N aesdec rounds.
   static List<int> _generateAesdecRounds(int numRounds) {
     final bytes = <int>[];
 
@@ -495,7 +495,7 @@ class AesNiShellCode {
     return bytes;
   }
 
-  /// Shell code para decriptação AES-192 (12 rounds)
+  /// Shellcode for AES-192 decryption (12 rounds).
   static Uint8List getDecrypt192ShellCode() {
     return Uint8List.fromList([
       0xF3, 0x0F, 0x6F, 0x01,
@@ -510,7 +510,7 @@ class AesNiShellCode {
     ]);
   }
 
-  /// Shell code para decriptação AES-256 (14 rounds)
+  /// Shellcode for AES-256 decryption (14 rounds).
   static Uint8List getDecrypt256ShellCode() {
     return Uint8List.fromList([
       0xF3, 0x0F, 0x6F, 0x01,
@@ -526,30 +526,30 @@ class AesNiShellCode {
   }
 
   // ============================================================
-  // Shell codes para expansão de chave usando AESKEYGENASSIST
-  // Isso elimina lookup tables da S-box, tornando a implementação
-  // 100% resistente a ataques de canal lateral (side-channel)
+  // Key-expansion shellcodes using AESKEYGENASSIST.
+  // This removes the S-box lookup tables, which makes the implementation
+  // fully resistant to side-channel attacks.
   // ============================================================
 
-  /// Shell code para expansão de chave AES-128 usando AESKEYGENASSIST
+  /// Shellcode for AES-128 key expansion using AESKEYGENASSIST.
   ///
-  /// Parâmetros (Windows x64):
-  ///   rcx = ponteiro para chave original (16 bytes)
-  ///   rdx = ponteiro para round keys de saída (176 bytes = 11 * 16)
+  /// Parameters (Windows x64):
+  ///   rcx = pointer to the original key (16 bytes)
+  ///   rdx = pointer to the output round keys (176 bytes = 11 * 16)
   ///
-  /// Código assembly:
+  /// Assembly:
   /// ```asm
-  /// movdqu xmm0, [rcx]        ; carrega chave original
-  /// movdqu [rdx], xmm0        ; salva round key 0
+  /// movdqu xmm0, [rcx]        ; load original key
+  /// movdqu [rdx], xmm0        ; store round key 0
   ///
   /// aeskeygenassist xmm1, xmm0, 0x01
   /// call key_expand_128
   /// movdqu [rdx+16], xmm0
-  /// ... (repete para cada rcon)
+  /// ... (repeated for each rcon)
   /// ret
   ///
   /// key_expand_128:
-  ///   pshufd xmm1, xmm1, 0xff  ; broadcast byte alto
+  ///   pshufd xmm1, xmm1, 0xff  ; broadcast high byte
   ///   vpslldq xmm2, xmm0, 4    ; shift left
   ///   pxor xmm0, xmm2
   ///   vpslldq xmm2, xmm0, 4
@@ -560,13 +560,13 @@ class AesNiShellCode {
   ///   ret
   /// ```
   static Uint8List getKeyExpand128ShellCode() {
-    // Shell code para expansão completa de chave AES-128
-    // Usa registradores XMM0-XMM2, não precisa de S-box
+    // Shellcode for the full AES-128 key expansion
+    // Uses registers XMM0-XMM2, no S-box needed
     return Uint8List.fromList([
-      // movdqu xmm0, [rcx] - carrega chave
+      // movdqu xmm0, [rcx] - load key
       0xF3, 0x0F, 0x6F, 0x01,
 
-      // movdqu [rdx], xmm0 - salva round key 0
+      // movdqu [rdx], xmm0 - store round key 0
       0xF3, 0x0F, 0x7F, 0x02,
 
       // Round 1 (rcon=0x01)
@@ -630,11 +630,12 @@ class AesNiShellCode {
     ]);
   }
 
-  /// Gera bytes para expansão inline de uma round key AES-128
-  /// Usa xmm0 como estado atual, xmm1 como resultado do aeskeygenassist
+  /// Generates the bytes for the inline expansion of one AES-128 round key.
+  ///
+  /// Uses xmm0 as the current state and xmm1 as the aeskeygenassist result.
   static List<int> _keyExpand128Inline() {
     return [
-      // pshufd xmm1, xmm1, 0xff - broadcast byte mais alto
+      // pshufd xmm1, xmm1, 0xff - broadcast the highest byte
       0x66, 0x0F, 0x70, 0xC9, 0xFF,
 
       // movdqa xmm2, xmm0
@@ -669,21 +670,21 @@ class AesNiShellCode {
     ];
   }
 
-  /// Shell code para expansão de chave AES-192
+  /// Shellcode for AES-192 key expansion.
   ///
-  /// AES-192 é mais complexo porque usa 6 palavras (192 bits) de chave
-  /// mas gera round keys de 128 bits
+  /// AES-192 is more complex because it uses a 6-word (192-bit) key
+  /// but produces 128-bit round keys.
   static Uint8List getKeyExpand192ShellCode() {
     return Uint8List.fromList([
-      // Carrega chave de 192 bits (24 bytes)
-      // movdqu xmm0, [rcx]      ; primeiros 16 bytes
+      // Load the 192-bit key (24 bytes)
+      // movdqu xmm0, [rcx]      ; first 16 bytes
       0xF3, 0x0F, 0x6F, 0x01,
-      // movq xmm1, [rcx+16]     ; últimos 8 bytes
+      // movq xmm1, [rcx+16]     ; last 8 bytes
       0xF3, 0x0F, 0x7E, 0x49, 0x10,
 
-      // movdqu [rdx], xmm0      ; salva round key 0
+      // movdqu [rdx], xmm0      ; store round key 0
       0xF3, 0x0F, 0x7F, 0x02,
-      // movq [rdx+16], xmm1     ; parte da round key 1
+      // movq [rdx+16], xmm1     ; part of round key 1
       0x66, 0x0F, 0xD6, 0x4A, 0x10,
 
       // Round 1-2 (rcon=0x01)
@@ -725,7 +726,7 @@ class AesNiShellCode {
       0xF3, 0x0F, 0x7F, 0x82, 0x90, 0x00, 0x00, 0x00,
       0x66, 0x0F, 0xD6, 0x8A, 0xA0, 0x00, 0x00, 0x00,
 
-      // Round 12 (rcon=0x40) - último round parcial
+      // Round 12 (rcon=0x40) - last, partial round
       0x66, 0x0F, 0x3A, 0xDF, 0xD1, 0x40,
       ..._keyExpand192InlineLast(),
       0xF3, 0x0F, 0x7F, 0x82, 0xA8, 0x00, 0x00, 0x00,
@@ -736,10 +737,10 @@ class AesNiShellCode {
     ]);
   }
 
-  /// Expansão inline AES-192
+  /// Inline AES-192 expansion.
   static List<int> _keyExpand192Inline() {
     return [
-      // pshufd xmm2, xmm2, 0x55 - broadcast segundo dword
+      // pshufd xmm2, xmm2, 0x55 - broadcast the second dword
       0x66, 0x0F, 0x70, 0xD2, 0x55,
 
       // movdqa xmm3, xmm0
@@ -763,7 +764,7 @@ class AesNiShellCode {
       // pxor xmm0, xmm2
       0x66, 0x0F, 0xEF, 0xC2,
 
-      // Expande xmm1 (últimas 2 palavras)
+      // Expand xmm1 (last 2 words)
       // pshufd xmm2, xmm0, 0xff
       0x66, 0x0F, 0x70, 0xD0, 0xFF,
       // movdqa xmm3, xmm1
@@ -777,7 +778,7 @@ class AesNiShellCode {
     ];
   }
 
-  /// Último round de expansão AES-192 (não precisa expandir xmm1)
+  /// Last AES-192 expansion round (xmm1 does not need to be expanded).
   static List<int> _keyExpand192InlineLast() {
     return [
       // pshufd xmm2, xmm2, 0x55
@@ -804,25 +805,25 @@ class AesNiShellCode {
       // pxor xmm0, xmm2
       0x66, 0x0F, 0xEF, 0xC2,
 
-      // Copia xmm0 para xmm1 para a última round key
+      // Copy xmm0 to xmm1 for the last round key
       0x66, 0x0F, 0x6F, 0xC8,
     ];
   }
 
-  /// Shell code para expansão de chave AES-256
+  /// Shellcode for AES-256 key expansion.
   ///
-  /// AES-256 usa chave de 256 bits e gera 15 round keys
+  /// AES-256 uses a 256-bit key and produces 15 round keys.
   static Uint8List getKeyExpand256ShellCode() {
     return Uint8List.fromList([
-      // Carrega chave de 256 bits
-      // movdqu xmm0, [rcx]      ; primeiros 16 bytes
+      // Load the 256-bit key
+      // movdqu xmm0, [rcx]      ; first 16 bytes
       0xF3, 0x0F, 0x6F, 0x01,
-      // movdqu xmm1, [rcx+16]   ; últimos 16 bytes
+      // movdqu xmm1, [rcx+16]   ; last 16 bytes
       0xF3, 0x0F, 0x6F, 0x49, 0x10,
 
-      // movdqu [rdx], xmm0      ; salva round key 0
+      // movdqu [rdx], xmm0      ; store round key 0
       0xF3, 0x0F, 0x7F, 0x02,
-      // movdqu [rdx+16], xmm1   ; salva round key 1
+      // movdqu [rdx+16], xmm1   ; store round key 1
       0xF3, 0x0F, 0x7F, 0x4A, 0x10,
 
       // Round 2 (rcon=0x01)
@@ -889,7 +890,7 @@ class AesNiShellCode {
       ..._keyExpand256InlineEven(),
       0xF3, 0x0F, 0x7F, 0x8A, 0xD0, 0x00, 0x00, 0x00,
 
-      // Round 14 (rcon=0x40) - última round key
+      // Round 14 (rcon=0x40) - last round key
       0x66, 0x0F, 0x3A, 0xDF, 0xD1, 0x40,
       ..._keyExpand256InlineOdd(),
       0xF3, 0x0F, 0x7F, 0x82, 0xE0, 0x00, 0x00, 0x00,
@@ -899,7 +900,7 @@ class AesNiShellCode {
     ]);
   }
 
-  /// Expansão AES-256 para rounds ímpares (usa pshufd com 0xff)
+  /// AES-256 expansion for odd rounds (uses pshufd with 0xff).
   static List<int> _keyExpand256InlineOdd() {
     return [
       // pshufd xmm2, xmm2, 0xff
@@ -928,7 +929,7 @@ class AesNiShellCode {
     ];
   }
 
-  /// Expansão AES-256 para rounds pares (usa pshufd com 0xaa)
+  /// AES-256 expansion for even rounds (uses pshufd with 0xaa).
   static List<int> _keyExpand256InlineEven() {
     return [
       // pshufd xmm2, xmm2, 0xaa
@@ -957,11 +958,11 @@ class AesNiShellCode {
     ];
   }
 
-  /// Shell code para AESIMC (InvMixColumns) em uma round key
+  /// Shellcode that applies AESIMC (InvMixColumns) to one round key.
   ///
-  /// Parâmetros (Windows x64):
-  ///   rcx = ponteiro para round key de entrada (16 bytes)
-  ///   rdx = ponteiro para round key de saída (16 bytes)
+  /// Parameters (Windows x64):
+  ///   rcx = pointer to the input round key (16 bytes)
+  ///   rdx = pointer to the output round key (16 bytes)
   static Uint8List getAesimcShellCode() {
     return Uint8List.fromList([
       // movdqu xmm0, [rcx]
@@ -979,76 +980,75 @@ class AesNiShellCode {
   }
 }
 
-/// Implementação AES usando instruções AES-NI via shell code x86_64
+/// AES implementation using AES-NI instructions via x86_64 shellcode.
 ///
-/// Esta implementação oferece alta performance usando as instruções
-/// de hardware AES-NI disponíveis em processadores Intel/AMD modernos.
+/// This implementation delivers high performance by using the AES-NI
+/// hardware instructions available on modern Intel/AMD processors.
 ///
-/// SEGURANÇA: Esta implementação é 100% resistente a ataques de canal lateral
-/// (side-channel attacks) porque:
-/// - Usa instruções AES-NI para encriptação/decriptação (tempo constante)
-/// - Usa AESKEYGENASSIST para expansão de chave (sem lookup tables)
-/// - Usa AESIMC para InvMixColumns (sem lookup tables)
+/// SECURITY: this implementation resists side-channel attacks because:
+/// - it uses AES-NI instructions for encryption/decryption (constant time)
+/// - it uses AESKEYGENASSIST for key expansion (no lookup tables)
+/// - it uses AESIMC for InvMixColumns (no lookup tables)
 ///
-/// IMPORTANTE: Só funciona em Windows/Linux x86_64 com suporte AES-NI
+/// IMPORTANT: only works on Windows/Linux x86_64 with AES-NI support.
 class RijndaelAsmX8664 {
-  /// Tamanho do bloco (sempre 16 para AES)
+  /// Block size (always 16 for AES).
   static const int blockSize = 16;
 
-  /// Número de rounds baseado no tamanho da chave
+  /// Number of rounds, based on the key size.
   final int _rounds;
 
-  /// Tamanho da chave em bytes
+  /// Key size in bytes.
   final int _keySize;
 
-  /// Round keys para encriptação (em memória nativa, alinhado 16 bytes)
+  /// Encryption round keys (in native memory, 16-byte aligned).
   late final ffi.Pointer<ffi.Uint8> _encKeys;
 
-  /// Round keys para decriptação (em memória nativa, alinhado 16 bytes)
+  /// Decryption round keys (in native memory, 16-byte aligned).
   late final ffi.Pointer<ffi.Uint8> _decKeys;
 
-  /// Buffer de trabalho para input (16 bytes, alinhado)
+  /// Work buffer for the input (16 bytes, aligned).
   late final ffi.Pointer<ffi.Uint8> _inputBuf;
 
-  /// Buffer de trabalho para output (16 bytes, alinhado)
+  /// Work buffer for the output (16 bytes, aligned).
   late final ffi.Pointer<ffi.Uint8> _outputBuf;
 
-  /// Memória executável para função de encriptação
+  /// Executable memory for the encryption function.
   late final ExecutableMemory _encryptMem;
 
-  /// Memória executável para função de decriptação
+  /// Executable memory for the decryption function.
   late final ExecutableMemory _decryptMem;
 
-  /// Função de encriptação compilada
+  /// Compiled encryption function.
   late final void Function(ffi.Pointer<ffi.Uint8>, ffi.Pointer<ffi.Uint8>,
       ffi.Pointer<ffi.Uint8>) _encryptFunc;
 
-  /// Função de decriptação compilada
+  /// Compiled decryption function.
   late final void Function(ffi.Pointer<ffi.Uint8>, ffi.Pointer<ffi.Uint8>,
       ffi.Pointer<ffi.Uint8>) _decryptFunc;
 
   bool _disposed = false;
 
-  /// Cria uma instância do AES com chave de 128, 192 ou 256 bits
+  /// Creates an AES instance with a 128-, 192- or 256-bit key.
   ///
-  /// [key] deve ter 16, 24 ou 32 bytes
+  /// [key] must be 16, 24 or 32 bytes long.
   ///
-  /// Lança [StateError] se AES-NI não for suportado
-  /// Lança [ArgumentError] se o tamanho da chave for inválido
+  /// Throws [StateError] if AES-NI is not supported.
+  /// Throws [ArgumentError] if the key size is invalid.
   RijndaelAsmX8664(Uint8List key)
       : _keySize = key.length,
         _rounds = _getRounds(key.length) {
     if (!AesNiSupport.isSupported) {
-      throw StateError('AES-NI não suportado nesta plataforma. '
-          'Use RijndaelFast como alternativa.');
+      throw StateError('AES-NI is not supported on this platform. '
+          'Use RijndaelFast instead.');
     }
 
     if (key.length != 16 && key.length != 24 && key.length != 32) {
-      throw ArgumentError('Tamanho de chave inválido: ${key.length}. '
-          'Use 16, 24 ou 32 bytes.');
+      throw ArgumentError('Invalid key size: ${key.length}. '
+          'Use 16, 24 or 32 bytes.');
     }
 
-    // Aloca memória alinhada para round keys
+    // Allocate aligned memory for the round keys
     // AES-128: 11 round keys = 176 bytes
     // AES-192: 13 round keys = 208 bytes
     // AES-256: 15 round keys = 240 bytes
@@ -1059,10 +1059,10 @@ class RijndaelAsmX8664 {
     _inputBuf = pkgffi.calloc<ffi.Uint8>(16);
     _outputBuf = pkgffi.calloc<ffi.Uint8>(16);
 
-    // Expande a chave
+    // Expand the key
     _expandKey(key);
 
-    // Compila as funções de encriptação/decriptação
+    // Compile the encryption/decryption functions
     _compileShellCode();
   }
 
@@ -1075,34 +1075,34 @@ class RijndaelAsmX8664 {
       case 32:
         return 14;
       default:
-        throw ArgumentError('Tamanho de chave inválido: $keyLength');
+        throw ArgumentError('Invalid key size: $keyLength');
     }
   }
 
-  /// Expande a chave usando o método mais seguro disponível
+  /// Expands the key using the safest method available.
   ///
-  /// - AES-128: Usa AESKEYGENASSIST (100% constant-time, sem lookup tables)
-  /// - AES-192/256: Usa expansão em software (requer S-box lookup, mas executado
-  ///   apenas uma vez durante a inicialização da chave)
+  /// - AES-128: uses AESKEYGENASSIST (fully constant-time, no lookup tables)
+  /// - AES-192/256: uses software expansion (needs S-box lookups, but runs
+  ///   only once, when the key is set up)
   ///
-  /// NOTA: Mesmo para AES-192/256, a exposição é mínima porque:
-  /// 1. Key expansion é feito apenas uma vez por chave
-  /// 2. O core AES (encrypt/decrypt de cada bloco) usa AES-NI
-  /// 3. A maioria dos ataques de cache-timing requer muitas operações
+  /// NOTE: even for AES-192/256 the exposure is minimal because:
+  /// 1. Key expansion runs only once per key
+  /// 2. The AES core (encrypt/decrypt of each block) uses AES-NI
+  /// 3. Most cache-timing attacks require many operations
   void _expandKey(Uint8List key) {
     if (_keySize == 16) {
-      // AES-128: Usa AESKEYGENASSIST (totalmente constant-time)
+      // AES-128: use AESKEYGENASSIST (fully constant-time)
       _expandKey128Hardware(key);
     } else {
-      // AES-192/256: Usa expansão em software
+      // AES-192/256: use software expansion
       _expandKeySoftware(key);
     }
 
-    // Gera as chaves de decriptação usando AESIMC (sempre hardware)
+    // Derive the decryption keys using AESIMC (always in hardware)
     _generateDecryptKeys();
   }
 
-  /// Expansão de chave AES-128 usando AESKEYGENASSIST (constant-time)
+  /// AES-128 key expansion using AESKEYGENASSIST (constant-time).
   void _expandKey128Hardware(Uint8List key) {
     final keyBuf = pkgffi.calloc<ffi.Uint8>(16);
 
@@ -1132,13 +1132,13 @@ class RijndaelAsmX8664 {
     }
   }
 
-  /// Expansão de chave em software (para AES-192 e AES-256)
+  /// Software key expansion (for AES-192 and AES-256).
   ///
-  /// AVISO: Esta função usa lookup tables (S-box) e não é constant-time.
-  /// No entanto, como é executada apenas uma vez durante a inicialização,
-  /// o risco de ataques de cache-timing é muito baixo.
+  /// WARNING: this function uses lookup tables (S-box) and is not
+  /// constant-time. However, since it runs only once during initialization,
+  /// the risk of cache-timing attacks is very low.
   void _expandKeySoftware(Uint8List key) {
-    // S-box para key expansion
+    // S-box for key expansion
     const sBox = [
       0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, //
       0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
@@ -1181,12 +1181,12 @@ class RijndaelAsmX8664 {
     final nr = _rounds;
     const nb = 4;
 
-    // Copia a chave original
+    // Copy the original key
     for (int i = 0; i < _keySize; i++) {
       _encKeys[i] = key[i];
     }
 
-    // Expande o restante das round keys
+    // Expand the remaining round keys
     final totalWords = nb * (nr + 1);
 
     for (int i = nk; i < totalWords; i++) {
@@ -1215,13 +1215,13 @@ class RijndaelAsmX8664 {
     }
   }
 
-  /// Gera as round keys de decriptação usando AESIMC (constant-time)
+  /// Derives the decryption round keys using AESIMC (constant-time).
   ///
-  /// Para decriptação eficiente com AES-NI:
-  /// 1. Inverte a ordem das round keys
-  /// 2. Aplica aesimc (InvMixColumns) nas keys intermediárias via hardware
+  /// For efficient decryption with AES-NI:
+  /// 1. Reverse the order of the round keys
+  /// 2. Apply aesimc (InvMixColumns) to the middle keys in hardware
   void _generateDecryptKeys() {
-    // Copia em ordem reversa
+    // Copy in reverse order
     for (int r = 0; r <= _rounds; r++) {
       final srcOffset = r * 16;
       final dstOffset = (_rounds - r) * 16;
@@ -1231,7 +1231,7 @@ class RijndaelAsmX8664 {
       }
     }
 
-    // Aplica InvMixColumns via AESIMC (constant-time, hardware)
+    // Apply InvMixColumns via AESIMC (constant-time, hardware)
     final aesimcCode = AesNiShellCode.getAesimcShellCode();
     final aesimcMem = ExecutableMemory.allocate(aesimcCode);
 
@@ -1244,21 +1244,21 @@ class RijndaelAsmX8664 {
       final aesimcFunc = funcPtr.asFunction<
           void Function(ffi.Pointer<ffi.Uint8>, ffi.Pointer<ffi.Uint8>)>();
 
-      // Buffer temporário para round key
+      // Temporary buffer for a round key
       final tempBuf = pkgffi.calloc<ffi.Uint8>(16);
 
       try {
-        // Aplica AESIMC nas keys intermediárias (não na primeira e última)
+        // Apply AESIMC to the middle keys (not the first and last ones)
         for (int r = 1; r < _rounds; r++) {
           final offset = r * 16;
 
-          // Copia round key para buffer de entrada
+          // Copy the round key into the input buffer
           for (int i = 0; i < 16; i++) {
             tempBuf[i] = _decKeys[offset + i];
           }
 
-          // Aplica AESIMC via hardware
-          // Ponteiro de saída é o mesmo que entrada (in-place via tempBuf)
+          // Apply AESIMC in hardware
+          // Output pointer is the same as the input (in place via tempBuf)
           final inputPtr = tempBuf;
           final outputPtr = _decKeys.cast<ffi.Uint8>() + offset;
 
@@ -1272,7 +1272,7 @@ class RijndaelAsmX8664 {
     }
   }
 
-  /// Compila os shell codes em funções executáveis
+  /// Compiles the shellcodes into executable functions.
   void _compileShellCode() {
     final Uint8List encCode;
     final Uint8List decCode;
@@ -1291,13 +1291,13 @@ class RijndaelAsmX8664 {
         decCode = AesNiShellCode.getDecrypt256ShellCode();
         break;
       default:
-        throw StateError('Número de rounds inválido: $_rounds');
+        throw StateError('Invalid number of rounds: $_rounds');
     }
 
     _encryptMem = ExecutableMemory.allocate(encCode);
     _decryptMem = ExecutableMemory.allocate(decCode);
 
-    // Cria ponteiros de função
+    // Create the function pointers
     final encFuncPtr = _encryptMem.pointer.cast<
         ffi.NativeFunction<
             ffi.Void Function(ffi.Pointer<ffi.Uint8>, ffi.Pointer<ffi.Uint8>,
@@ -1317,7 +1317,7 @@ class RijndaelAsmX8664 {
             ffi.Pointer<ffi.Uint8>)>();
   }
 
-  /// Libera todos os recursos alocados
+  /// Frees all allocated resources.
   void dispose() {
     if (_disposed) return;
 
@@ -1334,28 +1334,28 @@ class RijndaelAsmX8664 {
 
   void _checkNotDisposed() {
     if (_disposed) {
-      throw StateError('RijndaelAsmX8664 já foi liberado (dispose)');
+      throw StateError('RijndaelAsmX8664 has already been disposed');
     }
   }
 
-  /// Encripta um bloco de 16 bytes
+  /// Encrypts one 16-byte block.
   Uint8List encrypt(Uint8List plaintext) {
     _checkNotDisposed();
 
     if (plaintext.length != blockSize) {
       throw ArgumentError(
-          'Tamanho de bloco inválido: ${plaintext.length}. Esperado: $blockSize');
+          'Invalid block size: ${plaintext.length}. Expected: $blockSize');
     }
 
-    // Copia input para buffer nativo
+    // Copy the input into the native buffer
     for (int i = 0; i < blockSize; i++) {
       _inputBuf[i] = plaintext[i];
     }
 
-    // Executa encriptação via shell code
+    // Run the encryption shellcode
     _encryptFunc(_inputBuf, _outputBuf, _encKeys);
 
-    // Copia resultado
+    // Copy the result
     final result = Uint8List(blockSize);
     for (int i = 0; i < blockSize; i++) {
       result[i] = _outputBuf[i];
@@ -1364,17 +1364,17 @@ class RijndaelAsmX8664 {
     return result;
   }
 
-  /// Encripta diretamente em um buffer de saída (evita alocação)
+  /// Encrypts directly into an output buffer (avoids an allocation).
   void encryptInto(Uint8List plaintext, Uint8List output) {
     _checkNotDisposed();
 
     if (plaintext.length != blockSize) {
       throw ArgumentError(
-          'Tamanho de bloco inválido: ${plaintext.length}. Esperado: $blockSize');
+          'Invalid block size: ${plaintext.length}. Expected: $blockSize');
     }
     if (output.length != blockSize) {
       throw ArgumentError(
-          'Tamanho de saída inválido: ${output.length}. Esperado: $blockSize');
+          'Invalid output size: ${output.length}. Expected: $blockSize');
     }
 
     for (int i = 0; i < blockSize; i++) {
@@ -1388,13 +1388,13 @@ class RijndaelAsmX8664 {
     }
   }
 
-  /// Decripta um bloco de 16 bytes
+  /// Decrypts one 16-byte block.
   Uint8List decrypt(Uint8List ciphertext) {
     _checkNotDisposed();
 
     if (ciphertext.length != blockSize) {
       throw ArgumentError(
-          'Tamanho de bloco inválido: ${ciphertext.length}. Esperado: $blockSize');
+          'Invalid block size: ${ciphertext.length}. Expected: $blockSize');
     }
 
     for (int i = 0; i < blockSize; i++) {
@@ -1411,17 +1411,17 @@ class RijndaelAsmX8664 {
     return result;
   }
 
-  /// Decripta diretamente em um buffer de saída (evita alocação)
+  /// Decrypts directly into an output buffer (avoids an allocation).
   void decryptInto(Uint8List ciphertext, Uint8List output) {
     _checkNotDisposed();
 
     if (ciphertext.length != blockSize) {
       throw ArgumentError(
-          'Tamanho de bloco inválido: ${ciphertext.length}. Esperado: $blockSize');
+          'Invalid block size: ${ciphertext.length}. Expected: $blockSize');
     }
     if (output.length != blockSize) {
       throw ArgumentError(
-          'Tamanho de saída inválido: ${output.length}. Esperado: $blockSize');
+          'Invalid output size: ${output.length}. Expected: $blockSize');
     }
 
     for (int i = 0; i < blockSize; i++) {
@@ -1436,9 +1436,9 @@ class RijndaelAsmX8664 {
   }
 }
 
-// --- Funções Helper ---
+// --- Helper functions ---
 
-/// Encripta um bloco usando AES-NI se disponível
+/// Encrypts a block using AES-NI when available.
 Uint8List encryptBlockAsmX8664(Uint8List key, Uint8List block) {
   final cipher = RijndaelAsmX8664(key);
   try {
@@ -1448,7 +1448,7 @@ Uint8List encryptBlockAsmX8664(Uint8List key, Uint8List block) {
   }
 }
 
-/// Decripta um bloco usando AES-NI se disponível
+/// Decrypts a block using AES-NI when available.
 Uint8List decryptBlockAsmX8664(Uint8List key, Uint8List block) {
   final cipher = RijndaelAsmX8664(key);
   try {

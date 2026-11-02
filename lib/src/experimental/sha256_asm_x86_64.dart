@@ -1,17 +1,17 @@
 // dart format width=5000
 //
-// Versão otimizada de SHA-256 usando instruções SHA-NI via shell code x86_64
+// Optimized SHA-256 using SHA-NI instructions via x86_64 shellcode.
 //
-// Esta implementação oferece speedup de 3-10x sobre a versão software
+// This implementation is 3-10x faster than the software version.
 //
-// Instruções usadas:
-// - SHA256RNDS2: 2 rounds de SHA-256
-// - SHA256MSG1: Message schedule (parte 1)
-// - SHA256MSG2: Message schedule (parte 2)
-// - SHUF: Shuffle para reordenação de bytes
+// Instructions used:
+// - SHA256RNDS2: 2 rounds of SHA-256
+// - SHA256MSG1: message schedule (part 1)
+// - SHA256MSG2: message schedule (part 2)
+// - SHUF: shuffle for byte reordering
 //
-// IMPORTANTE: Requer suporte SHA-NI (CPUID.07H:EBX.SHA[bit 29])
-// Disponível desde: Intel Goldmont (2016), AMD Zen (2017)
+// IMPORTANT: requires SHA-NI support (CPUID.07H:EBX.SHA[bit 29]).
+// Available since Intel Goldmont (2016) and AMD Zen (2017).
 
 import 'dart:ffi' as ffi;
 import 'dart:io' show Platform;
@@ -19,11 +19,11 @@ import 'dart:typed_data';
 
 import 'rijndael_fast_asm_x86_64.dart' show ExecutableMemory;
 
-/// Verifica se SHA-NI é suportado
+/// Checks whether SHA-NI is supported.
 class ShaNiSupport {
   static bool? _supported;
 
-  /// Retorna true se SHA-NI é suportado
+  /// Returns true if SHA-NI is supported.
   static bool get isSupported {
     _supported ??= _checkSupport();
     return _supported!;
@@ -41,10 +41,10 @@ class ShaNiSupport {
     }
   }
 
-  /// CPUID check para SHA-NI (bit 29 de EBX quando EAX=7, ECX=0)
+  /// CPUID check for SHA-NI (bit 29 of EBX with EAX=7, ECX=0).
   static bool _executeCpuidCheck() {
-    // Shell code para verificar SHA-NI
-    // CPUID com EAX=7, ECX=0, verifica bit 29 de EBX
+    // Shellcode that checks for SHA-NI
+    // CPUID with EAX=7, ECX=0, checks bit 29 of EBX
     final cpuidCode = Uint8List.fromList([
       0x53, // push rbx
       0xB8, 0x07, 0x00, 0x00, 0x00, // mov eax, 7
@@ -69,8 +69,8 @@ class ShaNiSupport {
   }
 }
 
-/// Constantes K para SHA-256 (primeiros 32 bits das partes fracionárias
-/// das raízes cúbicas dos primeiros 64 primos)
+/// SHA-256 K constants (first 32 bits of the fractional parts of the
+/// cube roots of the first 64 primes).
 const List<int> _sha256K = [
   0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
   0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
@@ -90,30 +90,30 @@ const List<int> _sha256K = [
   0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
 ];
 
-/// Estado inicial do SHA-256 (H0-H7)
+/// SHA-256 initial state (H0-H7).
 const List<int> _sha256InitialState = [
   0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
   0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
 ];
 
-/// Shell codes para SHA-256 usando SHA-NI
+/// Shellcodes for SHA-256 using SHA-NI.
 class Sha256ShellCode {
-  /// Shell code para processar um bloco de 64 bytes
+  /// Shellcode that processes one 64-byte block.
   ///
-  /// Parâmetros (Windows x64):
-  ///   rcx = ponteiro para estado (32 bytes, 8 x uint32 big-endian)
-  ///   rdx = ponteiro para bloco de dados (64 bytes)
-  ///   r8  = ponteiro para constantes K (256 bytes, 64 x uint32)
+  /// Parameters (Windows x64):
+  ///   rcx = pointer to the state (32 bytes, 8 x big-endian uint32)
+  ///   rdx = pointer to the data block (64 bytes)
+  ///   r8  = pointer to the K constants (256 bytes, 64 x uint32)
   ///
-  /// O SHA-NI processa 2 rounds por instrução SHA256RNDS2.
-  /// Para 64 rounds, precisamos de 32 chamadas.
+  /// SHA-NI processes 2 rounds per SHA256RNDS2 instruction,
+  /// so 64 rounds take 32 instructions.
   ///
-  /// Registros XMM usados:
-  ///   xmm0, xmm1: estado (ABEF, CDGH)
-  ///   xmm2: estado temporário
+  /// XMM registers used:
+  ///   xmm0, xmm1: state (ABEF, CDGH)
+  ///   xmm2: temporary state
   ///   xmm3-xmm6: message schedule (W0-W15)
-  ///   xmm7: constantes K
-  ///   xmm8: máscara de byte swap
+  ///   xmm7: K constants
+  ///   xmm8: byte-swap mask
   static Uint8List getProcessBlockShellCode() {
     if (Platform.isWindows) {
       return _getProcessBlockWindows();
@@ -124,27 +124,27 @@ class Sha256ShellCode {
 
   /// Windows x64 calling convention
   static Uint8List _getProcessBlockWindows() {
-    // SHA-NI requer estado em formato específico:
+    // SHA-NI requires the state in a specific layout:
     // xmm0 = (A, B, E, F), xmm1 = (C, D, G, H)
     //
-    // Instruções principais:
-    // SHA256RNDS2 xmm, xmm/m128, xmm0  - 2 rounds usando xmm0[63:0] como Wi+Ki
-    // SHA256MSG1 xmm, xmm/m128         - Prepara message schedule
-    // SHA256MSG2 xmm, xmm/m128         - Completa message schedule
+    // Main instructions:
+    // SHA256RNDS2 xmm, xmm/m128, xmm0  - 2 rounds using xmm0[63:0] as Wi+Ki
+    // SHA256MSG1 xmm, xmm/m128         - prepares the message schedule
+    // SHA256MSG2 xmm, xmm/m128         - completes the message schedule
 
     return Uint8List.fromList([
-      // Prólogo - salva registros XMM não-voláteis
+      // Prologue - save the non-volatile XMM registers
       0x48, 0x81, 0xEC, 0xA8, 0x00, 0x00, 0x00, // sub rsp, 168
 
-      // Salva xmm6-xmm15 (Windows requer)
+      // Save xmm6-xmm15 (required on Windows)
       0x0F, 0x29, 0x74, 0x24, 0x20, // movaps [rsp+32], xmm6
       0x0F, 0x29, 0x7C, 0x24, 0x30, // movaps [rsp+48], xmm7
       0x44, 0x0F, 0x29, 0x44, 0x24, 0x40, // movaps [rsp+64], xmm8
       0x44, 0x0F, 0x29, 0x4C, 0x24, 0x50, // movaps [rsp+80], xmm9
       0x44, 0x0F, 0x29, 0x54, 0x24, 0x60, // movaps [rsp+96], xmm10
 
-      // Carrega máscara de byte swap para conversão big-endian <-> little-endian
-      // SHA-NI espera dados em little-endian, mas SHA-256 usa big-endian
+      // Load the byte-swap mask for big-endian <-> little-endian conversion
+      // SHA-NI expects little-endian data, but SHA-256 is big-endian
       0x48, 0xB8, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // mov rax, shuffle_mask_lo
       0x66, 0x48, 0x0F, 0x6E, 0xC0, // movq xmm0, rax
       0x48, 0xB8, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
@@ -152,38 +152,38 @@ class Sha256ShellCode {
       0x66, 0x0F, 0x6C, 0xC1, // punpcklqdq xmm0, xmm1
       0x66, 0x44, 0x0F, 0x6F, 0xC0, // movdqa xmm8, xmm0 (shuffle mask)
 
-      // Carrega estado inicial (rcx aponta para o estado)
-      // Estado em memória: H0 H1 H2 H3 H4 H5 H6 H7 (big-endian uint32)
+      // Load the initial state (rcx points to the state)
+      // State in memory: H0 H1 H2 H3 H4 H5 H6 H7 (big-endian uint32)
       0xF3, 0x0F, 0x6F, 0x01, // movdqu xmm0, [rcx]     ; H0 H1 H2 H3
       0xF3, 0x0F, 0x6F, 0x49, 0x10, // movdqu xmm1, [rcx+16] ; H4 H5 H6 H7
 
-      // Reorganiza para formato SHA-NI: xmm0=(A,B,E,F), xmm1=(C,D,G,H)
+      // Rearrange into the SHA-NI layout: xmm0=(A,B,E,F), xmm1=(C,D,G,H)
       // pshufd xmm0, xmm0, 0xB1  ; swap pairs: H1 H0 H3 H2
       0x66, 0x0F, 0x70, 0xC0, 0xB1,
       // pshufd xmm1, xmm1, 0xB1
       0x66, 0x0F, 0x70, 0xC9, 0xB1,
       // movdqa xmm2, xmm0
       0x66, 0x0F, 0x6F, 0xD0,
-      // punpcklqdq xmm0, xmm1  ; xmm0 = H3 H2 H7 H6 (será FEBA após shuffle)
+      // punpcklqdq xmm0, xmm1  ; xmm0 = H3 H2 H7 H6 (becomes FEBA after the shuffle)
       0x66, 0x0F, 0x6C, 0xC1,
-      // punpckhqdq xmm2, xmm1  ; xmm2 = H1 H0 H5 H4 (será HGDC após shuffle)
+      // punpckhqdq xmm2, xmm1  ; xmm2 = H1 H0 H5 H4 (becomes HGDC after the shuffle)
       0x66, 0x0F, 0x6D, 0xD1,
       // pshufd xmm0, xmm0, 0x1B  ; reverse order -> ABEF
       0x66, 0x0F, 0x70, 0xC0, 0x1B,
       // pshufd xmm1, xmm2, 0x1B  ; -> CDGH
       0x66, 0x0F, 0x70, 0xCA, 0x1B,
 
-      // Salva estado inicial para adicionar no final
-      0x66, 0x44, 0x0F, 0x6F, 0xC8, // movdqa xmm9, xmm0  ; salva ABEF
-      0x66, 0x44, 0x0F, 0x6F, 0xD1, // movdqa xmm10, xmm1 ; salva CDGH
+      // Save the initial state to add at the end
+      0x66, 0x44, 0x0F, 0x6F, 0xC8, // movdqa xmm9, xmm0  ; save ABEF
+      0x66, 0x44, 0x0F, 0x6F, 0xD1, // movdqa xmm10, xmm1 ; save CDGH
 
-      // Carrega bloco de mensagem (rdx aponta para dados)
+      // Load the message block (rdx points to the data)
       0xF3, 0x0F, 0x6F, 0x1A, // movdqu xmm3, [rdx]      ; W0-W3
       0xF3, 0x0F, 0x6F, 0x62, 0x10, // movdqu xmm4, [rdx+16]  ; W4-W7
       0xF3, 0x0F, 0x6F, 0x6A, 0x20, // movdqu xmm5, [rdx+32]  ; W8-W11
       0xF3, 0x0F, 0x6F, 0x72, 0x30, // movdqu xmm6, [rdx+48]  ; W12-W15
 
-      // Byte swap mensagem (big-endian to little-endian)
+      // Byte-swap the message (big-endian to little-endian)
       0x66, 0x41, 0x0F, 0x38, 0x00, 0xD8, // pshufb xmm3, xmm8
       0x66, 0x41, 0x0F, 0x38, 0x00, 0xE0, // pshufb xmm4, xmm8
       0x66, 0x41, 0x0F, 0x38, 0x00, 0xE8, // pshufb xmm5, xmm8
@@ -192,8 +192,8 @@ class Sha256ShellCode {
       // === Rounds 0-3 ===
       0xF3, 0x41, 0x0F, 0x6F, 0x38, // movdqu xmm7, [r8]  ; K0-K3
       0x66, 0x0F, 0xFE, 0xFB, // paddd xmm7, xmm3         ; W+K
-      0x66, 0x0F, 0x6F, 0xD1, // movdqa xmm2, xmm1        ; salva CDGH
-      0x0F, 0x38, 0xCB, 0xC8, // sha256rnds2 xmm1, xmm0   ; usando xmm0[63:0]
+      0x66, 0x0F, 0x6F, 0xD1, // movdqa xmm2, xmm1        ; save CDGH
+      0x0F, 0x38, 0xCB, 0xC8, // sha256rnds2 xmm1, xmm0   ; using xmm0[63:0]
       0x66, 0x0F, 0x70, 0xFF, 0x0E, // pshufd xmm7, xmm7, 0x0E ; rotate K+W
       0x66, 0x0F, 0x6F, 0xC2, // movdqa xmm0, xmm2
       0x0F, 0x38, 0xCB, 0xC1, // sha256rnds2 xmm0, xmm1
@@ -228,7 +228,7 @@ class Sha256ShellCode {
       0x0F, 0x38, 0xCB, 0xC1,
       0x0F, 0x38, 0xCC, 0xEE, // sha256msg1 xmm5, xmm6
 
-      // Message schedule para próximas rodadas
+      // Message schedule for the next rounds
       // xmm3 = W16-W19
       0x66, 0x0F, 0x6F, 0xFE, // movdqa xmm7, xmm6
       0x66, 0x0F, 0x73, 0xDF, 0x04, // psrldq xmm7, 4
@@ -410,7 +410,7 @@ class Sha256ShellCode {
       0x66, 0x0F, 0xFE, 0xF7,
       0x0F, 0x38, 0xCD, 0xF5,
 
-      // === Rounds 60-63 (últimos) ===
+      // === Rounds 60-63 (last) ===
       0xF3, 0x41, 0x0F, 0x6F, 0xB8, 0xF0, 0x00, 0x00, 0x00,
       0x66, 0x0F, 0xFE, 0xFE,
       0x66, 0x0F, 0x6F, 0xD1,
@@ -419,11 +419,11 @@ class Sha256ShellCode {
       0x66, 0x0F, 0x6F, 0xC2,
       0x0F, 0x38, 0xCB, 0xC1,
 
-      // Adiciona estado inicial ao resultado
+      // Add the initial state to the result
       0x66, 0x41, 0x0F, 0xFE, 0xC1, // paddd xmm0, xmm9
       0x66, 0x41, 0x0F, 0xFE, 0xCA, // paddd xmm1, xmm10
 
-      // Converte de volta para formato de memória
+      // Convert back to the memory layout
       // xmm0 = ABEF, xmm1 = CDGH -> H0 H1 H2 H3 H4 H5 H6 H7
       0x66, 0x0F, 0x70, 0xC0, 0x1B, // pshufd xmm0, xmm0, 0x1B ; reverse
       0x66, 0x0F, 0x70, 0xC9, 0x1B, // pshufd xmm1, xmm1, 0x1B
@@ -436,12 +436,12 @@ class Sha256ShellCode {
       0x66, 0x0F, 0x6C, 0xD0, // punpcklqdq xmm2, xmm0 ; H0H2 H4H6
       0x66, 0x0F, 0x6D, 0xD8, // punpckhqdq xmm3, xmm0 ; H1H3 H5H7
       0x66, 0x0F, 0x62, 0xD3, // punpckldq xmm2, xmm3  ; H0 H1 H2 H3
-      0x66, 0x0F, 0x6A, 0xD3, // punpckhdq xmm2, xmm3  ; usar xmm0 para H4-H7
+      0x66, 0x0F, 0x6A, 0xD3, // punpckhdq xmm2, xmm3  ; use xmm0 for H4-H7
 
-      // Store estado (simplificado - usar abordagem diferente)
-      // Na verdade, vamos usar uma abordagem mais direta
+      // Store the state (simplified - use a different approach)
+      // Actually, use a more direct approach
 
-      // Restaura registros e retorna
+      // Restore the registers and return
       0x0F, 0x28, 0x74, 0x24, 0x20, // movaps xmm6, [rsp+32]
       0x0F, 0x28, 0x7C, 0x24, 0x30, // movaps xmm7, [rsp+48]
       0x44, 0x0F, 0x28, 0x44, 0x24, 0x40, // movaps xmm8, [rsp+64]
@@ -455,39 +455,39 @@ class Sha256ShellCode {
 
   /// Linux System V AMD64 ABI
   static Uint8List _getProcessBlockLinux() {
-    // Similar ao Windows, mas com convenção de chamada diferente
+    // Same as Windows, but with a different calling convention
     // rdi = state, rsi = data, rdx = K
-    // XMM0-XMM7 são caller-saved, então não precisa salvar
-    return _getProcessBlockWindows(); // Placeholder - ajustar calling convention
+    // XMM0-XMM7 are caller-saved, so they do not need to be saved
+    return _getProcessBlockWindows(); // Placeholder - adjust the calling convention
   }
 }
 
-/// SHA-256 otimizado com SHA-NI
+/// SHA-256 optimized with SHA-NI.
 ///
-/// Esta implementação usa instruções SHA-NI quando disponíveis.
-/// Se SHA-NI não estiver disponível, usa implementação software otimizada.
+/// This implementation uses SHA-NI instructions when available.
+/// If SHA-NI is not available, it uses an optimized software implementation.
 class Sha256Asm {
-  /// Estado interno (H0-H7)
+  /// Internal state (H0-H7).
   final Uint32List _state;
 
-  /// Buffer para bloco parcial
+  /// Buffer for a partial block.
   final Uint8List _buffer;
 
-  /// Posição no buffer
+  /// Position in the buffer.
   int _bufferLength = 0;
 
-  /// Total de bytes processados
+  /// Total number of bytes processed.
   int _totalLength = 0;
 
-  /// Inicializa SHA-256
+  /// Creates a SHA-256 hasher.
   Sha256Asm() : _state = Uint32List(8), _buffer = Uint8List(64) {
     reset();
   }
 
-  /// Verifica se SHA-NI está disponível
+  /// Whether SHA-NI is available.
   static bool get isSupported => ShaNiSupport.isSupported;
 
-  /// Reset para estado inicial
+  /// Resets to the initial state.
   void reset() {
     _state[0] = _sha256InitialState[0];
     _state[1] = _sha256InitialState[1];
@@ -501,12 +501,12 @@ class Sha256Asm {
     _totalLength = 0;
   }
 
-  /// Atualiza hash com dados
+  /// Updates the hash with [data].
   void update(Uint8List data) {
     _totalLength += data.length;
     int offset = 0;
 
-    // Se temos dados no buffer, completar primeiro
+    // If there is data in the buffer, complete it first
     if (_bufferLength > 0) {
       final needed = 64 - _bufferLength;
       final toCopy = data.length < needed ? data.length : needed;
@@ -520,26 +520,26 @@ class Sha256Asm {
       }
     }
 
-    // Processa blocos completos
+    // Process full blocks
     while (offset + 64 <= data.length) {
       _processBlock(data.sublist(offset, offset + 64));
       offset += 64;
     }
 
-    // Guarda resto no buffer
+    // Keep the remainder in the buffer
     if (offset < data.length) {
       _buffer.setRange(0, data.length - offset, data.sublist(offset));
       _bufferLength = data.length - offset;
     }
   }
 
-  /// Finaliza e retorna o digest
+  /// Finishes and returns the digest.
   Uint8List finalize() {
     // Padding
     final bitLength = _totalLength * 8;
     _buffer[_bufferLength++] = 0x80;
 
-    // Se não cabe o length (8 bytes), processa bloco atual e começa novo
+    // If the length (8 bytes) does not fit, process the current block and start a new one
     if (_bufferLength > 56) {
       while (_bufferLength < 64) {
         _buffer[_bufferLength++] = 0;
@@ -548,12 +548,12 @@ class Sha256Asm {
       _bufferLength = 0;
     }
 
-    // Pad com zeros até posição 56
+    // Pad with zeros up to position 56
     while (_bufferLength < 56) {
       _buffer[_bufferLength++] = 0;
     }
 
-    // Append length em bits (big-endian 64-bit)
+    // Append the length in bits (big-endian 64-bit)
     _buffer[56] = (bitLength >> 56) & 0xFF;
     _buffer[57] = (bitLength >> 48) & 0xFF;
     _buffer[58] = (bitLength >> 40) & 0xFF;
@@ -565,7 +565,7 @@ class Sha256Asm {
 
     _processBlock(_buffer);
 
-    // Converte estado para bytes (big-endian)
+    // Convert the state to bytes (big-endian)
     final digest = Uint8List(32);
     for (int i = 0; i < 8; i++) {
       digest[i * 4] = (_state[i] >> 24) & 0xFF;
@@ -577,26 +577,26 @@ class Sha256Asm {
     return digest;
   }
 
-  /// Hash de uma vez só (convenience method)
+  /// Hashes [data] in one call (convenience method).
   static Uint8List hash(Uint8List data) {
     final sha = Sha256Asm();
     sha.update(data);
     return sha.finalize();
   }
 
-  /// Processa um bloco de 64 bytes
+  /// Processes one 64-byte block.
   void _processBlock(Uint8List block) {
-    // Por enquanto, usa implementação software otimizada
-    // TODO: Implementar versão SHA-NI quando estiver testada
+    // For now, use the optimized software implementation
+    // TODO: switch to the SHA-NI version once it is tested
     _processBlockSoftware(block);
   }
 
-  /// Implementação software otimizada do processamento de bloco
+  /// Optimized software implementation of block processing.
   void _processBlockSoftware(Uint8List block) {
     // Message schedule array
     final w = Uint32List(64);
 
-    // Carrega primeiras 16 palavras do bloco (big-endian)
+    // Load the first 16 words of the block (big-endian)
     for (int i = 0; i < 16; i++) {
       w[i] = (block[i * 4] << 24) |
           (block[i * 4 + 1] << 16) |
@@ -604,14 +604,14 @@ class Sha256Asm {
           block[i * 4 + 3];
     }
 
-    // Expande para 64 palavras
+    // Expand to 64 words
     for (int i = 16; i < 64; i++) {
       final s0 = _rotr(w[i - 15], 7) ^ _rotr(w[i - 15], 18) ^ (w[i - 15] >> 3);
       final s1 = _rotr(w[i - 2], 17) ^ _rotr(w[i - 2], 19) ^ (w[i - 2] >> 10);
       w[i] = (w[i - 16] + s0 + w[i - 7] + s1) & 0xFFFFFFFF;
     }
 
-    // Inicializa variáveis de trabalho
+    // Initialize the working variables
     int a = _state[0];
     int b = _state[1];
     int c = _state[2];
@@ -640,7 +640,7 @@ class Sha256Asm {
       a = (temp1 + temp2) & 0xFFFFFFFF;
     }
 
-    // Adiciona ao estado
+    // Add to the state
     _state[0] = (_state[0] + a) & 0xFFFFFFFF;
     _state[1] = (_state[1] + b) & 0xFFFFFFFF;
     _state[2] = (_state[2] + c) & 0xFFFFFFFF;
@@ -657,7 +657,7 @@ class Sha256Asm {
   }
 }
 
-/// HMAC-SHA256 otimizado
+/// Optimized HMAC-SHA256.
 class HmacSha256Asm {
   final Uint8List _ipad;
   final Uint8List _opad;
@@ -665,16 +665,16 @@ class HmacSha256Asm {
   HmacSha256Asm(Uint8List key)
       : _ipad = Uint8List(64),
         _opad = Uint8List(64) {
-    // Prepara a chave
+    // Prepare the key
     Uint8List preparedKey;
     if (key.length > 64) {
-      // Hash key se maior que block size
+      // Hash the key if it is longer than the block size
       preparedKey = Sha256Asm.hash(key);
     } else {
       preparedKey = key;
     }
 
-    // Prepara ipad e opad
+    // Prepare ipad and opad
     for (int i = 0; i < 64; i++) {
       final k = i < preparedKey.length ? preparedKey[i] : 0;
       _ipad[i] = k ^ 0x36;
@@ -682,7 +682,7 @@ class HmacSha256Asm {
     }
   }
 
-  /// Calcula HMAC
+  /// Computes the HMAC of [data].
   Uint8List compute(Uint8List data) {
     // Inner hash: H(ipad || data)
     final innerSha = Sha256Asm();

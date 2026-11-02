@@ -1,5 +1,5 @@
 // dart format width=5000
-// Benchmark comparando AES-GCM BigInt vs PCLMULQDQ
+// Benchmark comparing AES-GCM BigInt vs PCLMULQDQ
 
 import 'dart:typed_data';
 import 'package:tlslite/src/utils/aesgcm.dart';
@@ -10,7 +10,7 @@ import 'package:tlslite/src/experimental/rijndael_fast_asm_x86_64.dart';
 void main() {
   print('=== AES-GCM Benchmark: BigInt vs PCLMULQDQ ===\n');
 
-  // Verifica suporte de hardware
+  // Check hardware support
   final aesNiSupported = AesNiSupport.isSupported;
   final pclmulqdqSupported = PclmulqdqSupport.isSupported;
 
@@ -20,15 +20,15 @@ void main() {
   print('');
 
   if (!aesNiSupported || !pclmulqdqSupported) {
-    print('⚠️  Hardware não suportado. Usando apenas implementação BigInt.');
+    print('⚠️  Hardware not supported. Using only the BigInt implementation.');
   }
 
-  // Dados de teste
+  // Test data
   final key128 = Uint8List.fromList(List.generate(16, (i) => i));
   final nonce = Uint8List.fromList(List.generate(12, (i) => i));
   final aad = Uint8List.fromList(List.generate(16, (i) => i + 0x80));
 
-  // Tamanhos de dados para teste
+  // Data sizes to test
   final dataSizes = [16, 64, 256, 1024, 4096, 16384];
 
   print('Benchmark Results (operations/second):');
@@ -74,7 +74,7 @@ void main() {
       }
 
       // Benchmark PCLMULQDQ
-      final pclmulIterations = bigIntIterations * 10; // Mais iterações pois é mais rápido
+      final pclmulIterations = bigIntIterations * 10; // More iterations because it is faster
       final pclmulStart = DateTime.now();
       for (int i = 0; i < pclmulIterations; i++) {
         final ct = gcmAsm.seal(nonce, plaintext, aad);
@@ -98,7 +98,7 @@ void main() {
 
   print('─' * 70);
 
-  // Benchmark detalhado de GHASH puro
+  // Detailed benchmark of GHASH alone
   if (pclmulqdqSupported) {
     print('\n=== GHASH Pure Benchmark ===\n');
 
@@ -134,11 +134,11 @@ void main() {
     ghash.dispose();
   }
 
-  print('\n✅ Benchmark concluído!');
+  print('\n✅ Benchmark finished!');
 }
 
 int _calculateIterations(int dataSize) {
-  // Ajusta iterações baseado no tamanho dos dados
+  // Scale the iteration count to the data size
   if (dataSize <= 64) return 1000;
   if (dataSize <= 256) return 500;
   if (dataSize <= 1024) return 200;

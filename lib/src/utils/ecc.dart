@@ -25,8 +25,8 @@ EcCurve getCurveByName(String nomeCurva) {
   final curve = ecCurveByName(nomeCurva);
   if (curve == null) {
     throw ArgumentError(
-        "Curva com nome '$nomeCurva' (normalizado: '${nomeCurva.toLowerCase()}') "
-        "desconhecida ou não suportada por este mapeamento.");
+        "Curve named '$nomeCurva' (normalized: '${nomeCurva.toLowerCase()}') "
+        "is unknown or not supported by this mapping.");
   }
   return curve;
 }
@@ -41,5 +41,5 @@ int getPointByteSize(dynamic pontoOuCurva) {
   if (pontoOuCurva is EcCurve) {
     return pontoOuCurva.fieldBytes;
   }
-  throw ArgumentError('A entrada deve ser um EcPoint ou EcCurve.');
+  throw ArgumentError('The input must be an EcPoint or an EcCurve.');
 }

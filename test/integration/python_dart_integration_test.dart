@@ -66,8 +66,8 @@ class PythonTlsServer {
 }
 
 void main() {
-  // Ignorar todos os testes deste arquivo se Python não estiver disponível
-  const skipReason = 'testes python foram desativados propositalmente';
+  // Skip every test in this file when Python is not available
+  const skipReason = 'Python tests are intentionally disabled';
   group('Python-Dart TLS Integration', () {
     late PythonTlsServer server;
     

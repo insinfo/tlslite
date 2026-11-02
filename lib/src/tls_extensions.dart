@@ -99,7 +99,7 @@ class TlsExtensionRegistry {
     final parser = Parser(body);
     final listLength = parser.get(2);
     if (listLength != parser.getRemainingLength()) {
-      throw DecodeError('Lista de ServerName com tamanho inconsistente');
+      throw DecodeError('ServerName list has an inconsistent length');
     }
     final namesParser = Parser(parser.getFixBytes(listLength));
     final names = <String>[];
@@ -121,7 +121,7 @@ class TlsExtensionRegistry {
     final parser = Parser(body);
     final listLength = parser.get(2);
     if (listLength != parser.getRemainingLength()) {
-      throw DecodeError('ALPN com tamanho inconsistente');
+      throw DecodeError('ALPN has an inconsistent length');
     }
     final listParser = Parser(parser.getFixBytes(listLength));
     final protocols = <String>[];
@@ -141,7 +141,7 @@ class TlsExtensionRegistry {
     if (context == TlsExtensionContext.clientHello) {
       final vectorLength = parser.get(1);
       if (vectorLength % 2 != 0) {
-        throw DecodeError('Lista supported_versions precisa de pares de bytes');
+        throw DecodeError('supported_versions list must contain byte pairs');
       }
       final bytes = parser.getFixBytes(vectorLength);
       final versions = <TlsProtocolVersion>[];
@@ -151,7 +151,7 @@ class TlsExtensionRegistry {
       return TlsSupportedVersionsExtension.client(versions);
     }
     if (parser.getRemainingLength() != 2) {
-      throw DecodeError('Servidor precisa enviar exatamente 2 bytes');
+      throw DecodeError('Server must send exactly 2 bytes');
     }
     final major = parser.get(1);
     final minor = parser.get(1);
@@ -179,7 +179,7 @@ class TlsExtensionRegistry {
       groups.add(listParser.get(2));
     }
     if (!parser.isDone) {
-      throw DecodeError('Dados extras após supported_groups');
+      throw DecodeError('Extra data after supported_groups');
     }
     return TlsSupportedGroupsExtension(groups: groups);
   }
@@ -203,7 +203,7 @@ class TlsExtensionRegistry {
       formats.add(parser.get(1));
     }
     if (!parser.isDone) {
-      throw DecodeError('Dados extras após ec_point_formats');
+      throw DecodeError('Extra data after ec_point_formats');
     }
     return TlsEcPointFormatsExtension(formats: formats);
   }
@@ -228,7 +228,7 @@ class TlsExtensionRegistry {
     final statusType = parser.get(1);
     final responderBlockLength = parser.get(2);
     if (responderBlockLength > parser.getRemainingLength()) {
-      throw DecodeError('Bloco responder_id_list truncado');
+      throw DecodeError('Truncated responder_id_list block');
     }
     final responderParser = Parser(parser.getFixBytes(responderBlockLength));
     final responders = <Uint8List>[];
@@ -237,7 +237,7 @@ class TlsExtensionRegistry {
     }
     final requestExtensions = parser.getVarBytes(2);
     if (!parser.isDone) {
-      throw DecodeError('Dados extras após status_request');
+      throw DecodeError('Extra data after status_request');
     }
     return TlsStatusRequestExtension.request(
       statusType: statusType,
@@ -261,11 +261,11 @@ class TlsExtensionRegistry {
   ) {
     final parser = Parser(body);
     if (parser.getRemainingLength() < 2) {
-      throw DecodeError('signature_algorithms extension truncado');
+      throw DecodeError('Truncated signature_algorithms extension');
     }
     final listLength = parser.get(2);
     if (listLength % 2 != 0 || listLength > parser.getRemainingLength()) {
-      throw DecodeError('Lista de signature_algorithms inválida');
+      throw DecodeError('Invalid signature_algorithms list');
     }
     final schemes = <int>[];
     for (var i = 0; i < listLength ~/ 2; i++) {
@@ -281,7 +281,7 @@ class TlsExtensionRegistry {
     TlsExtensionContext context,
   ) {
     if (body.isNotEmpty) {
-      throw DecodeError('encrypt_then_mac não deve ter payload');
+      throw DecodeError('encrypt_then_mac must not have a payload');
     }
     return const TlsEncryptThenMacExtension();
   }
@@ -291,7 +291,7 @@ class TlsExtensionRegistry {
     TlsExtensionContext context,
   ) {
     if (body.isNotEmpty) {
-      throw DecodeError('extended_master_secret não deve ter payload');
+      throw DecodeError('extended_master_secret must not have a payload');
     }
     return const TlsExtendedMasterSecretExtension();
   }
@@ -302,7 +302,7 @@ class TlsExtensionRegistry {
   ) {
     final parser = Parser(body);
     if (parser.getRemainingLength() != 1) {
-      throw DecodeError('heartbeat extension requer 1 byte');
+      throw DecodeError('heartbeat extension requires 1 byte');
     }
     final mode = parser.get(1);
     return TlsHeartbeatExtension(mode: mode);
@@ -314,11 +314,11 @@ class TlsExtensionRegistry {
   ) {
     final parser = Parser(body);
     if (parser.getRemainingLength() < 1) {
-      throw DecodeError('psk_key_exchange_modes truncado');
+      throw DecodeError('Truncated psk_key_exchange_modes');
     }
     final length = parser.get(1);
     if (length > parser.getRemainingLength()) {
-      throw DecodeError('psk_key_exchange_modes com comprimento inválido');
+      throw DecodeError('psk_key_exchange_modes has an invalid length');
     }
     final modes = <int>[];
     for (var i = 0; i < length; i++) {
@@ -332,7 +332,7 @@ class TlsExtensionRegistry {
     TlsExtensionContext context,
   ) {
     if (body.length != 2) {
-      throw DecodeError('record_size_limit deve conter 2 bytes');
+      throw DecodeError('record_size_limit must contain 2 bytes');
     }
     final parser = Parser(body);
     final limit = parser.get(2);
@@ -352,11 +352,11 @@ class TlsExtensionRegistry {
   ) {
     final parser = Parser(body);
     if (parser.getRemainingLength() < 1) {
-      throw DecodeError('compress_certificate truncado');
+      throw DecodeError('Truncated compress_certificate');
     }
     final length = parser.get(1);
     if (length % 2 != 0 || length > parser.getRemainingLength()) {
-      throw DecodeError('Lista compress_certificate inválida');
+      throw DecodeError('Invalid compress_certificate list');
     }
     final algorithms = <int>[];
     for (var i = 0; i < length ~/ 2; i++) {
@@ -370,7 +370,7 @@ class TlsExtensionRegistry {
     TlsExtensionContext context,
   ) {
     if (body.isNotEmpty) {
-      throw DecodeError('post_handshake_auth não deve ter payload');
+      throw DecodeError('post_handshake_auth must not have a payload');
     }
     return const TlsPostHandshakeAuthExtension();
   }
@@ -423,11 +423,11 @@ class TlsExtensionRegistry {
     }
     final length = parser.get(1);
     if (length > parser.getRemainingLength()) {
-      throw DecodeError('renegotiation_info truncado');
+      throw DecodeError('Truncated renegotiation_info');
     }
     final data = parser.getFixBytes(length);
     if (!parser.isDone) {
-      throw DecodeError('Dados extras após renegotiation_info');
+      throw DecodeError('Extra data after renegotiation_info');
     }
     return TlsRenegotiationInfoExtension(
       renegotiatedConnection: data,
@@ -449,17 +449,17 @@ class TlsExtensionRegistry {
     final parser = Parser(body);
     if (context == TlsExtensionContext.serverHello) {
       if (parser.getRemainingLength() != 2) {
-        throw DecodeError('Servidor deve enviar índice PSK de 2 bytes');
+        throw DecodeError('Server must send a 2-byte PSK index');
       }
       final selected = parser.get(2);
       return TlsServerPreSharedKeyExtension(selectedIdentity: selected);
     }
     if (parser.getRemainingLength() < 4) {
-      throw DecodeError('Extensão pre_shared_key truncada');
+      throw DecodeError('Truncated pre_shared_key extension');
     }
     final identitiesLength = parser.get(2);
     if (identitiesLength > parser.getRemainingLength()) {
-      throw DecodeError('Lista de identidades PSK truncada');
+      throw DecodeError('Truncated PSK identity list');
     }
     final identitiesParser = Parser(parser.getFixBytes(identitiesLength));
     final identities = <TlsPskIdentity>[];
@@ -468,7 +468,7 @@ class TlsExtensionRegistry {
     }
     final bindersLength = parser.get(2);
     if (bindersLength > parser.getRemainingLength()) {
-      throw DecodeError('Lista de binders PSK truncada');
+      throw DecodeError('Truncated PSK binder list');
     }
     final bindersParser = Parser(parser.getFixBytes(bindersLength));
     final binders = <Uint8List>[];
@@ -477,7 +477,7 @@ class TlsExtensionRegistry {
       binders.add(bindersParser.getFixBytes(entryLength));
     }
     if (!parser.isDone) {
-      throw DecodeError('Dados extras após binders PSK');
+      throw DecodeError('Extra data after PSK binders');
     }
     return TlsPreSharedKeyExtension(
       identities: identities,
@@ -495,7 +495,7 @@ class TlsExtensionRegistry {
     final parser = Parser(body);
     final listLength = parser.get(2);
     if (listLength % 2 != 0 || listLength > parser.getRemainingLength()) {
-      throw DecodeError('Lista signature_algorithms_cert truncada');
+      throw DecodeError('Truncated signature_algorithms_cert list');
     }
     final listParser = Parser(parser.getFixBytes(listLength));
     final schemes = <int>[];
@@ -505,7 +505,7 @@ class TlsExtensionRegistry {
       schemes.add((hash << 8) | sig);
     }
     if (!parser.isDone) {
-      throw DecodeError('Dados extras após signature_algorithms_cert');
+      throw DecodeError('Extra data after signature_algorithms_cert');
     }
     return TlsSignatureAlgorithmsCertExtension(signatureSchemes: schemes);
   }
@@ -522,7 +522,7 @@ class TlsExtensionRegistry {
         }
         final vectorLength = parser.get(2);
         if (vectorLength > parser.getRemainingLength()) {
-          throw DecodeError('ClientHello key_share truncado');
+          throw DecodeError('Truncated ClientHello key_share');
         }
         final listParser = Parser(parser.getFixBytes(vectorLength));
         final shares = <TlsKeyShareEntry>[];
@@ -530,7 +530,7 @@ class TlsExtensionRegistry {
           shares.add(TlsKeyShareEntry.parse(listParser));
         }
         if (!parser.isDone) {
-          throw DecodeError('Dados extras após key_share do cliente');
+          throw DecodeError('Extra data after the client key_share');
         }
         return TlsKeyShareExtension.client(shares);
       case TlsExtensionContext.serverHello:
@@ -539,18 +539,19 @@ class TlsExtensionRegistry {
         }
         final share = TlsKeyShareEntry.parse(parser);
         if (!parser.isDone) {
-          throw DecodeError('Dados extras após key_share do servidor');
+          throw DecodeError('Extra data after the server key_share');
         }
         return TlsKeyShareExtension.server(share);
       case TlsExtensionContext.helloRetryRequest:
         if (parser.getRemainingLength() != 2) {
-          throw DecodeError('HelloRetryRequest seleciona exatamente 2 bytes');
+          throw DecodeError(
+              'HelloRetryRequest key_share must be exactly 2 bytes');
         }
         final group = parser.get(2);
         return TlsKeyShareExtension.helloRetry(group);
       default:
         throw DecodeError(
-          'Extensão key_share inesperada para o contexto $context',
+          'Unexpected key_share extension for context $context',
         );
     }
   }
@@ -570,12 +571,12 @@ class TlsExtensionBlock {
     final parsed = <TlsExtension>[];
     while (!parser.isDone) {
       if (parser.getRemainingLength() < 4) {
-        throw DecodeError('Extensão TLS truncada (faltam cabeçalhos)');
+        throw DecodeError('Truncated TLS extension (missing headers)');
       }
       final type = parser.get(2);
       final length = parser.get(2);
       if (parser.getRemainingLength() < length) {
-        throw DecodeError('Extensão TLS truncada para o tipo $type');
+        throw DecodeError('Truncated TLS extension for type $type');
       }
       final body = parser.getFixBytes(length);
       parsed.add(TlsExtensionRegistry.parse(type, body, context));

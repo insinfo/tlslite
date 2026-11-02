@@ -1,5 +1,5 @@
-/// Testes para Montgomery 
-/// Compara resultados com BigInt nativo para validação
+/// Tests for the Montgomery implementation.
+/// Results are checked against the native BigInt.
 
 import 'dart:typed_data';
 import 'package:test/test.dart';
@@ -7,7 +7,7 @@ import 'package:tlslite/src/experimental/montgomery_limbs.dart';
 
 void main() {
   group('BN Basic Operations', () {
-    test('BN.fromBytes e toBytes round-trip', () {
+    test('BN.fromBytes and toBytes round-trip', () {
       final bytes = Uint8List.fromList([0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF]);
       final bn = BN.fromBytes(bytes);
       final result = bn.toBytes();
@@ -63,15 +63,15 @@ void main() {
 
   group('Montgomery Context', () {
     test('n0inv calculation correctness', () {
-      // Para módulo típico RSA (ímpar)
+      // For a typical (odd) RSA modulus
       final mod = BN.fromBytes(Uint8List.fromList([
-        0xE9, 0x5F, 0x7A, 0x3B, // Alguns bytes ímpares
+        0xE9, 0x5F, 0x7A, 0x3B, // Some odd bytes
         0xC1, 0xD2, 0xE3, 0xF5,
       ]));
       
       final ctx = MontgomeryCtx.fromModulus(mod);
       
-      // Verifica que n0 * n[0] ≡ -1 (mod 2^32)
+      // Check that n0 * n[0] ≡ -1 (mod 2^32)
       final product = (ctx.n0 * mod.d[0]) & 0xFFFFFFFF;
       expect(product, equals(0xFFFFFFFF), reason: 'n0 * n[0] should be -1 mod 2^32');
     });
@@ -79,9 +79,9 @@ void main() {
 
   group('Montgomery Multiplication', () {
     test('montMul basic correctness', () {
-      // Módulo pequeno para teste
+      // Small test modulus
       final mod = BN.fromBytes(Uint8List.fromList([
-        0x00, 0x00, 0x00, 0xFD, // 253 (primo)
+        0x00, 0x00, 0x00, 0xFD, // 253 (prime)
       ]));
       
       final ctx = MontgomeryCtx.fromModulus(mod);
@@ -89,21 +89,21 @@ void main() {
       final a = BN.fromBytes(Uint8List.fromList([5]));
       final b = BN.fromBytes(Uint8List.fromList([7]));
       
-      // Converte para Montgomery form
+      // Convert to Montgomery form
       final aMont = BN(mod.top);
       final bMont = BN(mod.top);
       bnToMont(aMont, a, ctx);
       bnToMont(bMont, b, ctx);
       
-      // Multiplica
+      // Multiply
       final resultMont = BN(mod.top);
       bnMontMul(resultMont, aMont, bMont, ctx);
       
-      // Converte de volta
+      // Convert back
       final result = BN(mod.top);
       bnFromMont(result, resultMont, ctx);
       
-      // Esperado: 5 * 7 mod 253 = 35
+      // Expected: 5 * 7 mod 253 = 35
       expect(result.d[0], equals(35));
     });
   });
@@ -117,7 +117,7 @@ void main() {
       // BigInt reference
       final expected = base.modPow(exp, mod);
       
-      // Nossa implementação
+      // Our implementation
       final baseBN = BN.fromBytes(_bigIntToBytes(base));
       final expBN = BN.fromBytes(_bigIntToBytes(exp));
       final modBN = BN.fromBytes(_bigIntToBytes(mod));
@@ -137,7 +137,7 @@ void main() {
       // BigInt reference
       final expected = base.modPow(exp, mod);
       
-      // Nossa implementação
+      // Our implementation
       final baseBN = BN.fromBytes(_bigIntToBytes(base));
       final expBN = BN.fromBytes(_bigIntToBytes(exp));
       final modBN = BN.fromBytes(_bigIntToBytes(mod));
@@ -150,7 +150,7 @@ void main() {
     });
 
     test('modPow RSA-like (256-bit)', () {
-      // Módulo 256-bit típico (gerado como produto de dois primos)
+      // Typical 256-bit modulus (product of two primes)
       final mod = BigInt.parse(
         '0xD4BCD52406F2244BA94D6D0C8BFCF43C'
         '13E8F14E4D6E7B4A0E8F9C5B3A2D1E0F1'
@@ -161,7 +161,7 @@ void main() {
       // BigInt reference
       final expected = base.modPow(exp, mod);
       
-      // Nossa implementação
+      // Our implementation
       final baseBN = BN.fromBytes(_bigIntToBytes(base));
       final expBN = BN.fromBytes(_bigIntToBytes(exp));
       final modBN = BN.fromBytes(_bigIntToBytes(mod));
@@ -218,7 +218,7 @@ void main() {
   });
 }
 
-/// Converte BigInt para bytes big-endian
+/// Converts a BigInt to big-endian bytes.
 Uint8List _bigIntToBytes(BigInt n) {
   if (n == BigInt.zero) return Uint8List(1);
   
@@ -232,7 +232,7 @@ Uint8List _bigIntToBytes(BigInt n) {
   return bytes;
 }
 
-/// Converte bytes big-endian para BigInt
+/// Converts big-endian bytes to a BigInt.
 BigInt _bytesToBigInt(Uint8List bytes) {
   if (bytes.isEmpty) return BigInt.zero;
   final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();

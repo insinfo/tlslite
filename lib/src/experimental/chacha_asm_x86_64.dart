@@ -1,18 +1,18 @@
 // dart format width=5000
 //
-// Versão otimizada do ChaCha20 usando shell code x86_64 com SSE2
+// Optimized ChaCha20 using x86_64 shellcode with SSE2.
 //
-// Esta implementação usa instruções SIMD para processar 4 palavras de 32 bits
-// em paralelo usando registradores XMM (128 bits).
+// This implementation uses SIMD instructions to process four 32-bit words
+// in parallel in XMM (128-bit) registers.
 //
-// Referência: OpenSSL chacha-x86_64.pl, RFC 7539
+// Reference: OpenSSL chacha-x86_64.pl, RFC 7539
 
 import 'dart:ffi' as ffi;
 import 'dart:io' show Platform;
 import 'dart:typed_data';
 import 'package:tlslite/src/ffi/native_memory.dart' as pkgffi;
 
-/// Verifica suporte a SSE2
+/// Checks for SSE2 support.
 class ChaChaAsmSupport {
   static bool? _sse2Supported;
 
@@ -47,7 +47,7 @@ class ChaChaAsmSupport {
   }
 }
 
-/// Gerenciador de memória executável
+/// Manages executable memory.
 class ExecutableMemory {
   final ffi.Pointer<ffi.Void> pointer;
   final int size;
@@ -58,7 +58,7 @@ class ExecutableMemory {
   static ExecutableMemory allocate(Uint8List code) {
     final ptr = _allocateExecutableMemory(code.length + 64);
     if (ptr == ffi.nullptr) {
-      throw StateError('Falha ao alocar memória executável');
+      throw StateError('Failed to allocate executable memory');
     }
     final codePtr = ptr.cast<ffi.Uint8>();
     for (int i = 0; i < code.length; i++) {
@@ -107,7 +107,7 @@ class ExecutableMemory {
   }
 }
 
-/// ChaCha20 otimizado com shell code SSE2
+/// ChaCha20 optimized with SSE2 shellcode.
 class ChaChaAsm {
   static final Uint8List _constants = Uint8List.fromList([
     0x65, 0x78, 0x70, 0x61, 0x6e, 0x64, 0x20, 0x33,
@@ -130,7 +130,7 @@ class ChaChaAsm {
   static void _ensureInitialized() {
     if (_codeMemory != null) return;
     if (!ChaChaAsmSupport.isSSE2Supported) {
-      throw UnsupportedError('SSE2 não suportado');
+      throw UnsupportedError('SSE2 is not supported');
     }
     _codeMemory = ExecutableMemory.allocate(_generateShellCode());
     final funcPtr = _codeMemory!.pointer.cast<
@@ -146,7 +146,7 @@ class ChaChaAsm {
   static Uint8List _windowsCode() {
     final code = <int>[];
     
-    // Prólogo - salva registradores non-volatile (RBX, R12-R15, XMM6-XMM11)
+    // Prologue - save the non-volatile registers (RBX, R12-R15, XMM6-XMM11)
     code.addAll([
       0x53, // push rbx
       0x41, 0x54, // push r12
@@ -160,9 +160,9 @@ class ChaChaAsm {
       0x44, 0x0F, 0x29, 0x5C, 0x24, 0x50, // movaps [rsp+80], xmm11
     ]);
 
-    // Salva parâmetros e carrega output
+    // Save the parameters and load output
     // Stack: push rbx(8) + push r12(8) + push r13(8) + sub 128 = 152
-    // Output está em [RSP_original + 40] = [RSP + 152 + 40] = [RSP + 192] = 0xC0
+    // Output is at [RSP_original + 40] = [RSP + 152 + 40] = [RSP + 192] = 0xC0
     code.addAll([
       0x48, 0x89, 0xCB, // mov rbx, rcx (key)
       0x49, 0x89, 0xD2, // mov r10, rdx (nonce)
@@ -171,14 +171,14 @@ class ChaChaAsm {
       0x4C, 0x8B, 0xAC, 0x24, 0xC0, 0x00, 0x00, 0x00, // mov r13, [rsp+192] (output)
     ]);
 
-    // Carrega estado inicial
+    // Load the initial state
     code.addAll([
       0x41, 0x0F, 0x10, 0x03, // movups xmm0, [r11] (constants)
       0x0F, 0x10, 0x0B, // movups xmm1, [rbx] (key[0:16])
       0x0F, 0x10, 0x53, 0x10, // movups xmm2, [rbx+16] (key[16:32])
     ]);
 
-    // Constrói XMM3 = [counter, nonce0, nonce1, nonce2] usando área temporária
+    // Build XMM3 = [counter, nonce0, nonce1, nonce2] using a scratch area
     code.addAll([
       0x44, 0x89, 0x64, 0x24, 0x60, // mov [rsp+96], r12d
       0x41, 0x8B, 0x02, // mov eax, [r10]
@@ -190,7 +190,7 @@ class ChaChaAsm {
       0x0F, 0x10, 0x5C, 0x24, 0x60, // movups xmm3, [rsp+96]
     ]);
 
-    // Salva estado inicial
+    // Save the initial state
     code.addAll([
       0x44, 0x0F, 0x28, 0xC0, // movaps xmm8, xmm0
       0x44, 0x0F, 0x28, 0xC9, // movaps xmm9, xmm1
@@ -208,7 +208,7 @@ class ChaChaAsm {
     final offset = loopStart - (code.length + 4);
     code.addAll([offset & 0xFF, (offset >> 8) & 0xFF, (offset >> 16) & 0xFF, (offset >> 24) & 0xFF]);
 
-    // Soma estado inicial
+    // Add the initial state
     code.addAll([
       0x66, 0x41, 0x0F, 0xFE, 0xC0, // paddd xmm0, xmm8
       0x66, 0x41, 0x0F, 0xFE, 0xC9, // paddd xmm1, xmm9
@@ -216,7 +216,7 @@ class ChaChaAsm {
       0x66, 0x41, 0x0F, 0xFE, 0xDB, // paddd xmm3, xmm11
     ]);
 
-    // Escreve output
+    // Write output
     code.addAll([
       0x41, 0x0F, 0x11, 0x45, 0x00, // movups [r13], xmm0
       0x41, 0x0F, 0x11, 0x4D, 0x10, // movups [r13+16], xmm1
@@ -224,7 +224,7 @@ class ChaChaAsm {
       0x41, 0x0F, 0x11, 0x5D, 0x30, // movups [r13+48], xmm3
     ]);
 
-    // Epílogo - restaura registradores
+    // Epilogue - restore the registers
     code.addAll([
       0x0F, 0x28, 0x74, 0x24, 0x00, // movaps xmm6, [rsp+0]
       0x0F, 0x28, 0x7C, 0x24, 0x10, // movaps xmm7, [rsp+16]
@@ -248,7 +248,7 @@ class ChaChaAsm {
     
     code.addAll([0x48, 0x83, 0xEC, 0x18]); // sub rsp, 24
 
-    // Carrega estado
+    // Load the state
     code.addAll([
       0x0F, 0x10, 0x02, // movups xmm0, [rdx] (constants)
       0x0F, 0x10, 0x0F, // movups xmm1, [rdi] (key[0:16])
@@ -267,7 +267,7 @@ class ChaChaAsm {
       0x0F, 0x10, 0x1C, 0x24, // movups xmm3, [rsp]
     ]);
 
-    // Salva estado inicial
+    // Save the initial state
     code.addAll([
       0x44, 0x0F, 0x28, 0xC0, // movaps xmm8, xmm0
       0x44, 0x0F, 0x28, 0xC9, // movaps xmm9, xmm1
@@ -284,7 +284,7 @@ class ChaChaAsm {
     final offset = loopStart - (code.length + 4);
     code.addAll([offset & 0xFF, (offset >> 8) & 0xFF, (offset >> 16) & 0xFF, (offset >> 24) & 0xFF]);
 
-    // Soma estado inicial
+    // Add the initial state
     code.addAll([
       0x66, 0x41, 0x0F, 0xFE, 0xC0, // paddd xmm0, xmm8
       0x66, 0x41, 0x0F, 0xFE, 0xC9, // paddd xmm1, xmm9
@@ -292,7 +292,7 @@ class ChaChaAsm {
       0x66, 0x41, 0x0F, 0xFE, 0xDB, // paddd xmm3, xmm11
     ]);
 
-    // Escreve output (R8)
+    // Write output (R8)
     code.addAll([
       0x41, 0x0F, 0x11, 0x00, // movups [r8], xmm0
       0x41, 0x0F, 0x11, 0x48, 0x10, // movups [r8+16], xmm1
@@ -307,7 +307,7 @@ class ChaChaAsm {
   static void _addDoubleRound(List<int> code) {
     // Column round
     _addQuarterRound(code);
-    // Shuffle para diagonal
+    // Shuffle into diagonals
     code.addAll([0x66, 0x0F, 0x70, 0xC9, 0x39]); // pshufd xmm1, xmm1, 0x39
     code.addAll([0x66, 0x0F, 0x70, 0xD2, 0x4E]); // pshufd xmm2, xmm2, 0x4E
     code.addAll([0x66, 0x0F, 0x70, 0xDB, 0x93]); // pshufd xmm3, xmm3, 0x93
@@ -341,7 +341,7 @@ class ChaChaAsm {
     code.addAll([0x66, 0x0F, 0x6F, 0xE1, 0x66, 0x0F, 0x72, 0xF4, 0x07, 0x66, 0x0F, 0x72, 0xD1, 0x19, 0x66, 0x0F, 0xEB, 0xCC]); // rotl7
   }
 
-  // Ponteiros nativos
+  // Native pointers
   ffi.Pointer<ffi.Uint8>? _keyPtr;
   ffi.Pointer<ffi.Uint8>? _noncePtr;
   ffi.Pointer<ffi.Uint8>? _constantsPtr;

@@ -50,7 +50,7 @@ class PureDartTlsHandshakeStateMachine {
       case PureDartTlsMode.server:
         if (message is! TlsClientHello) {
           throw StateError(
-            'Servidor puro Dart esperava ClientHello inicial, recebeu '
+            'Pure Dart server expected an initial ClientHello, got '
             '${message.handshakeType.name}',
           );
         }
@@ -60,7 +60,7 @@ class PureDartTlsHandshakeStateMachine {
       case PureDartTlsMode.client:
         if (message is! TlsServerHello) {
           throw StateError(
-            'Cliente puro Dart esperava ServerHello inicial, recebeu '
+            'Pure Dart client expected an initial ServerHello, got '
             '${message.handshakeType.name}',
           );
         }
@@ -105,7 +105,7 @@ class PureDartTlsHandshakeStateMachine {
         break;
     }
     throw StateError(
-      'Mensagem pós-handshake inesperada: ${message.handshakeType.name}',
+      'Unexpected post-handshake message: ${message.handshakeType.name}',
     );
   }
 

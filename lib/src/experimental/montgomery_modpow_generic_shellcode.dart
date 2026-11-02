@@ -1,10 +1,10 @@
 // dart format width=5000
 // AUTO-GENERATED - DO NOT EDIT
-// Shellcode compilado de mont_modpow_generic
-// Tamanho: 16576 bytes
-// Gerado em: 2025-12-07T22:12:42.390060
+// Shellcode compiled from mont_modpow_generic
+// Size: 16576 bytes
+// Generated at: 2025-12-07T22:12:42.390060
 
-/// Shellcode x86_64 para mont_modpow_generic
+/// x86_64 shellcode for mont_modpow_generic.
 const List<int> kMontgomeryModPowGenericShellcode = [
   0x55, 0x31, 0xC0, 0x48, 0x89, 0xE5, 0x41, 0x57, 0x41, 0x56, 0x41, 0x55, 0x41, 0x54, 0x57, 0x56,
   0x53, 0x48, 0x83, 0xE4, 0xF0, 0x48, 0x81, 0xEC, 0xC0, 0x05, 0x00, 0x00, 0x48, 0x89, 0x4D, 0x10,

@@ -1,5 +1,5 @@
 // dart format width=5000
-// Benchmark para Poly1305 otimizado vs original
+// Benchmark: optimized Poly1305 vs original
 
 import 'dart:typed_data';
 
@@ -11,13 +11,13 @@ void main() {
 
   final key = Uint8List.fromList(List.generate(32, (i) => i));
 
-  // Tamanhos de teste
+  // Test sizes
   final sizes = [64, 256, 1024, 4096, 16384, 65536];
 
   for (final size in sizes) {
     final data = Uint8List.fromList(List.generate(size, (i) => i & 0xFF));
 
-    // Aquecimento
+    // Warm-up
     for (int i = 0; i < 100; i++) {
       Poly1305Asm(key).createTag(data);
       original.Poly1305(key).createTag(data);
@@ -33,7 +33,7 @@ void main() {
     swOriginal.stop();
     final timeOriginal = swOriginal.elapsedMicroseconds / iterations;
 
-    // Benchmark otimizado
+    // Benchmark optimized
     final swOptimized = Stopwatch()..start();
     for (int i = 0; i < iterations; i++) {
       Poly1305Asm(key).createTag(data);
@@ -43,15 +43,15 @@ void main() {
 
     final speedup = timeOriginal / timeOptimized;
 
-    print('Tamanho: ${size.toString().padLeft(5)} bytes');
+    print('Size: ${size.toString().padLeft(5)} bytes');
     print('  Original (BigInt): ${timeOriginal.toStringAsFixed(2)} µs');
-    print('  Otimizado (int64): ${timeOptimized.toStringAsFixed(2)} µs');
+    print('  Optimized (int64): ${timeOptimized.toStringAsFixed(2)} µs');
     print('  Speedup: ${speedup.toStringAsFixed(2)}x');
     print('');
   }
 
-  // Verificação de correção
-  print('=== Verificação de Correção ===');
+  // Correctness check
+  print('=== Correctness Check ===');
   final testData = Uint8List.fromList(List.generate(1000, (i) => i & 0xFF));
   final tagOriginal = original.Poly1305(key).createTag(testData);
   final tagOptimized = Poly1305Asm(key).createTag(testData);
@@ -63,7 +63,7 @@ void main() {
       break;
     }
   }
-  print('Tags iguais: $correct');
+  print('Tags match: $correct');
 
   // Throughput
   print('\n=== Throughput (MB/s) ===');
@@ -87,6 +87,6 @@ void main() {
   final throughputOpt = (10 * 1024 * 1024) / (swThroughputOpt.elapsedMicroseconds / 1000000) / (1024 * 1024);
 
   print('Original (BigInt): ${throughputOrig.toStringAsFixed(2)} MB/s');
-  print('Otimizado (int64): ${throughputOpt.toStringAsFixed(2)} MB/s');
+  print('Optimized (int64): ${throughputOpt.toStringAsFixed(2)} MB/s');
   print('Speedup: ${(throughputOpt / throughputOrig).toStringAsFixed(2)}x');
 }

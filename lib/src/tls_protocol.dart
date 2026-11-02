@@ -2,7 +2,7 @@ import 'dart:typed_data';
 
 import 'utils/codec.dart';
 
-/// Representa uma versão TLS (major/minor).
+/// A TLS protocol version (major/minor).
 class TlsProtocolVersion {
   const TlsProtocolVersion(this.major, this.minor);
 

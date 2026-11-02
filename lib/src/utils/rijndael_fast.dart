@@ -1,40 +1,40 @@
 // dart format width=5000
 //
-// Versão otimizada do Rijndael que usa buffers nativos via dart:ffi
-// para minimizar pressão no coletor de lixo. A lógica do algoritmo é
-// baseada em rijndael_slow.dart, mas o agendamento de chaves e os
-// buffers de trabalho são mantidos em memória nativa.
+// Optimized Rijndael that uses native buffers via dart:ffi
+// to minimize garbage collector pressure. The algorithm logic is
+// based on rijndael_slow.dart, but the key schedule and the
+// work buffers are kept in native memory.
 import 'dart:ffi' as ffi;
 import 'dart:typed_data';
 import 'package:tlslite/src/ffi/native_memory.dart' as pkgffi;
 
-/// Uma implementação pura em Dart fast do Rijndael com uma interface decente.
+/// A fast pure Dart implementation of Rijndael with a decent interface.
 ///
-/// Para incluir:
+/// To include:
 ///
 /// ```dart
 /// import 'rijndael.dart';
 /// ```
 ///
-/// Para configurar uma chave:
+/// To set up a key:
 ///
 /// ```dart
 /// var r = Rijndael(key, blockSize: 16);
 /// ```
 ///
-/// `key` deve ser um Uint8List de comprimento 16, 24 ou 32.
-/// `blockSize` deve ser 16, 24 ou 32. O padrão é 16.
+/// `key` must be a Uint8List of length 16, 24 or 32.
+/// `blockSize` must be 16, 24 or 32. The default is 16.
 ///
-/// Para usar:
+/// To use:
 ///
 /// ```dart
 /// Uint8List ciphertext = r.encrypt(plaintext);
 /// Uint8List plaintext = r.decrypt(ciphertext);
 /// ```
 ///
-/// Se algum dos Uint8List tiver o comprimento errado, uma exceção ArgumentError será lançada.
+/// If any of the Uint8Lists has the wrong length, an ArgumentError is thrown.
 
-// --- Constantes ---
+// --- Constants ---
 
 final List<List<List<int>>> _shifts = [
   // Preserve formatting
@@ -52,7 +52,7 @@ final List<List<List<int>>> _shifts = [
   ]
 ];
 
-// [tamanhoChave][tamanhoBloco]
+// [keySize][blockSize]
 final Map<int, Map<int, int>> _numRounds = {
   // Preserve formatting
   16: {16: 10, 24: 12, 32: 14},
@@ -97,7 +97,7 @@ final List<int> _s = [
   65, 153, 45, 15, 176, 84, 187, 22
 ];
 
-// Inversa da S-box
+// Inverse S-box
 final List<int> _si = [
   // Preserve formatting
   82, 9, 106, 213, 48, 54, 165, 56,
@@ -134,7 +134,7 @@ final List<int> _si = [
   225, 105, 20, 99, 85, 33, 12, 125
 ];
 
-// Tabelas pré-calculadas T1-T8 (para MixColumns / InvMixColumns)
+// Precomputed tables T1-T8 (for MixColumns / InvMixColumns)
 final List<int> _t1 = [
   // Preserve formatting
   0xc66363a5, 0xf87c7c84, 0xee777799, 0xf67b7b8d,
@@ -672,7 +672,7 @@ final List<int> _t8 = [
   0xcb84617b, 0x32b670d5, 0x6c5c7448, 0xb85742d0
 ];
 
-// Tabelas U para InvMixColumns na expansão de chave de decriptação
+// U tables for InvMixColumns in the decryption key expansion
 final List<int> _u1 = [
   // Preserve formattin
   0x0, 0xe090d0b, 0x1c121a16, 0x121b171d,
@@ -942,7 +942,7 @@ final List<int> _u4 = [
   0x5d80be9f, 0x548db591, 0x4f9aa883, 0x4697a38d
 ];
 
-// Constantes Round (Rcon)
+// Round constants (Rcon)
 final List<int> _rcon = [
   // Preserve formattin
   0x1, 0x2, 0x4, 0x8, 0x10, 0x20, 0x40, 0x80,
@@ -951,29 +951,29 @@ final List<int> _rcon = [
   0xb3, 0x7d, 0xfa, 0xef, 0xc5, 0x91
 ];
 
-/// Implementação da cifra de bloco AES (formalmente conhecida como Rijndael).
+/// Implementation of the AES block cipher (formerly known as Rijndael).
 ///
-/// Suporta tamanhos de chave de 128, 192 e 256 bits, bem como os
-/// tamanhos de bloco não padrão de 192 e 256 bits (o tamanho de bloco
-/// padrão de 128 bits é o default).
+/// Supports key sizes of 128, 192 and 256 bits, as well as the
+/// non-standard block sizes of 192 and 256 bits (the standard block
+/// size of 128 bits is the default).
 ///
 ///
-/// Pode processar dados apenas um bloco por vez, não realiza encadeamento
-/// de cifras de bloco ou preenchimento de texto simples (padding).
+/// It can only process data one block at a time; it does not perform
+/// block cipher chaining or plaintext padding.
 class RijndaelFast {
-  /// Tamanho do bloco em bytes (16, 24 ou 32).
+  /// Block size in bytes (16, 24 or 32).
   final int blockSize;
 
-  /// Quantidade de colunas (palavras de 32 bits) no bloco.
+  /// Number of columns (32-bit words) in the block.
   late final int _bc;
 
-  /// Quantidade de colunas (palavras de 32 bits) na chave.
+  /// Number of columns (32-bit words) in the key.
   late final int _kc;
 
-  /// Número total de rounds.
+  /// Total number of rounds.
   late final int _rounds;
 
-  /// Quantidade total de palavras no agendamento de chaves.
+  /// Total number of words in the key schedule.
   late final int _roundKeyCount;
 
   /// Shift constants cache.
@@ -984,36 +984,36 @@ class RijndaelFast {
   late final int _decS2;
   late final int _decS3;
 
-  /// Alocador de memória nativa (permitindo customização em testes).
+  /// Native memory allocator (can be customized in tests).
   final ffi.Allocator _allocator;
 
-  /// Esquema de chaves para criptografia em memória nativa.
+  /// Encryption key schedule in native memory.
   late final ffi.Pointer<ffi.Uint32> _ke;
 
-  /// Esquema de chaves para decriptografia em memória nativa.
+  /// Decryption key schedule in native memory.
   late final ffi.Pointer<ffi.Uint32> _kd;
 
-  /// Buffers de trabalho reutilizáveis em memória nativa.
+  /// Reusable work buffers in native memory.
   late final ffi.Pointer<ffi.Uint32> _workA;
   late final ffi.Pointer<ffi.Uint32> _workT;
 
   bool _disposed = false;
 
-  /// Inicializa o objeto, derivando as chaves em memória nativa.
+  /// Initializes the object, deriving the keys in native memory.
   ///
-  /// - [key]: 16, 24 ou 32 bytes.
-  /// - [blockSize]: 16, 24 ou 32 bytes (padrão 16).
-  /// - [allocator]: custom allocator (por padrão, [ffi.calloc]).
+  /// - [key]: 16, 24 or 32 bytes.
+  /// - [blockSize]: 16, 24 or 32 bytes (default 16).
+  /// - [allocator]: custom allocator (defaults to [ffi.calloc]).
   RijndaelFast(
     Uint8List key, {
     this.blockSize = 16,
     ffi.Allocator allocator = pkgffi.calloc,
   }) : _allocator = allocator {
     if (blockSize != 16 && blockSize != 24 && blockSize != 32) {
-      throw ArgumentError('Tamanho de bloco inválido: $blockSize');
+      throw ArgumentError('Invalid block size: $blockSize');
     }
     if (key.length != 16 && key.length != 24 && key.length != 32) {
-      throw ArgumentError('Tamanho de chave inválido: ${key.length}');
+      throw ArgumentError('Invalid key size: ${key.length}');
     }
 
     _rounds = _numRounds[key.length]![blockSize]!;
@@ -1021,7 +1021,7 @@ class RijndaelFast {
     _kc = key.length ~/ 4;
     _roundKeyCount = (_rounds + 1) * _bc;
 
-    // Cache de shifts para evitar recomputar em cada chamada.
+    // Cache the shifts to avoid recomputing them on every call.
     final int sc = _bc == 4
         ? 0
         : _bc == 6
@@ -1042,7 +1042,7 @@ class RijndaelFast {
     _expandKey(key);
   }
 
-  /// Libera buffers nativos.
+  /// Frees the native buffers.
   void dispose() {
     if (_disposed) return;
     _allocator.free(_ke);
@@ -1054,7 +1054,7 @@ class RijndaelFast {
 
   void _checkNotDisposed() {
     if (_disposed) {
-      throw StateError('RijndaelFast já foi liberado (dispose).');
+      throw StateError('RijndaelFast has already been disposed.');
     }
   }
 
@@ -1081,7 +1081,7 @@ class RijndaelFast {
   }
 
   void _expandKey(Uint8List key) {
-    // Copia os bytes do material do usuário para inteiros temporários
+    // Copy the bytes of the user key material into temporary integers
     final List<int> tk = List.filled(_kc, 0);
     for (int i = 0; i < _kc; i++) {
       tk[i] = (key[i * 4] << 24) |
@@ -1155,26 +1155,26 @@ class RijndaelFast {
     }
   }
 
-  /// Criptografa um único bloco.
+  /// Encrypts a single block.
   Uint8List encrypt(Uint8List plaintext) {
     final out = Uint8List(blockSize);
     encryptInto(plaintext, out);
     return out;
   }
 
-  /// Variante sem alocações: escreve em [out] (tamanho deve ser `blockSize`).
+  /// Allocation-free variant: writes to [out] (whose length must be `blockSize`).
   void encryptInto(Uint8List plaintext, Uint8List out) {
     _checkNotDisposed();
     if (plaintext.length != blockSize) {
       throw ArgumentError(
-          'Comprimento de bloco incorreto, esperado $blockSize, obteve ${plaintext.length}');
+          'wrong block length, expected $blockSize got ${plaintext.length}');
     }
     if (out.length != blockSize) {
       throw ArgumentError(
-          'Comprimento de saída incorreto, esperado $blockSize, obteve ${out.length}');
+          'wrong output length, expected $blockSize got ${out.length}');
     }
 
-    // AddRoundKey inicial (manual para evitar ByteData.view a cada chamada).
+    // Initial AddRoundKey (done by hand to avoid a ByteData.view on every call).
     for (int i = 0; i < _bc; i++) {
       final int base = i * 4;
       final int word = (plaintext[base] << 24) |
@@ -1184,7 +1184,7 @@ class RijndaelFast {
       _wordSet(_workT, i, word ^ _getRoundKey(_ke, 0, i));
     }
 
-    // Rounds principais
+    // Main rounds
     for (int r = 1; r < _rounds; r++) {
       for (int i = 0; i < _bc; i++) {
         final int t0 = _wordAt(_workT, i);
@@ -1203,7 +1203,7 @@ class RijndaelFast {
       _copyWords(_workA, _workT, _bc);
     }
 
-    // Último round
+    // Last round
     for (int i = 0; i < _bc; i++) {
       final int tt = _getRoundKey(_ke, _rounds, i);
       final int t0 = _wordAt(_workT, i);
@@ -1218,14 +1218,14 @@ class RijndaelFast {
     }
   }
 
-  /// Decriptografa um único bloco.
+  /// Decrypts a single block.
   Uint8List decrypt(Uint8List ciphertext) {
     final out = Uint8List(blockSize);
     decryptInto(ciphertext, out);
     return out;
   }
 
-  /// Variante sem alocações: escreve em [out] (tamanho deve ser `blockSize`).
+  /// Allocation-free variant: writes to [out] (whose length must be `blockSize`).
   void decryptInto(Uint8List ciphertext, Uint8List out) {
     _checkNotDisposed();
     if (ciphertext.length != blockSize) {
@@ -1234,7 +1234,7 @@ class RijndaelFast {
     }
     if (out.length != blockSize) {
       throw ArgumentError(
-          'Comprimento de saída incorreto, esperado $blockSize, obteve ${out.length}');
+          'wrong output length, expected $blockSize got ${out.length}');
     }
 
     for (int i = 0; i < _bc; i++) {

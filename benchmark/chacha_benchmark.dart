@@ -9,10 +9,10 @@ void main() {
   print('=== ChaCha20 ASM (SSE2) Benchmark ===\n');
 
   if (!ChaChaAsmSupport.isSSE2Supported) {
-    print('SSE2 não suportado!');
+    print('SSE2 not supported!');
     return;
   }
-  print('SSE2: Suportado\n');
+  print('SSE2: supported\n');
 
   final key = Uint8List.fromList(List.generate(32, (i) => i));
   final nonce = Uint8List.fromList(List.generate(12, (i) => i));
@@ -22,7 +22,7 @@ void main() {
   for (final size in sizes) {
     final data = Uint8List.fromList(List.generate(size, (i) => i & 0xFF));
 
-    // Aquecimento
+    // Warm-up
     for (int i = 0; i < 50; i++) {
       ChaChaAsm(key, nonce).encrypt(data);
       original.ChaCha(key, nonce).encrypt(data);
@@ -46,14 +46,14 @@ void main() {
     swAsm.stop();
     final timeAsm = swAsm.elapsedMicroseconds / iterations;
 
-    print('Tamanho: ${size.toString().padLeft(5)} bytes');
+    print('Size: ${size.toString().padLeft(5)} bytes');
     print('  Original: ${timeOrig.toStringAsFixed(2)} µs');
     print('  ASM SSE2: ${timeAsm.toStringAsFixed(2)} µs');
     print('  Speedup:  ${(timeOrig / timeAsm).toStringAsFixed(2)}x\n');
   }
 
-  // Verificação
-  print('=== Verificação ===');
+  // Verification
+  print('=== Verification ===');
   final testData = Uint8List.fromList(List.generate(1000, (i) => i & 0xFF));
   final origResult = original.ChaCha(key, nonce).encrypt(testData);
   final asmResult = ChaChaAsm(key, nonce).encrypt(testData);
@@ -62,11 +62,11 @@ void main() {
   for (int i = 0; i < origResult.length; i++) {
     if (origResult[i] != asmResult[i]) {
       correct = false;
-      print('Diferença em [$i]: orig=${origResult[i]}, asm=${asmResult[i]}');
+      print('Mismatch at [$i]: orig=${origResult[i]}, asm=${asmResult[i]}');
       break;
     }
   }
-  print('Resultados iguais: $correct');
+  print('Results match: $correct');
 
   // Throughput 1MB
   print('\n=== Throughput ===');

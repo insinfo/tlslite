@@ -50,7 +50,7 @@ Future<String> runPythonHex(String code) async {
 bool pythonAvailable = false;
 
 void main() {
-  const skipReason = 'testes python foram desativados propositalmente';
+  const skipReason = 'Python tests are intentionally disabled';
   
   setUpAll(() async {
     try {

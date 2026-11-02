@@ -6,10 +6,10 @@ import 'utils/keyfactory.dart';
 import 'utils/pem.dart';
 import 'messages.dart';
 
-/// Define o modo de operação esperado para o engine TLS puro Dart.
+/// Operating mode expected by the pure Dart TLS engine.
 enum PureDartTlsMode { client, server }
 
-/// Configurações provisórias utilizadas
+/// Provisional configuration (certificate chain and private key).
 ///
 /// NOTE: Aligns with HandshakeSettings from handshake_settings.dart.
 class PureDartTlsConfig {
@@ -21,17 +21,17 @@ class PureDartTlsConfig {
   final String? certificateChainPem;
   final String? privateKeyPem;
 
-  /// Lista normalizada de blocos PEM individuais para o certificado.
+  /// Normalized list of the individual PEM blocks of the certificate chain.
     late final List<String> certificateChain =
       _extractCertificateBlocks(certificateChainPem);
 
-  /// DERs correspondentes a cada certificado PEM.
+  /// DER encoding of each PEM certificate.
   ///
   /// NOTE: Uses X509 class from x509.dart for certificate parsing.
   late final List<Uint8List> certificateChainDer =
       certificateChain.map((pem) => dePem(pem, 'CERTIFICATE')).toList();
 
-  /// Chave privada parseada usando o keyfactory puro Dart.
+  /// Private key parsed with the pure Dart keyfactory.
   late final Object? privateKey =
       privateKeyPem == null ? null : parsePrivateKey(privateKeyPem!);
 
@@ -41,7 +41,7 @@ class PureDartTlsConfig {
   void ensureServerCredentials() {
     if (!hasServerCredentials) {
       throw StateError(
-          'PureDartTlsConfig sem certificado e chave privada válidos');
+          'PureDartTlsConfig has no valid certificate and private key');
     }
   }
 

@@ -31,7 +31,7 @@ class RijndaelBenchmark extends RateBenchmark {
 
   @override
   void setup() {
-    // Prepara ciphertext de referência usando a implementação lenta
+    // Prepare the reference ciphertext with the slow implementation
     final reference =
         Rijndael(Uint8List.fromList(_key), blockSize: _block.length);
     _ciphertext = reference.encrypt(_block);

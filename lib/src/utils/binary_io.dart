@@ -2,27 +2,27 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
-/// Leitura binária de alto nível com API síncrona (do ponto de vista do parser),
-/// mas alimentada por IO assíncrono embaixo.
+/// High-level binary reader with a synchronous API (from the parser's point
+/// of view), fed by asynchronous IO underneath.
 abstract class BinaryInput {
-  /// Garante que pelo menos [count] bytes estarão disponíveis para leitura.
+  /// Ensures that at least [count] bytes are available for reading.
   Future<void> ensureBytes(int count);
 
-  /// Lê um byte sem sinal.
+  /// Reads an unsigned byte.
   int readUint8();
 
-  /// Lê um inteiro 16-bit big-endian.
+  /// Reads a big-endian 16-bit integer.
   int readInt16();
 
-  /// Lê um inteiro 32-bit big-endian.
+  /// Reads a big-endian 32-bit integer.
   int readInt32();
 
-  /// Lê [length] bytes brutos.
+  /// Reads [length] raw bytes.
   List<int> readBytes(int length);
 }
 
-/// Implementação de [BinaryInput] que lê de um [Socket] com buffer interno
-/// sem copiar todo o conteúdo a cada leitura.
+/// [BinaryInput] implementation that reads from a [Socket] using an internal
+/// buffer, without copying the whole content on every read.
 class SocketBinaryInput implements BinaryInput {
   SocketBinaryInput(
     Stream<List<int>> stream, {
@@ -74,7 +74,7 @@ class SocketBinaryInput implements BinaryInput {
     }
   }
 
-  /// Adiciona novos dados ao buffer, realocando apenas quando necessário.
+  /// Appends new data to the buffer, reallocating only when necessary.
   void _appendData(List<int> data) {
     if (data.isEmpty) return;
 
@@ -85,7 +85,7 @@ class SocketBinaryInput implements BinaryInput {
       return;
     }
 
-    // Realoca crescendo a capacidade para evitar realocações frequentes.
+    // Reallocate with a larger capacity to avoid frequent reallocations.
     final unread = _writeLength - _readOffset;
     final needed = unread + data.length;
     var newCapacity = _buffer.length * 2;
@@ -106,18 +106,18 @@ class SocketBinaryInput implements BinaryInput {
 
   Uint8List _consume(int length) {
     if (length < 0) {
-      throw ArgumentError.value(length, 'length', 'Deve ser >= 0');
+      throw ArgumentError.value(length, 'length', 'Must be >= 0');
     }
     if (_available < length) {
       throw StateError(
-          'Buffer interno menor que o esperado: $_available < $length');
+          'Internal buffer smaller than expected: $_available < $length');
     }
 
     final view =
         Uint8List.sublistView(_buffer, _readOffset, _readOffset + length);
     _readOffset += length;
 
-    // Se consumiu tudo, reseta os ponteiros para liberar espaço.
+    // If everything was consumed, reset the offsets to free up space.
     if (_readOffset == _writeLength) {
       _readOffset = 0;
       _writeLength = 0;
@@ -129,7 +129,7 @@ class SocketBinaryInput implements BinaryInput {
   @override
   Future<void> ensureBytes(int count) async {
     if (count < 0) {
-      throw ArgumentError.value(count, 'count', 'Deve ser >= 0');
+      throw ArgumentError.value(count, 'count', 'Must be >= 0');
     }
 
     await _checkForError();
@@ -143,7 +143,7 @@ class SocketBinaryInput implements BinaryInput {
     await _checkForError();
 
     if (_available < count && _done) {
-      throw StateError('EOF antes de ler $count bytes');
+      throw StateError('EOF before reading $count bytes');
     }
   }
 
@@ -173,7 +173,7 @@ class SocketBinaryInput implements BinaryInput {
   }
 }
 
-/// Implementação simples para buffers já carregados em memória.
+/// Simple implementation for buffers already loaded in memory.
 class MemoryBinaryInput implements BinaryInput {
   MemoryBinaryInput(this._buffer);
 
@@ -186,10 +186,10 @@ class MemoryBinaryInput implements BinaryInput {
   @override
   Future<void> ensureBytes(int count) async {
     if (count < 0) {
-      throw ArgumentError.value(count, 'count', 'Deve ser >= 0');
+      throw ArgumentError.value(count, 'count', 'Must be >= 0');
     }
     if (_available < count) {
-      throw StateError('EOF em MemoryBinaryInput: $_available < $count');
+      throw StateError('EOF in MemoryBinaryInput: $_available < $count');
     }
   }
 
@@ -225,40 +225,41 @@ class MemoryBinaryInput implements BinaryInput {
 
   void _ensureSync(int length) {
     if (length < 0) {
-      throw ArgumentError.value(length, 'length', 'Deve ser >= 0');
+      throw ArgumentError.value(length, 'length', 'Must be >= 0');
     }
     if (_available < length) {
-      throw StateError('EOF em MemoryBinaryInput: $_available < $length');
+      throw StateError('EOF in MemoryBinaryInput: $_available < $length');
     }
   }
 }
 
-/// Escrita binária com API síncrona para compor mensagens e flush assíncrono.
+/// Binary writer with a synchronous API for composing messages and an
+/// asynchronous flush.
 abstract class BinaryOutput {
-  /// Quantos bytes estão acumulados no buffer.
+  /// How many bytes are accumulated in the buffer.
   int get length;
 
-  /// Garante que o buffer comporte [count] bytes adicionais.
+  /// Ensures the buffer can hold [count] additional bytes.
   void ensureCapacity(int count);
 
-  /// Escreve um byte sem sinal.
+  /// Writes an unsigned byte.
   void writeUint8(int value);
 
-  /// Escreve um inteiro 16-bit big-endian.
+  /// Writes a big-endian 16-bit integer.
   void writeInt16(int value);
 
-  /// Escreve um inteiro 32-bit big-endian.
+  /// Writes a big-endian 32-bit integer.
   void writeInt32(int value);
 
-  /// Escreve bytes brutos.
+  /// Writes raw bytes.
   void writeBytes(List<int> bytes);
 
-  /// Força envio do buffer para o destino (socket/IOSink).
+  /// Flushes the buffer to the destination (socket/IOSink).
   Future<void> flush();
 }
 
-/// Implementação de [BinaryOutput] com buffer reutilizável sobre um [IOSink]
-/// (por exemplo, `Socket`).
+/// [BinaryOutput] implementation with a reusable buffer on top of an [IOSink]
+/// (for example, a `Socket`).
 class SocketBinaryOutput implements BinaryOutput {
   SocketBinaryOutput(
     this._sink, {
@@ -276,7 +277,7 @@ class SocketBinaryOutput implements BinaryOutput {
   @override
   void ensureCapacity(int count) {
     if (count < 0) {
-      throw ArgumentError.value(count, 'count', 'Deve ser >= 0');
+      throw ArgumentError.value(count, 'count', 'Must be >= 0');
     }
     final needed = _writeOffset + count;
     if (needed <= _buffer.length) return;
@@ -338,7 +339,7 @@ class SocketBinaryOutput implements BinaryOutput {
   }
 }
 
-/// Variante em memória para testes ou construção de payloads.
+/// In-memory variant for tests or for building payloads.
 class MemoryBinaryOutput implements BinaryOutput {
   MemoryBinaryOutput({int initialCapacity = 256})
       : _buffer = Uint8List(initialCapacity);
@@ -352,7 +353,7 @@ class MemoryBinaryOutput implements BinaryOutput {
   @override
   void ensureCapacity(int count) {
     if (count < 0) {
-      throw ArgumentError.value(count, 'count', 'Deve ser >= 0');
+      throw ArgumentError.value(count, 'count', 'Must be >= 0');
     }
     final needed = _writeOffset + count;
     if (needed <= _buffer.length) return;
@@ -404,11 +405,11 @@ class MemoryBinaryOutput implements BinaryOutput {
     _writeOffset += bytes.length;
   }
 
-  /// Obtém uma view dos bytes escritos até agora.
+  /// Returns a view of the bytes written so far.
   Uint8List toUint8List() => Uint8List.sublistView(_buffer, 0, _writeOffset);
 
   @override
   Future<void> flush() async {
-    // Nada a fazer: em memória não flusha.
+    // Nothing to do: the in-memory variant has nothing to flush.
   }
 }

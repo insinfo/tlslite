@@ -5,9 +5,9 @@
 import 'dart:typed_data';
 import 'dart:math';
 
-/// Implementação pura em Dart da cifra de fluxo ChaCha (RFC 7539).
+/// Pure Dart implementation of the ChaCha stream cipher (RFC 7539).
 class ChaCha {
-  /// Constantes ChaCha "expand 32-byte k"
+  /// ChaCha "expand 32-byte k" constants.
   static const List<int> _constants = [
     0x61707865,
     0x3320646e,
@@ -15,35 +15,35 @@ class ChaCha {
     0x6b206574
   ];
 
-  /// Estado interno: palavras da chave (8 uint32)
+  /// Internal state: key words (8 uint32).
   final List<int> _keyWords;
 
-  /// Estado interno: palavras do nonce (3 uint32)
+  /// Internal state: nonce words (3 uint32).
   final List<int> _nonceWords;
 
-  /// Valor inicial do contador
+  /// Initial counter value.
   final int initialCounter;
 
-  /// Número de rodadas (normalmente 20)
+  /// Number of rounds (normally 20).
   final int rounds;
 
-  /// Realiza rotação à esquerda de 32 bits.
-  /// Garante que o resultado permaneça na faixa de 32 bits sem sinal.
+  /// Performs a 32-bit left rotation.
+  /// Keeps the result within the unsigned 32-bit range.
   static int _rotl32(int v, int c) {
-    // Mascara v para 32 bits antes de deslocar para lidar com tamanhos potenciais de int do Dart
+    // Mask v to 32 bits before shifting, since Dart ints may be wider
     final v32 = v & 0xFFFFFFFF;
     final left = (v32 << c) & 0xFFFFFFFF;
-    // Usa deslocamento à direita sem sinal (>>). Se v pudesse ser negativo,
-    // >>> seria mais seguro, mas as entradas aqui são mascaradas.
+    // Uses a plain right shift (>>). If v could be negative,
+    // >>> would be safer, but the inputs here are masked.
     final right = v32 >> (32 - c);
     return (left | right) & 0xFFFFFFFF;
   }
 
-  /// Realiza um quarto de rodada (quarter round) do ChaCha no estado `x`.
-  /// Modifica a lista `x` no local (in-place).
-  /// Os índices a, b, c, d correspondem às palavras do estado sendo misturadas.
+  /// Performs a ChaCha quarter round on the state `x`.
+  /// Modifies the list `x` in place.
+  /// The indices a, b, c, d are the state words being mixed.
   static void quarterRound(List<int> x, int a, int b, int c, int d) {
-    // Garante que todas as operações mantenham a semântica de 32 bits sem sinal
+    // Keep unsigned 32-bit semantics for every operation
     x[a] = (x[a] + x[b]) & 0xFFFFFFFF;
     x[d] = x[d] ^ x[a];
     x[d] = _rotl32(x[d], 16);
@@ -61,26 +61,27 @@ class ChaCha {
     x[b] = _rotl32(x[b], 7);
   }
 
-  // Índices para as operações da rodada dupla (rodadas de coluna e depois rodadas diagonais)
+  // Indices for the double round operations (column rounds, then diagonal rounds)
   static const List<List<int>> _roundMixupBox = [
-    // Rodadas de coluna
+    // Column rounds
     [0, 4, 8, 12], [1, 5, 9, 13], [2, 6, 10, 14], [3, 7, 11, 15],
-    // Rodadas diagonais
+    // Diagonal rounds
     [0, 5, 10, 15], [1, 6, 11, 12], [2, 7, 8, 13], [3, 4, 9, 14]
   ];
 
-  /// Realiza duas rodadas (1 rodada dupla) da cifra ChaCha no estado `x`.
-  /// Modifica a lista `x` no local (in-place).
+  /// Performs two rounds (one double round) of the ChaCha cipher on the state `x`.
+  /// Modifies the list `x` in place.
   static void _doubleRound(List<int> x) {
-    // Nota: A implementação duplica a lógica do quarter_round aqui.
-    // Uma maneira mais limpa seria chamar _quarterRound, mas isso corresponde 
+    // Note: this duplicates the quarter round logic inline.
+    // Calling quarterRound would be cleaner, but this matches the original
+    // implementation.
     for (final mixup in _roundMixupBox) {
       final a = mixup[0];
       final b = mixup[1];
       final c = mixup[2];
       final d = mixup[3];
 
-      // Lógica do Quarter round copiada aqui
+      // Quarter round logic copied here
       x[a] = (x[a] + x[b]) & 0xFFFFFFFF;
       x[d] = x[d] ^ x[a];
       x[d] = _rotl32(x[d], 16);
@@ -99,33 +100,33 @@ class ChaCha {
     }
   }
 
-  /// Gera o bloco de fluxo de chave para uma dada chave, contador e nonce.
-  /// Retorna uma lista de 16 inteiros de 32 bits sem sinal.
+  /// Generates the keystream block for the given key, counter and nonce.
+  /// Returns a list of 16 unsigned 32-bit integers.
   static List<int> _chachaBlock(
       List<int> keyWords, int counter, List<int> nonceWords, int rounds) {
     if (keyWords.length != 8)
-      throw ArgumentError("A chave deve ter 8 palavras (256 bits)");
+      throw ArgumentError("Key must be 8 words (256 bits)");
     if (nonceWords.length != 3)
-      throw ArgumentError("O Nonce deve ter 3 palavras (96 bits)");
+      throw ArgumentError("Nonce must be 3 words (96 bits)");
 
-    // Inicializa o estado: constantes + chave + contador + nonce
-    // Garante que o contador seja tratado como 32 bits sem sinal
+    // Initialize the state: constants + key + counter + nonce
+    // The counter is treated as an unsigned 32-bit value
     final state = List<int>.filled(16, 0);
-    state.setRange(0, 4, _constants); // constantes[0..3]
-    state.setRange(4, 12, keyWords); // chave[0..7]
-    state[12] = counter & 0xFFFFFFFF; // contador
+    state.setRange(0, 4, _constants); // constants[0..3]
+    state.setRange(4, 12, keyWords); // key[0..7]
+    state[12] = counter & 0xFFFFFFFF; // counter
     state.setRange(13, 16, nonceWords); // nonce[0..2]
 
-    // Copia o estado inicial para modificação
+    // Copy the initial state to work on
     final workingState = List<int>.from(state, growable: false);
 
-    // Aplica as rodadas
-    final numDoubleRounds = rounds ~/ 2; // Divisão inteira
+    // Apply the rounds
+    final numDoubleRounds = rounds ~/ 2; // Integer division
     for (int i = 0; i < numDoubleRounds; i++) {
       _doubleRound(workingState);
     }
 
-    // Adiciona o estado inicial ao estado de trabalho final (módulo 2^32)
+    // Add the initial state to the final working state (modulo 2^32)
     for (int i = 0; i < 16; i++) {
       workingState[i] = (workingState[i] + state[i]) & 0xFFFFFFFF;
     }
@@ -133,25 +134,25 @@ class ChaCha {
     return workingState;
   }
 
-  /// Converte um estado (lista de 16 palavras uint32) para um fluxo de bytes
-  /// little-endian (Uint8List).
+  /// Converts a state (list of 16 uint32 words) to a little-endian
+  /// byte stream (Uint8List).
   static Uint8List _wordListToBytes(List<int> state) {
     if (state.length != 16)
-      throw ArgumentError("O estado deve ter 16 palavras");
-    final byteData = ByteData(64); // 16 palavras * 4 bytes/palavra
+      throw ArgumentError("State must be 16 words");
+    final byteData = ByteData(64); // 16 words * 4 bytes/word
     for (int i = 0; i < 16; i++) {
       byteData.setUint32(i * 4, state[i], Endian.little);
     }
-    // Retorna o buffer de bytes subjacente como Uint8List
+    // Return the underlying byte buffer as a Uint8List
     return byteData.buffer.asUint8List();
   }
 
-  /// Converte um array de bytes (Uint8List) para uma lista de palavras de 32 bits (little-endian).
+  /// Converts a byte array (Uint8List) to a list of 32-bit words (little-endian).
   static List<int> _bytesToWordList(Uint8List data) {
     if (data.length % 4 != 0)
-      throw ArgumentError("O comprimento dos dados deve ser um múltiplo de 4");
+      throw ArgumentError("Data length must be a multiple of 4");
     final words = <int>[];
-    // Usa uma view ByteData para leitura eficiente
+    // Use a ByteData view for efficient reads
     final byteData =
         ByteData.view(data.buffer, data.offsetInBytes, data.lengthInBytes);
     for (int i = 0; i < data.lengthInBytes; i += 4) {
@@ -160,51 +161,51 @@ class ChaCha {
     return words;
   }
 
-  /// Configura o estado inicial para a cifra ChaCha.
+  /// Sets up the initial state for the ChaCha cipher.
   ///
-  /// - `key`: Chave de 32 bytes (256 bits) como Uint8List.
-  /// - `nonce`: Nonce de 12 bytes (96 bits) como Uint8List.
-  /// - `counter`: Contador de bloco inicial (o padrão é 0).
-  /// - `rounds`: Número de rodadas ChaCha (o padrão é 20).
+  /// - `key`: 32-byte (256-bit) key as a Uint8List.
+  /// - `nonce`: 12-byte (96-bit) nonce as a Uint8List.
+  /// - `initialCounter`: initial block counter (defaults to 0).
+  /// - `rounds`: number of ChaCha rounds (defaults to 20).
   ChaCha(Uint8List key, Uint8List nonce,
       {this.initialCounter = 0, this.rounds = 20})
       : _keyWords = _bytesToWordList(key),
         _nonceWords = _bytesToWordList(nonce) {
     if (key.length != 32) {
       throw ArgumentError(
-          "A chave deve ter 32 bytes (256 bits) de comprimento");
+          "Key must be 32 bytes (256 bits) long");
     }
     if (nonce.length != 12) {
-      throw ArgumentError("O Nonce deve ter 12 bytes (96 bits) de comprimento");
+      throw ArgumentError("Nonce must be 12 bytes (96 bits) long");
     }
-    // A conversão para palavras ocorre na lista de inicializadores
+    // The conversion to words happens in the initializer list
   }
 
-  /// Criptografa o plaintext (texto claro) fornecido.
-  /// Retorna o ciphertext (texto cifrado) como um Uint8List.
+  /// Encrypts the given plaintext.
+  /// Returns the ciphertext as a Uint8List.
   Uint8List encrypt(Uint8List plaintext) {
-    // Usar BytesBuilder é eficiente para construir o resultado
+    // BytesBuilder is an efficient way to build the result
     final ciphertextBuilder = BytesBuilder(copy: false);
-    const blockSize = 64; // Tamanho do bloco ChaCha em bytes
+    const blockSize = 64; // ChaCha block size in bytes
 
     for (int i = 0; i < plaintext.length; i += blockSize) {
-      // Calcula o contador para este bloco
-      // Garante que a aritmética do contador lide com overflow potencial
+      // Compute the counter for this block
+      // The counter arithmetic wraps around on overflow
       final currentBlockCounter =
-          (initialCounter + (i ~/ blockSize)) & 0xFFFFFFFF; // Divisão inteira
+          (initialCounter + (i ~/ blockSize)) & 0xFFFFFFFF; // Integer division
 
-      // Gera o bloco de fluxo de chave (16 palavras)
+      // Generate the keystream block (16 words)
       final keyStreamWords =
           _chachaBlock(_keyWords, currentBlockCounter, _nonceWords, rounds);
 
-      // Converte as palavras do fluxo de chave para bytes (64 bytes)
+      // Convert the keystream words to bytes (64 bytes)
       final keyStreamBytes = _wordListToBytes(keyStreamWords);
 
-      // Determina a porção do plaintext para este bloco
+      // Determine the portion of the plaintext for this block
       final blockEnd = min(i + blockSize, plaintext.length);
       final plainTextBlockLength = blockEnd - i;
 
-      // Faz o XOR do fluxo de chave com o bloco de plaintext
+      // XOR the keystream with the plaintext block
       final encryptedBlock = Uint8List(plainTextBlockLength);
       for (int j = 0; j < plainTextBlockLength; j++) {
         encryptedBlock[j] = keyStreamBytes[j] ^ plaintext[i + j];
@@ -216,11 +217,11 @@ class ChaCha {
     return ciphertextBuilder.toBytes();
   }
 
-  /// Decriptografa o ciphertext (texto cifrado) fornecido.
-  /// A decriptografia ChaCha é a mesma operação que a criptografia.
-  /// Retorna o plaintext (texto claro) como um Uint8List.
+  /// Decrypts the given ciphertext.
+  /// ChaCha decryption is the same operation as encryption.
+  /// Returns the plaintext as a Uint8List.
   Uint8List decrypt(Uint8List ciphertext) {
-    // A decriptografia é idêntica à criptografia para cifras de fluxo como ChaCha
+    // Decryption is identical to encryption for stream ciphers like ChaCha
     return encrypt(ciphertext);
   }
 }

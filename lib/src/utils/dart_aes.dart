@@ -4,9 +4,9 @@
 
 import 'dart:typed_data';
 import 'dart:math';
-import 'aes.dart'; // Contém a classe base AES
-import 'rijndael_slow.dart'; // Contém a implementação do bloco Rijndael/AES
-import 'cryptomath.dart'; // Contém bytesToNumber e numberToByteArray
+import 'aes.dart'; // Contains the AES base class
+import 'rijndael_slow.dart'; // Contains the Rijndael/AES block implementation
+import 'cryptomath.dart'; // Contains bytesToNumber and numberToByteArray
 
 /// Factory function to create a new dart AES cipher instance.
 ///
@@ -29,19 +29,19 @@ AES newAES(Uint8List key, int mode, Uint8List iv) {
 /// Pure Dart implementation of AES in CBC mode.
 class DartAes extends AES {
   late final Rijndael _rijndael;
-  // Assumindo que a classe base AES tem 'Uint8List iv'
-  // O IV aqui representa o estado *atual* do vetor de encadeamento.
+  // Assumes the AES base class has 'Uint8List iv'.
+  // The IV here represents the *current* state of the chaining vector.
 
   DartAes(Uint8List key, int mode, Uint8List iv)
-      // mode é sempre CBC (2) para esta classe
+      // mode is always CBC (2) for this class
       : super(key, aesModeCbc, iv, "dart") {
-    // Cria uma cópia da chave para garantir imutabilidade da entrada
+    // Copy the key so the caller's input is never modified
     final internalKey = Uint8List.fromList(key);
     _rijndael =
         Rijndael(internalKey, blockSize: 16); // AES block size is 16 bytes
-    // A classe base já deve ter armazenado o IV inicial.
-    // Não precisamos de uma cópia separada aqui se a base já o fez.
-    // this.iv = Uint8List.fromList(iv); // Desnecessário se a base armazena
+    // The base class has already stored the initial IV.
+    // No separate copy is needed here since the base class keeps it.
+    // this.iv = Uint8List.fromList(iv); // Unnecessary since the base stores it
   }
 
   @override
@@ -51,42 +51,42 @@ class DartAes extends AES {
           "Plaintext length must be a multiple of 16 bytes for CBC");
     }
 
-    // Cria uma cópia mutável do plaintext para guardar o ciphertext
+    // Make a mutable copy of the plaintext to hold the ciphertext
     final ciphertextBytes = Uint8List.fromList(plaintext);
-    // Cria uma cópia mutável do IV atual para o encadeamento
-    // Acessa o 'iv' da classe base (ou desta classe se a base não tiver)
+    // Make a mutable copy of the current IV for chaining
+    // Reads 'iv' from the base class
     var chainBytes = Uint8List.fromList(iv);
 
-    // CBC Mode: Para cada bloco...
+    // CBC mode: for each block...
     for (int i = 0; i < ciphertextBytes.lengthInBytes; i += 16) {
       final currentBlockOffset = i;
 
-      // Pega o bloco atual de plaintext (direto do buffer que será modificado)
+      // Take the current plaintext block (directly from the buffer being modified)
       // Uint8List plaintextBlock = ciphertextBytes.buffer.asUint8List(ciphertextBytes.offsetInBytes + currentBlockOffset, 16);
 
-      // XOR com o bloco de encadeamento anterior
+      // XOR with the previous chaining block
       for (int j = 0; j < 16; j++) {
         ciphertextBytes[currentBlockOffset + j] ^= chainBytes[j];
       }
 
-      // Criptografa o bloco XORado (direto do buffer modificado)
-      // Precisamos passar uma cópia ou view para rijndael.encrypt
+      // Encrypt the XORed block (directly from the modified buffer)
+      // A copy or view has to be passed to rijndael.encrypt
       final blockToEncrypt = Uint8List.view(ciphertextBytes.buffer,
           ciphertextBytes.offsetInBytes + currentBlockOffset, 16);
       final encryptedBlock = _rijndael.encrypt(blockToEncrypt);
 
-      // Sobrescreve o bloco original com o bloco criptografado
+      // Overwrite the original block with the encrypted block
       ciphertextBytes.setRange(
           currentBlockOffset, currentBlockOffset + 16, encryptedBlock);
 
-      // Define o próximo bloco de encadeamento (o ciphertext recém-gerado)
-      // Cria uma cópia para evitar problemas se encryptedBlock for uma view
+      // Set the next chaining block (the freshly produced ciphertext)
+      // Copy it to avoid problems if encryptedBlock is a view
       chainBytes = Uint8List.fromList(encryptedBlock);
     }
 
-    // Atualiza o IV da instância com o último bloco de ciphertext para o próximo uso
-    // (Comportamento padrão do modo CBC)
-    iv = chainBytes; // Atualiza o iv na classe base ou nesta classe
+    // Update the instance IV with the last ciphertext block for the next call
+    // (standard CBC mode behaviour)
+    iv = chainBytes; // Updates the iv stored in the base class
 
     return ciphertextBytes;
   }
@@ -98,36 +98,36 @@ class DartAes extends AES {
           "Ciphertext length must be a multiple of 16 bytes for CBC");
     }
 
-    // Cria uma cópia mutável do ciphertext para guardar o plaintext
+    // Make a mutable copy of the ciphertext to hold the plaintext
     final plaintextBytes = Uint8List.fromList(ciphertext);
-    // Cria uma cópia mutável do IV atual para o encadeamento
+    // Make a mutable copy of the current IV for chaining
     var chainBytes = Uint8List.fromList(iv);
 
-    // CBC Mode: Para cada bloco...
+    // CBC mode: for each block...
     for (int i = 0; i < plaintextBytes.lengthInBytes; i += 16) {
       final currentBlockOffset = i;
 
-      // Guarda o bloco de ciphertext *original* para o próximo encadeamento
+      // Keep the *original* ciphertext block for the next chaining step
       final originalCipherBlock = Uint8List.fromList(
           plaintextBytes.sublist(currentBlockOffset, currentBlockOffset + 16));
 
-      // Decripta o bloco atual
+      // Decrypt the current block
       final decryptedBlock = _rijndael.decrypt(originalCipherBlock);
 
-      // XOR com o bloco de encadeamento anterior
+      // XOR with the previous chaining block
       for (int j = 0; j < 16; j++) {
         decryptedBlock[j] ^= chainBytes[j];
       }
 
-      // Sobrescreve o bloco original (agora plaintextBytes) com o bloco decriptado XORado
+      // Overwrite the original block (now plaintextBytes) with the decrypted, XORed block
       plaintextBytes.setRange(
           currentBlockOffset, currentBlockOffset + 16, decryptedBlock);
 
-      // Define o próximo bloco de encadeamento (o bloco de ciphertext original)
+      // Set the next chaining block (the original ciphertext block)
       chainBytes = originalCipherBlock;
     }
 
-    // Atualiza o IV da instância com o último bloco de *ciphertext* original
+    // Update the instance IV with the last original *ciphertext* block
     iv = chainBytes;
 
     return plaintextBytes;
@@ -137,13 +137,13 @@ class DartAes extends AES {
 /// Pure Dart implementation of AES in CTR mode.
 class DartAesCtr extends AES {
   late final Rijndael _rijndael;
-  // O 'iv' da classe base armazena o nonce inicial
-  late Uint8List _counter; // O bloco de contador completo (nonce + counter)
+  // The base class 'iv' stores the initial nonce
+  late Uint8List _counter; // The full counter block (nonce + counter)
   late final int
-      _counterBytesLength; // Quantidade de bytes dedicados ao contador real
+      _counterBytesLength; // Number of bytes dedicated to the actual counter
 
   DartAesCtr(Uint8List key, int mode, Uint8List nonce)
-      // mode é sempre CTR (6) para esta classe
+      // mode is always CTR (6) for this class
       : super(key, aesModeCtrOrGcm, nonce, "dart") {
     if (nonce.length > 16) {
       throw ArgumentError(
@@ -153,10 +153,10 @@ class DartAesCtr extends AES {
     _rijndael = Rijndael(internalKey, blockSize: 16);
     _counterBytesLength = 16 - nonce.length;
 
-    // Inicializa o bloco de contador
+    // Initialize the counter block
     _counter = Uint8List(16);
-    _counter.setRange(0, nonce.length, nonce); // Copia o nonce
-    // O resto já está inicializado com 0 por padrão pelo Uint8List(16).
+    _counter.setRange(0, nonce.length, nonce); // Copy the nonce
+    // The rest is already zero-initialized by Uint8List(16).
   }
 
   /// Gets the current value of the full counter block (nonce + counter value).
@@ -167,36 +167,36 @@ class DartAesCtr extends AES {
     if (newCounter.length != 16) {
       throw ArgumentError("Counter block must be 16 bytes long");
     }
-    _counter = Uint8List.fromList(newCounter); // Cria cópia
+    _counter = Uint8List.fromList(newCounter); // Make a copy
   }
 
   /// Increments the counter part of the counter block.
   /// Throws StateError on overflow.
   void _counterUpdate() {
-    // Converte o bloco inteiro para BigInt
+    // Convert the whole block to a BigInt
     BigInt counterInt = bytesToNumber(_counter);
 
-    // Incrementa
+    // Increment
     counterInt += BigInt.one;
 
-    // Converte de volta para Uint8List de 16 bytes
+    // Convert back to a 16-byte Uint8List
     Uint8List newCounterBytes;
     try {
       newCounterBytes = numberToByteArray(counterInt, howManyBytes: 16);
     } catch (e) {
-      // numberToByteArray pode falhar se o número for grande demais para 16 bytes
+      // numberToByteArray may fail if the number is too large for 16 bytes
       throw StateError("CTR counter overflowed during conversion: $e");
     }
 
-    // Verifica o overflow específico da parte do *contador*
-    // (Se a parte do contador atingiu FF..FF e estourou para 00..00,
-    // o que significa que invadiria a parte do nonce no próximo incremento)
-    // O overflow real já aconteceu na conversão BigInt->Bytes se foi > 2^128-1.
-    // O check aqui é mais sobre a *lógica* do CTR: a parte do *contador* não deve estourar
-    // e voltar a zero, pois reutilizaria keystreams.
-    // A maneira mais simples é verificar se os *últimos* _counterBytesLength
-    // bytes do *novo* contador são todos 0, o que indica que houve um carry
-    // que passou pelo último byte do contador.
+    // Check for overflow of the *counter* part specifically
+    // (the counter part reached FF..FF and wrapped to 00..00,
+    // meaning the next increment would spill into the nonce part).
+    // A real overflow (> 2^128-1) would already have failed in the BigInt->bytes conversion.
+    // This check is about CTR *logic*: the *counter* part must not overflow
+    // and wrap back to zero, because that would reuse keystream.
+    // The simplest way is to check whether the *last* _counterBytesLength
+    // bytes of the *new* counter are all 0, which indicates that a carry
+    // went past the last counter byte.
 
     bool counterPartIsZero = true;
     for (int i = 16 - _counterBytesLength; i < 16; i++) {
@@ -206,45 +206,45 @@ class DartAesCtr extends AES {
       }
     }
 
-    // Se a parte do contador virou zero E _counterBytesLength > 0, houve overflow LÓGICO.
-    // (Se _counterBytesLength == 0, o contador nunca muda, então não há overflow).
+    // If the counter part became zero AND _counterBytesLength > 0, a LOGICAL overflow occurred.
+    // (If _counterBytesLength == 0, the counter never changes, so there is no overflow.)
     if (_counterBytesLength > 0 && counterPartIsZero) {
-      // Uma verificação mais rigorosa (como a dart) seria ver se os bytes ANTES
-      // da conversão estavam todos 0xFF na parte do contador. Mas checar se
-      // viraram 0 após o incremento cobre o caso de estouro lógico.
+      // A stricter check would be to see whether the counter bytes BEFORE
+      // the increment were all 0xFF. Checking whether they became 0 after
+      // the increment covers the logical overflow case.
       throw StateError("CTR counter part overflowed (would reuse keystream)");
     }
 
-    _counter = newCounterBytes; // Atualiza o contador da instância
+    _counter = newCounterBytes; // Update the instance counter
   }
 
   @override
   Uint8List encrypt(Uint8List plaintext) {
     final resultBytes = Uint8List(
-        plaintext.lengthInBytes); // Eficiente para construir o keystream
+        plaintext.lengthInBytes); // Output buffer, filled block by block
     //final maskBuilder = BytesBuilder(copy: false);
 
     int bytesToProcess = plaintext.lengthInBytes;
     int processedBytes = 0;
 
     while (processedBytes < bytesToProcess) {
-      // Criptografa o contador atual para obter o próximo bloco de keystream
+      // Encrypt the current counter to get the next keystream block
       final keystreamBlock = _rijndael.encrypt(_counter);
 
-      // Calcula quantos bytes deste bloco de keystream precisamos
+      // Work out how many bytes of this keystream block are needed
       final needed = bytesToProcess - processedBytes;
-      final bytesToUse = min(16, needed); // Usa no máximo 16 bytes
+      final bytesToUse = min(16, needed); // Use at most 16 bytes
 
-      // XOR os bytes do plaintext com os bytes do keystream
+      // XOR the plaintext bytes with the keystream bytes
       for (int i = 0; i < bytesToUse; i++) {
         resultBytes[processedBytes + i] =
             plaintext[processedBytes + i] ^ keystreamBlock[i];
       }
 
       processedBytes += bytesToUse;
-      // Incrementa o contador para o próximo bloco, mesmo que este tenha sido o último.
-      // A implementação dart avança o contador após gerar cada bloco de keystream,
-      // garantindo que chamadas subsequentes continuem do ponto correto.
+      // Increment the counter for the next block, even if this was the last one.
+      // The counter is advanced after each keystream block is generated,
+      // so that subsequent calls continue from the correct position.
       try {
         _counterUpdate();
       } on StateError catch (e) {
@@ -257,15 +257,15 @@ class DartAesCtr extends AES {
 
   @override
   Uint8List decrypt(Uint8List ciphertext) {
-    // A operação CTR é a mesma para criptografia e decriptografia
-    // IMPORTANTE: Se o mesmo objeto for usado para decrypt após encrypt,
-    // o estado do contador deve ser resetado ou gerenciado corretamente!
-    // Esta implementação continua o contador de onde parou.
-    // Para usar em decrypt isoladamente, você precisaria reinicializar o contador
-    // com o nonce original antes de chamar encrypt.
-    // Ex: Dart_AES_CTR cipher = ...; cipher.decrypt(data); // Ok se for a primeira op
-    //     cipher.encrypt(data2); // Continua o contador
-    //     cipher.decrypt(data3); // Continua o contador de novo
+    // The CTR operation is the same for encryption and decryption.
+    // IMPORTANT: if the same object is used to decrypt after encrypting,
+    // the counter state must be reset or managed correctly!
+    // This implementation continues the counter from where it stopped.
+    // To decrypt independently, the counter has to be reinitialized
+    // with the original nonce before calling encrypt.
+    // E.g.: Dart_AES_CTR cipher = ...; cipher.decrypt(data); // OK if it is the first op
+    //     cipher.encrypt(data2); // Continues the counter
+    //     cipher.decrypt(data3); // Continues the counter again
     return encrypt(ciphertext);
   }
 }

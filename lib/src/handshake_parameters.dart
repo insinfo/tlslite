@@ -38,7 +38,7 @@ class PureDartKeyShareCoordinator {
     if (_clientShares.isNotEmpty &&
         !_clientShares.any((entry) => entry.group == share.group)) {
       throw StateError(
-        'ServerHello key_share usa grupo ${share.group} não anunciado',
+        'ServerHello key_share uses group ${share.group}, which was not offered',
       );
     }
     _serverShare = share;
@@ -108,7 +108,7 @@ class SignatureSchemeNegotiator {
     required List<int> localSupported,
   }) {
     if (localSupported.isEmpty) {
-      throw StateError('Nenhum algoritmo de assinatura disponível localmente');
+      throw StateError('No signature algorithm available locally');
     }
     if (peerPreferred.isEmpty) {
       return localSupported.first;
@@ -119,7 +119,7 @@ class SignatureSchemeNegotiator {
       }
     }
     throw StateError(
-      'Nenhum algoritmo de assinatura em comum com o peer',
+      'No signature algorithm in common with the peer',
     );
   }
 }

@@ -33,7 +33,7 @@ class _AesVector {
 }
 
 void main() {
-  // Verifica se AES-NI está disponível
+  // Check whether AES-NI is available
   final aesNiAvailable = AesNiSupport.isSupported;
 
   group('AesNiSupport', () {
@@ -44,17 +44,17 @@ void main() {
     });
 
     test('isSupported is consistent', () {
-      // Deve retornar o mesmo valor em chamadas subsequentes
+      // Must return the same value on later calls
       final first = AesNiSupport.isSupported;
       final second = AesNiSupport.isSupported;
       expect(first, equals(second));
     });
   });
 
-  // Pula os testes de encriptação/decriptação se AES-NI não estiver disponível
+  // Skip the encryption/decryption tests when AES-NI is not available
   group('RijndaelAsmX8664',
       skip: !aesNiAvailable ? 'AES-NI not available' : null, () {
-    // Vetores de teste FIPS 197 e outros padrão
+    // FIPS 197 and other standard test vectors
     final vectors = <_AesVector>[
       // AES-128 test vectors
       const _AesVector(
@@ -204,7 +204,7 @@ void main() {
       final key = Uint8List(16);
       final r = RijndaelAsmX8664(key);
       r.dispose();
-      r.dispose(); // Não deve lançar exceção
+      r.dispose(); // Must not throw
     });
 
     test('Roundtrip with random data', () {
@@ -221,7 +221,7 @@ void main() {
       final r = RijndaelAsmX8664(key);
       try {
         final ciphertext = r.encrypt(plaintext);
-        expect(ciphertext, isNot(equals(plaintext))); // Deve ser diferente
+        expect(ciphertext, isNot(equals(plaintext))); // Must differ
 
         final decrypted = r.decrypt(ciphertext);
         expect(decrypted, equals(plaintext));
@@ -235,7 +235,7 @@ void main() {
       final r = RijndaelAsmX8664(key);
 
       try {
-        // Encripta vários blocos
+        // Encrypt several blocks
         for (int block = 0; block < 10; block++) {
           final plaintext = Uint8List(16);
           for (int i = 0; i < 16; i++) {
@@ -253,7 +253,7 @@ void main() {
     });
   });
 
-  // Testes de comparação com RijndaelFast
+  // Comparison tests against RijndaelFast
   group('Comparison with RijndaelFast',
       skip: !aesNiAvailable ? 'AES-NI not available' : null, () {
     test('AES-128 produces same results', () {
@@ -336,7 +336,7 @@ void main() {
     });
 
     test('Multiple random blocks produce same results', () {
-      // Testa com várias chaves e blocos aleatórios
+      // Test with several random keys and blocks
       for (int keySize in [16, 24, 32]) {
         final key = Uint8List(keySize);
         for (int i = 0; i < keySize; i++) {
@@ -371,7 +371,7 @@ void main() {
     });
   });
 
-  // Testes de helper functions
+  // Helper function tests
   group('Helper functions',
       skip: !aesNiAvailable ? 'AES-NI not available' : null, () {
     test('encryptBlockAsmX8664', () {
@@ -393,7 +393,7 @@ void main() {
     });
   });
 
-  // Benchmark simples
+  // Simple benchmark
   group('Performance', skip: !aesNiAvailable ? 'AES-NI not available' : null,
       () {
     test('Benchmark encrypt 10000 blocks', () {
@@ -457,8 +457,8 @@ void main() {
       print('RijndaelAsmX8664: ${asmUsPerBlock.toStringAsFixed(3)} us/block');
       print('Speedup: ${speedup.toStringAsFixed(2)}x');
 
-      // AES-NI deve ser mais rápido (ou pelo menos não muito mais lento)
-      // Nota: Em alguns sistemas com overhead de FFI, pode não ser mais rápido
+      // AES-NI should be faster (or at least not much slower)
+      // Note: on some systems the FFI overhead can make it no faster
     });
   });
 }

@@ -1,5 +1,5 @@
 // ignore_for_file: avoid_print
-/// Integração Dart x Dart usando TLSConnection dos dois lados.
+/// Dart-to-Dart integration tests using TLSConnection on both sides.
 
 import 'dart:async';
 import 'dart:convert';
@@ -115,7 +115,7 @@ void main() {
 
     for (final variant in variants) {
       test('Handshake (${variant['name']})', () async {
-        // Certificados - use custom se especificado, senão usa nginx padrão
+        // Certificates: use the custom ones if given, otherwise the default nginx ones
         final certPath = (variant['certFile'] as String?) ?? 'test/certificates/nginx/server.crt';
         final keyPath = (variant['keyFile'] as String?) ?? 'test/certificates/nginx/server.key';
         final certPem = await File(certPath).readAsString();

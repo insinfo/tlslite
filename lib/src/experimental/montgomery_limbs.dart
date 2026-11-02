@@ -1,28 +1,28 @@
 // dart format width=5000
-// Montgomery Multiplication otimizado para RSA
-// referencias C:\MyDartProjects\tlslite\referencias\openssl-master
-// referencias C:\MyDartProjects\tlslite\referencias\sdk-main
-// Baseado em:
-// - Dart SDK bigint_patch.dart (técnicas de half-digit multiplication)
-// - OpenSSL bn_mont.c (algoritmo CIOS Montgomery)
+// Optimized Montgomery multiplication for RSA
+// References: C:\MyDartProjects\tlslite\referencias\openssl-master
+// References: C:\MyDartProjects\tlslite\referencias\sdk-main
+// Based on:
+// - Dart SDK bigint_patch.dart (half-digit multiplication techniques)
+// - OpenSSL bn_mont.c (CIOS Montgomery algorithm)
 //
-// Usa limbs de 32-bit com half-digit (16-bit) multiplication para evitar
-// overflow em multiplicações no Dart VM.
+// Uses 32-bit limbs with half-digit (16-bit) multiplication to avoid
+// overflow in multiplications on the Dart VM.
 
 import 'dart:typed_data';
 
 // ============================================================================
-// Constantes
+// Constants
 // ============================================================================
 
 const int _digitBits = 32;
 const int _digitMask = 0xFFFFFFFF;
 
 // ============================================================================
-// Funções de array
+// Array functions
 // ============================================================================
 
-/// Subtração: rp = ap - bp, retorna borrow
+/// Subtraction: rp = ap - bp; returns the borrow.
 @pragma('vm:prefer-inline')
 int _subWords(Uint32List rp, int rpOff, Uint32List ap, int apOff, Uint32List bp, int bpOff, int num) {
   int borrow = 0;
@@ -34,7 +34,7 @@ int _subWords(Uint32List rp, int rpOff, Uint32List ap, int apOff, Uint32List bp,
   return borrow;
 }
 
-/// Comparação: retorna 1 se a > b, -1 se a < b, 0 se iguais
+/// Comparison: returns 1 if a > b, -1 if a < b, 0 if equal.
 @pragma('vm:prefer-inline')
 int _cmpWords(Uint32List a, Uint32List b, int num) {
   for (int i = num - 1; i >= 0; i--) {
@@ -44,7 +44,7 @@ int _cmpWords(Uint32List a, Uint32List b, int num) {
   return 0;
 }
 
-/// Adição pública: rp = ap + bp, retorna carry
+/// Addition: rp = ap + bp; returns the carry.
 int bnAddWords(Uint32List rp, int rpOff, Uint32List ap, int apOff, Uint32List bp, int bpOff, int num) {
   int carry = 0;
   for (int i = 0; i < num; i++) {
@@ -55,27 +55,27 @@ int bnAddWords(Uint32List rp, int rpOff, Uint32List ap, int apOff, Uint32List bp
   return carry;
 }
 
-/// Subtração pública: rp = ap - bp, retorna borrow
+/// Subtraction: rp = ap - bp; returns the borrow.
 int bnSubWords(Uint32List rp, int rpOff, Uint32List ap, int apOff, Uint32List bp, int bpOff, int num) {
   return _subWords(rp, rpOff, ap, apOff, bp, bpOff, num);
 }
 
 // ============================================================================
-// BigNum - Representação de número grande como array de limbs
+// BigNum - big number represented as an array of limbs
 // ============================================================================
 
-/// Número grande representado como array de limbs (little-endian)
+/// Big number represented as an array of limbs (little-endian).
 class BN {
-  /// Array de limbs (little-endian: limbs[0] é o menos significativo)
+  /// Limb array (little-endian: limbs[0] is the least significant).
   Uint32List d;
   
-  /// Número de limbs usados (top)
+  /// Number of limbs in use (top).
   int top;
   
-  /// Capacidade alocada
+  /// Allocated capacity.
   int dmax;
   
-  /// Sinal negativo
+  /// Negative sign.
   bool neg;
 
   BN(int size)
@@ -92,15 +92,15 @@ class BN {
     _fixTop();
   }
 
-  /// Cria BN a partir de bytes big-endian
+  /// Creates a BN from big-endian bytes.
   factory BN.fromBytes(Uint8List bytes) {
     if (bytes.isEmpty) return BN(1);
     
-    // Calcula número de limbs necessários
+    // Number of limbs needed
     final numLimbs = (bytes.length + 3) ~/ 4;
     final bn = BN(numLimbs);
     
-    // Converte big-endian bytes para little-endian limbs
+    // Convert big-endian bytes to little-endian limbs
     int limbIdx = 0;
     int shift = 0;
     int limb = 0;
@@ -124,7 +124,7 @@ class BN {
     return bn;
   }
 
-  /// Remove zeros à esquerda
+  /// Strips leading zero limbs.
   void _fixTop() {
     while (top > 0 && d[top - 1] == 0) {
       top--;
@@ -132,7 +132,7 @@ class BN {
     if (top == 0) neg = false;
   }
 
-  /// Copia de outro BN
+  /// Copies the value of [other].
   void copyFrom(BN other) {
     if (dmax < other.top) {
       d = Uint32List(other.top);
@@ -148,7 +148,7 @@ class BN {
     neg = other.neg;
   }
 
-  /// Zera o número
+  /// Sets the number to zero.
   void zero() {
     for (int i = 0; i < dmax; i++) {
       d[i] = 0;
@@ -157,20 +157,20 @@ class BN {
     neg = false;
   }
 
-  /// Seta valor 1
+  /// Sets the number to one.
   void setOne() {
     zero();
     d[0] = 1;
     top = 1;
   }
 
-  /// Retorna se é zero
+  /// Whether the number is zero.
   bool get isZero => top == 0;
 
-  /// Retorna se é um
+  /// Whether the number is one.
   bool get isOne => top == 1 && d[0] == 1 && !neg;
 
-  /// Número de bits
+  /// Number of significant bits.
   int get numBits {
     if (top == 0) return 0;
     int bits = (top - 1) * 32;
@@ -182,7 +182,7 @@ class BN {
     return bits;
   }
 
-  /// Converte para bytes big-endian
+  /// Converts to big-endian bytes.
   Uint8List toBytes() {
     if (top == 0) return Uint8List(1);
     
@@ -201,7 +201,7 @@ class BN {
     return bytes;
   }
 
-  /// Expande capacidade se necessário
+  /// Grows the capacity to [newSize] limbs if needed.
   void expand(int newSize) {
     if (dmax >= newSize) return;
     final newD = Uint32List(newSize);
@@ -228,20 +228,21 @@ class BN {
 // Montgomery Context
 // ============================================================================
 
-/// Contexto Montgomery para multiplicação modular eficiente
-/// Similar ao bn_mont_ctx_st do OpenSSL
+/// Montgomery context for efficient modular multiplication.
+///
+/// Similar to OpenSSL's bn_mont_ctx_st.
 class MontgomeryCtx {
-  /// Módulo N
+  /// Modulus N.
   final BN n;
   
-  /// R*R mod N (para converter para Montgomery form)
+  /// R*R mod N (used to convert to Montgomery form).
   final BN rr;
   
-  /// Constante n0 = -N^(-1) mod 2^32
-  /// (ou n0[0] e n0[1] para versão 64-bit)
+  /// Constant n0 = -N^(-1) mod 2^32
+  /// (n0[0] and n0[1] in the 64-bit version).
   final int n0;
   
-  /// Número de bits em R (ri)
+  /// Number of bits in R (ri).
   final int ri;
 
   MontgomeryCtx._({
@@ -251,31 +252,31 @@ class MontgomeryCtx {
     required this.ri,
   });
 
-  /// Cria contexto a partir do módulo
+  /// Creates a context for the modulus [mod].
   factory MontgomeryCtx.fromModulus(BN mod) {
     final numLimbs = mod.top;
     final ri = numLimbs * _digitBits;
     
-    // Calcula n0 = -N^(-1) mod 2^32
+    // Compute n0 = -N^(-1) mod 2^32
     final n0 = _computeN0Inv(mod.d[0]);
     
-    // Calcula R*R mod N
+    // Compute R*R mod N
     final rr = _computeRR(mod, ri);
     
-    // Copia módulo
+    // Copy the modulus
     final n = BN(numLimbs);
     n.copyFrom(mod);
     
     return MontgomeryCtx._(n: n, rr: rr, n0: n0, ri: ri);
   }
 
-  /// Calcula -N^(-1) mod 2^32 usando Newton's method
+  /// Computes -N^(-1) mod 2^32 using Newton's method.
   static int _computeN0Inv(int n0) {
-    // n0 deve ser ímpar para RSA
-    // x = x * (2 - n0 * x) mod 2^k, dobrando k a cada iteração
+    // n0 must be odd (always true for RSA)
+    // x = x * (2 - n0 * x) mod 2^k, doubling k on each iteration
     int x = n0; // x0 = n0 (works because n0 is odd)
     
-    // 5 iterações para convergir em 32 bits
+    // 5 iterations converge to 32 bits
     x = (x * (2 - ((n0 * x) & _digitMask))) & _digitMask;
     x = (x * (2 - ((n0 * x) & _digitMask))) & _digitMask;
     x = (x * (2 - ((n0 * x) & _digitMask))) & _digitMask;
@@ -285,18 +286,18 @@ class MontgomeryCtx {
     return (-x) & _digitMask;
   }
 
-  /// Calcula R*R mod N onde R = 2^ri
+  /// Computes R*R mod N where R = 2^ri.
   static BN _computeRR(BN mod, int ri) {
     final numLimbs = mod.top;
     
     // R = 2^ri, R*R = 2^(2*ri)
-    // Calculamos 2^(2*ri) mod N usando shifts e subtrações
+    // Compute 2^(2*ri) mod N with shifts and subtractions
     
-    // Começa com 1
+    // Start with 1
     final rr = BN(numLimbs * 2 + 1);
     rr.setOne();
     
-    // Shift left 2*ri bits, fazendo mod N a cada passo
+    // Shift left 2*ri bits, reducing mod N at each step
     for (int i = 0; i < ri * 2; i++) {
       // rr = rr * 2
       int carry = 0;
@@ -312,7 +313,7 @@ class MontgomeryCtx {
         }
       }
       
-      // Se rr >= mod, subtrai mod (apenas uma vez por iteração)
+      // If rr >= mod, subtract mod (at most once per iteration)
       if (_bnCmp(rr, mod) >= 0) {
         _bnSubInPlace(rr, mod);
       }
@@ -321,7 +322,7 @@ class MontgomeryCtx {
     return rr;
   }
   
-  /// Compara dois BN: retorna 1 se a > b, -1 se a < b, 0 se iguais
+  /// Compares two BNs: returns 1 if a > b, -1 if a < b, 0 if equal.
   static int _bnCmp(BN a, BN b) {
     if (a.top > b.top) return 1;
     if (a.top < b.top) return -1;
@@ -332,7 +333,7 @@ class MontgomeryCtx {
     return 0;
   }
   
-  /// Subtrai b de a in-place: a = a - b (assume a >= b)
+  /// Subtracts b from a in place: a = a - b (requires a >= b).
   static void _bnSubInPlace(BN a, BN b) {
     int borrow = 0;
     for (int i = 0; i < a.top; i++) {
@@ -354,29 +355,30 @@ class MontgomeryCtx {
 // Montgomery Multiplication
 // ============================================================================
 
-/// Multiplicação Montgomery: ret = a * b * R^(-1) mod N
-/// Implementa o algoritmo CIOS (Coarsely Integrated Operand Scanning)
-/// Usa multiplicação 32x32 nativa do Dart VM (64-bit integers)
+/// Montgomery multiplication: ret = a * b * R^(-1) mod N.
+///
+/// Implements the CIOS (Coarsely Integrated Operand Scanning) algorithm
+/// using the Dart VM's native 32x32 multiplication (64-bit integers).
 void bnMontMul(BN ret, BN a, BN b, MontgomeryCtx mont) {
   final n = mont.n;
   final numLimbs = n.top;
   final n0 = mont.n0;
   final nDigits = n.d;
   
-  // Garante espaço suficiente no resultado
+  // Make sure the result has enough room
   ret.expand(numLimbs + 1);
   
-  // Temp para resultado intermediário (precisa de 2*numLimbs + 2)
+  // Temporary for the intermediate result (needs 2*numLimbs + 2)
   final tLen = numLimbs * 2 + 2;
   final t = Uint32List(tLen);
   
-  // Cache tamanhos
+  // Cache sizes
   final aTop = a.top;
   final bTop = b.top;
   final aDigits = a.d;
   final bDigits = b.d;
   
-  // CIOS: Para cada limb de a
+  // CIOS: for each limb of a
   for (int i = 0; i < numLimbs; i++) {
     final ai = (i < aTop) ? aDigits[i] : 0;
 
@@ -390,7 +392,7 @@ void bnMontMul(BN ret, BN a, BN b, MontgomeryCtx mont) {
     }
     int acc = t[numLimbs] + carry;
     t[numLimbs] = acc & _digitMask;
-    int overflow = acc >> _digitBits; // carry que pode sobrar após redução
+    int overflow = acc >> _digitBits; // carry that may remain after reduction
 
     // m = t[0] * n0 mod 2^32
     final m = (t[0] * n0) & _digitMask;
@@ -406,21 +408,21 @@ void bnMontMul(BN ret, BN a, BN b, MontgomeryCtx mont) {
     t[numLimbs] = acc & _digitMask;
     overflow += acc >> _digitBits;
 
-    // Desloca uma palavra (descarta t[0], equivalente a dividir por R)
+    // Shift by one word (drop t[0], i.e. divide by the word base)
     for (int j = 0; j < numLimbs; j++) {
       t[j] = t[j + 1];
     }
     t[numLimbs] = overflow;
   }
 
-  // Copia resultado (t[0..numLimbs-1])
+  // Copy the result (t[0..numLimbs-1])
   final retDigits = ret.d;
   for (int i = 0; i < numLimbs; i++) {
     retDigits[i] = t[i];
   }
   ret.top = numLimbs;
 
-  // Se ret >= n ou sobrou carry, subtrai n
+  // If ret >= n or a carry is left, subtract n
   if (t[numLimbs] != 0 || _cmpWords(retDigits, nDigits, numLimbs) >= 0) {
     _subWords(retDigits, 0, retDigits, 0, nDigits, 0, numLimbs);
   }
@@ -428,15 +430,14 @@ void bnMontMul(BN ret, BN a, BN b, MontgomeryCtx mont) {
   ret._fixTop();
 }
 
-/// Quadrado Montgomery: ret = a^2 * R^(-1) mod N
-/// Otimizado para quando a == b
-/// Quadrado Montgomery: ret = a^2 * R^(-1) mod N
-/// Otimizado para quando a == b
+/// Montgomery squaring: ret = a^2 * R^(-1) mod N.
+///
+/// Intended for the a == b case; currently delegates to [bnMontMul].
 void bnMontSqr(BN ret, BN a, MontgomeryCtx mont) {
-  // Usa buffer temporário para evitar aliasing
+  // Use a temporary buffer to avoid aliasing
   final temp = BN(mont.n.top + 1);
   bnMontMul(temp, a, a, mont);
-  // Copia resultado
+  // Copy the result
   ret.expand(temp.top);
   for (int i = 0; i < temp.top; i++) {
     ret.d[i] = temp.d[i];
@@ -444,10 +445,10 @@ void bnMontSqr(BN ret, BN a, MontgomeryCtx mont) {
   ret.top = temp.top;
 }
 
-/// Converte para Montgomery form: ret = a * R mod N
+/// Converts to Montgomery form: ret = a * R mod N.
 void bnToMont(BN ret, BN a, MontgomeryCtx mont) {
   // ret = a * R mod N = a * R^2 * R^(-1) mod N
-  // Trata aliasing: se ret == a, usa buffer temporário
+  // Handle aliasing: if ret == a, use a temporary buffer
   if (identical(ret, a)) {
     final temp = BN(mont.n.top + 1);
     bnMontMul(temp, a, mont.rr, mont);
@@ -461,12 +462,12 @@ void bnToMont(BN ret, BN a, MontgomeryCtx mont) {
   }
 }
 
-/// Converte de Montgomery form: ret = a * R^(-1) mod N
+/// Converts from Montgomery form: ret = a * R^(-1) mod N.
 void bnFromMont(BN ret, BN a, MontgomeryCtx mont) {
-  // Multiplica por 1 (que não está em Montgomery form)
+  // Multiply by 1 (not in Montgomery form)
   final one = BN(1);
   one.setOne();
-  // Trata aliasing: se ret == a, usa buffer temporário
+  // Handle aliasing: if ret == a, use a temporary buffer
   if (identical(ret, a)) {
     final temp = BN(mont.n.top + 1);
     bnMontMul(temp, a, one, mont);
@@ -484,8 +485,9 @@ void bnFromMont(BN ret, BN a, MontgomeryCtx mont) {
 // Modular Exponentiation
 // ============================================================================
 
-/// Exponenciação modular usando Montgomery: ret = base^exp mod N
-/// Usa sliding window com width 4 (16 precomputations)
+/// Modular exponentiation using Montgomery: ret = base^exp mod N.
+///
+/// Uses a sliding window of width 4 (16 precomputed values).
 void bnModExpMont(BN ret, BN base, BN exp, MontgomeryCtx mont) {
   final numBits = exp.numBits;
   if (numBits == 0) {
@@ -496,47 +498,47 @@ void bnModExpMont(BN ret, BN base, BN exp, MontgomeryCtx mont) {
   final n = mont.n;
   final numLimbs = n.top;
   
-  // Window size 4 para RSA típico (melhor trade-off)
+  // Window size 4 for typical RSA (best trade-off)
   const windowSize = 4;
   const tableSize = 1 << windowSize; // 16
   
-  // Precomputa tabela: table[i] = base^i em Montgomery form
+  // Precompute table: table[i] = base^i in Montgomery form
   final table = List<BN>.generate(tableSize, (_) => BN(numLimbs));
   
-  // table[0] = 1 em Montgomery form (= R mod N)
+  // table[0] = 1 in Montgomery form (= R mod N)
   table[0].setOne();
   bnToMont(table[0], table[0], mont);
   
-  // table[1] = base em Montgomery form
+  // table[1] = base in Montgomery form
   bnToMont(table[1], base, mont);
   
-  // Precomputa table[2..15]
+  // Precompute table[2..15]
   for (int i = 2; i < tableSize; i++) {
     bnMontMul(table[i], table[i - 1], table[1], mont);
   }
   
-  // Inicializa resultado com 1 em Montgomery form
+  // Initialize the result to 1 in Montgomery form
   final acc = BN(numLimbs);
   acc.copyFrom(table[0]);
   
-  // Buffer temporário para evitar aliasing
+  // Temporary buffer to avoid aliasing
   final temp = BN(numLimbs + 1);
   
-  // Processa expoente do bit mais significativo para o menos significativo
-  // usando sliding window
+  // Scan the exponent from the most to the least significant bit
+  // using a sliding window
   int bitPos = numBits - 1;
   
   while (bitPos >= 0) {
-    // Encontra próxima janela
+    // Find the next window
     final limbIdx = bitPos ~/ 32;
     final bitIdx = bitPos % 32;
     
     if (limbIdx >= exp.top || ((exp.d[limbIdx] >> bitIdx) & 1) == 0) {
-      // Bit é zero, só faz um squaring
+      // Bit is zero: square only
       bnMontSqr(acc, acc, mont);
       bitPos--;
     } else {
-      // Bit é 1, extrai janela de windowSize bits
+      // Bit is one: extract a window of windowSize bits
       int window = 0;
       int windowLen = 0;
       
@@ -554,21 +556,21 @@ void bnModExpMont(BN ret, BN base, BN exp, MontgomeryCtx mont) {
         }
       }
       
-      // Ajusta janela para ser ímpar (mais eficiente)
+      // Shrink the window until it is odd (more efficient)
       while (windowLen > 0 && (window & 1) == 0) {
         window >>= 1;
         windowLen--;
       }
       
-      // Faz windowLen squarings
+      // Square windowLen times
       for (int i = 0; i < windowLen; i++) {
         bnMontSqr(acc, acc, mont);
       }
       
-      // Multiplica pelo valor da janela (usando temp para evitar aliasing)
+      // Multiply by the window value (via temp to avoid aliasing)
       if (window > 0) {
         bnMontMul(temp, acc, table[window], mont);
-        // Copia temp para acc
+        // Copy temp to acc
         for (int j = 0; j < temp.top; j++) {
           acc.d[j] = temp.d[j];
         }
@@ -579,11 +581,11 @@ void bnModExpMont(BN ret, BN base, BN exp, MontgomeryCtx mont) {
     }
   }
   
-  // Converte resultado de volta do Montgomery form
+  // Convert the result back from Montgomery form
   bnFromMont(ret, acc, mont);
 }
 
-/// Exponenciação modular simples (sem window, para expoentes pequenos)
+/// Simple modular exponentiation (no window; for small exponents).
 void bnModExpMontSimple(BN ret, BN base, BN exp, MontgomeryCtx mont) {
   final numBits = exp.numBits;
   if (numBits == 0) {
@@ -594,30 +596,30 @@ void bnModExpMontSimple(BN ret, BN base, BN exp, MontgomeryCtx mont) {
   final n = mont.n;
   final numLimbs = n.top;
   
-  // Converte base para Montgomery form
+  // Convert the base to Montgomery form
   final baseMont = BN(numLimbs);
   bnToMont(baseMont, base, mont);
   
-  // Inicializa resultado com 1 em Montgomery form
+  // Initialize the result to 1 in Montgomery form
   final acc = BN(numLimbs);
   acc.setOne();
   bnToMont(acc, acc, mont);
   
-  // Buffer temporário para evitar aliasing em multiplicações
+  // Temporary buffer to avoid aliasing in multiplications
   final temp = BN(numLimbs + 1);
   
-  // Square-and-multiply da esquerda para direita
+  // Left-to-right square-and-multiply
   for (int i = numBits - 1; i >= 0; i--) {
-    // Sempre faz squaring
+    // Always square
     bnMontSqr(acc, acc, mont);
     
-    // Se bit é 1, multiplica pela base
+    // If the bit is set, multiply by the base
     final limbIdx = i ~/ 32;
     final bitIdx = i % 32;
     if (limbIdx < exp.top && ((exp.d[limbIdx] >> bitIdx) & 1) == 1) {
-      // Usa temp para evitar aliasing: temp = acc * baseMont
+      // Use temp to avoid aliasing: temp = acc * baseMont
       bnMontMul(temp, acc, baseMont, mont);
-      // Copia temp para acc
+      // Copy temp to acc
       for (int j = 0; j < temp.top; j++) {
         acc.d[j] = temp.d[j];
       }
@@ -625,29 +627,29 @@ void bnModExpMontSimple(BN ret, BN base, BN exp, MontgomeryCtx mont) {
     }
   }
   
-  // Converte de volta
+  // Convert back
   bnFromMont(ret, acc, mont);
 }
 
 // ============================================================================
-// API de Alto Nível
+// High-level API
 // ============================================================================
 
-/// Classe wrapper para exponenciação modular otimizada
+/// Wrapper class for optimized modular exponentiation.
 class MontgomeryModPow {
   final MontgomeryCtx _ctx;
   
   MontgomeryModPow(BN modulus) : _ctx = MontgomeryCtx.fromModulus(modulus);
 
-  /// Calcula base^exp mod N usando Montgomery multiplication
+  /// Computes base^exp mod N using Montgomery multiplication.
   BN modPow(BN base, BN exp) {
     final result = BN(_ctx.n.top);
-    // Usa versão simples que é mais confiável
+    // Uses the simple version, which is more reliable
     bnModExpMontSimple(result, base, exp, _ctx);
     return result;
   }
 
-  /// Versão simples para expoentes pequenos
+  /// Simple version for small exponents.
   BN modPowSimple(BN base, BN exp) {
     final result = BN(_ctx.n.top);
     bnModExpMontSimple(result, base, exp, _ctx);
@@ -655,7 +657,7 @@ class MontgomeryModPow {
   }
 }
 
-/// Função conveniente para modPow com bytes
+/// Convenience function: modPow on big-endian byte arrays.
 Uint8List modPowBytes(Uint8List base, Uint8List exp, Uint8List mod) {
   final baseBN = BN.fromBytes(base);
   final expBN = BN.fromBytes(exp);
@@ -664,7 +666,7 @@ Uint8List modPowBytes(Uint8List base, Uint8List exp, Uint8List mod) {
   final mont = MontgomeryModPow(modBN);
   final result = mont.modPow(baseBN, expBN);
   
-  // Retorna com padding para tamanho do módulo
+  // Pad the result to the modulus length
   final bytes = result.toBytes();
   if (bytes.length < mod.length) {
     final padded = Uint8List(mod.length);

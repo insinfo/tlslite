@@ -1,5 +1,5 @@
 // dart format width=5000
-// Testes para SHA-256 otimizado
+// Tests for the optimized SHA-256
 
 import 'dart:convert';
 import 'dart:typed_data';
@@ -10,15 +10,15 @@ import 'package:tlslite/src/experimental/sha256_asm_x86_64.dart';
 
 void main() {
   group('ShaNiSupport', () {
-    test('detecta suporte SHA-NI', () {
+    test('detects SHA-NI support', () {
       final supported = ShaNiSupport.isSupported;
-      print('SHA-NI suportado: $supported');
+      print('SHA-NI supported: $supported');
       expect(supported, isA<bool>());
     });
   });
 
   group('Sha256Asm', () {
-    test('hash de string vazia', () {
+    test('hash of an empty string', () {
       final result = Sha256Asm.hash(Uint8List(0));
       final expected = crypto.sha256.convert([]).bytes;
 
@@ -26,7 +26,7 @@ void main() {
       print('Empty string hash: ${result.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
     });
 
-    test('hash de "abc"', () {
+    test('hash of "abc"', () {
       final data = utf8.encode('abc');
       final result = Sha256Asm.hash(Uint8List.fromList(data));
       final expected = crypto.sha256.convert(data).bytes;
@@ -34,7 +34,7 @@ void main() {
       expect(result, equals(expected));
     });
 
-    test('hash de string longa', () {
+    test('hash of a long string', () {
       final data = utf8.encode('The quick brown fox jumps over the lazy dog');
       final result = Sha256Asm.hash(Uint8List.fromList(data));
       final expected = crypto.sha256.convert(data).bytes;
@@ -42,7 +42,7 @@ void main() {
       expect(result, equals(expected));
     });
 
-    test('hash de dados binários', () {
+    test('hash of binary data', () {
       final data = Uint8List.fromList(List.generate(256, (i) => i));
       final result = Sha256Asm.hash(data);
       final expected = crypto.sha256.convert(data).bytes;
@@ -50,7 +50,7 @@ void main() {
       expect(result, equals(expected));
     });
 
-    test('hash de dados maiores que um bloco (64 bytes)', () {
+    test('hash of data larger than one block (64 bytes)', () {
       final data = Uint8List.fromList(List.generate(1000, (i) => i & 0xFF));
       final result = Sha256Asm.hash(data);
       final expected = crypto.sha256.convert(data).bytes;
@@ -58,7 +58,7 @@ void main() {
       expect(result, equals(expected));
     });
 
-    test('hash incremental funciona', () {
+    test('incremental hash works', () {
       final data1 = utf8.encode('Hello, ');
       final data2 = utf8.encode('World!');
       final fullData = utf8.encode('Hello, World!');
@@ -75,7 +75,7 @@ void main() {
       expect(singleResult, equals(expected));
     });
 
-    test('reset funciona corretamente', () {
+    test('reset works correctly', () {
       final sha = Sha256Asm();
 
       sha.update(Uint8List.fromList(utf8.encode('test1')));
@@ -91,7 +91,7 @@ void main() {
   });
 
   group('HmacSha256Asm', () {
-    test('HMAC com chave curta', () {
+    test('HMAC with a short key', () {
       final key = Uint8List.fromList(utf8.encode('key'));
       final data = Uint8List.fromList(utf8.encode('The quick brown fox jumps over the lazy dog'));
 
@@ -102,7 +102,7 @@ void main() {
       expect(result, equals(expected));
     });
 
-    test('HMAC com chave longa (> 64 bytes)', () {
+    test('HMAC with a long key (> 64 bytes)', () {
       final key = Uint8List.fromList(List.generate(100, (i) => i));
       final data = Uint8List.fromList(utf8.encode('test data'));
 
@@ -113,7 +113,7 @@ void main() {
       expect(result, equals(expected));
     });
 
-    test('HMAC com dados vazios', () {
+    test('HMAC with empty data', () {
       final key = Uint8List.fromList(utf8.encode('secret'));
       final data = Uint8List(0);
 

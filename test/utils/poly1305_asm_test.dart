@@ -1,5 +1,5 @@
 // dart format width=5000
-// Testes para Poly1305 otimizado
+// Tests for the optimized Poly1305
 
 import 'dart:typed_data';
 import 'package:test/test.dart';
@@ -9,21 +9,21 @@ import 'package:tlslite/src/utils/poly1305.dart' as original;
 
 void main() {
   group('Poly1305Asm', () {
-    test('tag de dados vazios', () {
+    test('tag of empty data', () {
       final key = Uint8List.fromList(List.generate(32, (i) => i));
       final data = Uint8List(0);
 
       final poly = Poly1305Asm(key);
       final result = poly.createTag(data);
 
-      // Compara com implementação original
+      // Compare with the original implementation
       final origPoly = original.Poly1305(key);
       final expected = origPoly.createTag(data);
 
       expect(result, equals(expected));
     });
 
-    test('tag de dados curtos', () {
+    test('tag of short data', () {
       final key = Uint8List.fromList(List.generate(32, (i) => i + 1));
       final data = Uint8List.fromList([1, 2, 3, 4, 5, 6, 7, 8]);
 
@@ -36,7 +36,7 @@ void main() {
       expect(result, equals(expected));
     });
 
-    test('tag de bloco completo (16 bytes)', () {
+    test('tag of a full block (16 bytes)', () {
       final key = Uint8List.fromList(List.generate(32, (i) => i * 2));
       final data = Uint8List.fromList(List.generate(16, (i) => i));
 
@@ -49,7 +49,7 @@ void main() {
       expect(result, equals(expected));
     });
 
-    test('tag de múltiplos blocos', () {
+    test('tag of multiple blocks', () {
       final key = Uint8List.fromList(List.generate(32, (i) => i));
       final data = Uint8List.fromList(List.generate(64, (i) => i & 0xFF));
 
@@ -62,7 +62,7 @@ void main() {
       expect(result, equals(expected));
     });
 
-    test('tag de dados grandes', () {
+    test('tag of large data', () {
       final key = Uint8List.fromList(List.generate(32, (i) => i));
       final data = Uint8List.fromList(List.generate(1000, (i) => i & 0xFF));
 
@@ -75,7 +75,7 @@ void main() {
       expect(result, equals(expected));
     });
 
-    test('atualização incremental', () {
+    test('incremental update', () {
       final key = Uint8List.fromList(List.generate(32, (i) => i));
       final data1 = Uint8List.fromList([1, 2, 3, 4, 5]);
       final data2 = Uint8List.fromList([6, 7, 8, 9, 10]);
@@ -94,23 +94,23 @@ void main() {
       expect(result1, equals(result2));
     });
 
-    test('reset funciona', () {
+    test('reset works', () {
       final key = Uint8List.fromList(List.generate(32, (i) => i));
       final data1 = Uint8List.fromList([1, 2, 3]);
       final data2 = Uint8List.fromList([4, 5, 6]);
 
       final poly = Poly1305Asm(key);
 
-      // Primeira tag
+      // First tag
       poly.update(data1);
       poly.finalize();
 
-      // Reset e segunda tag
+      // Reset and second tag
       poly.reset();
       poly.update(data2);
       final result = poly.finalize();
 
-      // Deve ser igual a calcular direto
+      // Must match a direct computation
       final poly2 = Poly1305Asm(key);
       final expected = poly2.createTag(data2);
 

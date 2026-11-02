@@ -4,10 +4,10 @@
 
 import 'constants.dart';
 
-/// Metaclasse para exceções TLS Lite.
+/// Base class for all TLS Lite exceptions.
 ///
-/// Procure por [TLSError] para exceções que devem ser
-/// capturadas pelos consumidores 
+/// See [TLSError] for the exceptions that library users are expected
+/// to catch.
 class BaseTLSException implements Exception {
   final String? message;
   BaseTLSException([this.message]);
@@ -19,65 +19,66 @@ class BaseTLSException implements Exception {
   }
 }
 
-/// Classe base para exceções lançadas durante a criptografia.
+/// Base class for exceptions thrown during encryption.
 class EncryptionError extends BaseTLSException {
   EncryptionError([String? message]) : super(message);
 }
 
 // --- TLS Errors (Main Hierarchy) ---
 
-/// Classe base para todas as exceções TLS Lite.
+/// Base class for all TLS errors raised by the library.
 class TLSError extends BaseTLSException {
   TLSError([String? message]) : super(message);
-  // O método toString herdado de BaseTLSException já replica
-  // razoavelmente o comportamento
+  // The toString inherited from BaseTLSException already reproduces
+  // the original behaviour reasonably well.
 }
 
-/// Uma tentativa foi feita para usar a conexão depois que ela foi fechada.
-/// Nota: isso também herda de socket.error. Dart não suporta
-/// herança múltipla, então aqui estende apenas TLSError.
+/// An attempt was made to use the connection after it was closed.
+///
+/// Note: in tlslite-ng this also inherits from socket.error. Dart does not
+/// support multiple inheritance, so here it only extends [TLSError].
 class TLSClosedConnectionError extends TLSError {
   TLSClosedConnectionError([String? message]) : super(message);
 }
 
-/// O socket foi fechado sem um desligamento TLS adequado.
+/// The socket was closed without a proper TLS shutdown.
 ///
-/// A especificação TLS exige que um alerta de algum tipo
-/// seja enviado antes que o socket subjacente seja fechado. Se o socket
-/// for fechado sem isso, pode significar que um invasor está tentando
-/// truncar a conexão. Também pode significar uma implementação TLS
-/// com comportamento inadequado ou uma falha de rede aleatória.
+/// The TLS specification requires that an alert of some sort
+/// be sent before the underlying socket is closed. If the socket
+/// is closed without this, it could mean that an attacker is trying
+/// to truncate the connection. It could also mean a misbehaving
+/// TLS implementation, or a random network failure.
 class TLSAbruptCloseError extends TLSError {
   TLSAbruptCloseError([String? message]) : super(message);
 }
 
 // --- TLS Alerts ---
 
-/// Um alerta TLS foi sinalizado.
+/// A TLS alert has been signalled.
 abstract class TLSAlert extends TLSError {
-  /// Definido para uma das constantes em [AlertDescription].
-  final int description; // Agora é int, conforme a definição da classe
+  /// Set to one of the constants in [AlertDescription].
+  final int description; // An int, matching the class definition
 
-  /// Definido para uma das constantes em [AlertLevel].
-  final int level; // Agora é int, conforme a definição da classe
+  /// Set to one of the constants in [AlertLevel].
+  final int level; // An int, matching the class definition
 
   TLSAlert(this.description, this.level, [String? message]) : super(message);
 }
 
-/// Um alerta TLS foi sinalizado pela implementação local.
+/// A TLS alert has been signalled by the local implementation.
 class TLSLocalAlert extends TLSAlert {
-  /// Descrição do que deu errado.
+  /// Description of what went wrong.
   final String? detailedMessage;
 
-  /// Cria um alerta local.
-  /// [description] deve ser uma das constantes de [AlertDescription].
-  /// [level] deve ser uma das constantes de [AlertLevel].
+  /// Creates a local alert.
+  /// [description] must be one of the [AlertDescription] constants.
+  /// [level] must be one of the [AlertLevel] constants.
   TLSLocalAlert(int description, int level, {this.detailedMessage})
-      : super(description, level); // Recebe int
+      : super(description, level); // Takes an int
 
   @override
   String toString() {
-    // Usa o método estático da classe AlertDescription definida em constants.dart
+    // Use the static method of the AlertDescription class defined in constants.dart
     final alertStr = AlertDescription.toStr(description);
     if (detailedMessage != null) {
       return '$alertStr: $detailedMessage';
@@ -87,65 +88,64 @@ class TLSLocalAlert extends TLSAlert {
   }
 }
 
-/// Um alerta TLS foi sinalizado pela implementação remota.
+/// A TLS alert has been signalled by the remote implementation.
 class TLSRemoteAlert extends TLSAlert {
-  /// Cria um alerta remoto.
-  /// [description] deve ser uma das constantes de [AlertDescription].
-  /// [level] deve ser uma das constantes de [AlertLevel].
+  /// Creates a remote alert.
+  /// [description] must be one of the [AlertDescription] constants.
+  /// [level] must be one of the [AlertLevel] constants.
   TLSRemoteAlert(int description, int level)
-      : super(description, level); // Recebe int
+      : super(description, level); // Takes an int
 
   @override
   String toString() {
-    // Usa o método estático da classe AlertDescription definida em constants.dart
+    // Use the static method of the AlertDescription class defined in constants.dart
     return AlertDescription.toStr(description);
   }
 }
 
 // --- TLS Authentication Errors ---
 
-/// O handshake foi bem-sucedido, mas a autenticação da outra parte
-/// foi inadequada.
+/// The handshake succeeded, but the other party's authentication
+/// was inadequate.
 ///
-/// Esta exceção só será lançada quando um
-/// `Checker` (equivalente em Dart) tiver sido passado para uma função de handshake.
-/// O Checker será invocado assim que o handshake for concluído, e se
-/// o Checker objetar como a outra parte se autenticou, uma
-/// subclasse desta exceção será lançada.
+/// This exception will only be thrown when a `Checker` has been passed
+/// to a handshake function. The Checker will be invoked once the handshake
+/// completes, and if the Checker objects to how the other party
+/// authenticated, a subclass of this exception will be thrown.
 class TLSAuthenticationError extends TLSError {
   TLSAuthenticationError([String? message]) : super(message);
 }
 
-/// O Checker esperava que a outra parte se autenticasse com uma
-/// cadeia de certificados, mas isso não ocorreu.
+/// The Checker was expecting the other party to authenticate with a
+/// certificate chain, but this did not occur.
 class TLSNoAuthenticationError extends TLSAuthenticationError {
   TLSNoAuthenticationError([String? message]) : super(message);
 }
 
-/// O Checker esperava que a outra parte se autenticasse com um
-/// tipo diferente de cadeia de certificados.
+/// The Checker was expecting the other party to authenticate with a
+/// different type of certificate chain.
 class TLSAuthenticationTypeError extends TLSAuthenticationError {
   TLSAuthenticationTypeError([String? message]) : super(message);
 }
 
-/// O Checker esperava que a outra parte se autenticasse com uma
-/// cadeia de certificados que correspondesse a uma impressão digital diferente.
+/// The Checker was expecting the other party to authenticate with a
+/// certificate chain that matches a different fingerprint.
 class TLSFingerprintError extends TLSAuthenticationError {
   TLSFingerprintError([String? message]) : super(message);
 }
 
-/// O Checker esperava que a outra parte se autenticasse com uma
-/// cadeia de certificados que tivesse uma autorização diferente.
+/// The Checker was expecting the other party to authenticate with a
+/// certificate chain that has a different authorization.
 class TLSAuthorizationError extends TLSAuthenticationError {
   TLSAuthorizationError([String? message]) : super(message);
 }
 
-/// O Checker determinou que a cadeia de certificados da outra parte
-/// é inválida.
+/// The Checker has determined that the other party's certificate chain
+/// is invalid.
 class TLSValidationError extends TLSAuthenticationError {
-  /// Contém informações sobre esta falha de validação
+  /// Contains information about this validation failure.
   final dynamic
-      info; // Pode ser Map<String, dynamic>? se a estrutura for conhecida
+      info; // Could be Map<String, dynamic>? if the structure were known
 
   TLSValidationError(String msg, {this.info}) : super(msg);
 
@@ -232,104 +232,103 @@ class TLSCertificateVerificationError extends TLSValidationError {
 
 // --- Other TLS Errors ---
 
-/// A outra parte respondeu incorretamente a uma falha induzida.
+/// The other party responded incorrectly to an induced fault.
 ///
-/// Esta exceção ocorrerá apenas durante testes de falha, quando uma
-/// variável de falha (equivalente em Dart) de `TLSConnection` (equivalente em Dart)
-/// for definida para induzir algum tipo de comportamento defeituoso,
-/// e a outra parte não responder apropriadamente.
+/// This exception will only occur during fault testing, when a
+/// connection's fault variable is set to induce some sort of faulty
+/// behavior, and the other party does not respond appropriately.
 class TLSFaultError extends TLSError {
   TLSFaultError([String? message]) : super(message);
 }
 
-/// A implementação não suporta as capacidades solicitadas (ou necessárias).
+/// The implementation does not support the requested (or required) capabilities.
 class TLSUnsupportedError extends TLSError {
   TLSUnsupportedError([String? message]) : super(message);
 }
 
-/// O estado interno do objeto é inesperado ou inválido.
+/// The internal state of the object is unexpected or invalid.
 ///
-/// Causado pelo uso incorreto da API.
+/// Caused by incorrect use of the API.
 class TLSInternalError extends TLSError {
   TLSInternalError([String? message]) : super(message);
 }
 
 // --- TLS Protocol Exceptions (Internal Handling) ---
 
-/// Exceções usadas internamente para lidar com erros em mensagens recebidas.
+/// Exceptions used internally for handling errors in received messages.
 class TLSProtocolException extends BaseTLSException {
   TLSProtocolException([String? message]) : super(message);
 }
 
-/// Os parâmetros especificados na mensagem estavam incorretos ou inválidos.
+/// The parameters specified in the message were incorrect or invalid.
 class TLSIllegalParameterException extends TLSProtocolException {
   TLSIllegalParameterException([String? message]) : super(message);
 }
 
-/// A codificação da mensagem recebida não corresponde à especificação.
+/// The encoding of the received message does not match the specification.
 class TLSDecodeError extends TLSProtocolException {
   TLSDecodeError([String? message]) : super(message);
 }
 
-/// A mensagem recebida foi inesperada ou a análise do Inner Plaintext
-/// falhou.
+/// The received message was unexpected or parsing of the Inner Plaintext
+/// failed.
 class TLSUnexpectedMessage extends TLSProtocolException {
   TLSUnexpectedMessage([String? message]) : super(message);
 }
 
-/// O tamanho do registro recebido era muito grande.
+/// The size of the received record was too big.
 class TLSRecordOverflow extends TLSProtocolException {
   TLSRecordOverflow([String? message]) : super(message);
 }
 
-/// A descriptografia dos dados não foi bem-sucedida.
+/// Decryption of the data was unsuccessful.
 class TLSDecryptionFailed extends TLSProtocolException {
   TLSDecryptionFailed([String? message]) : super(message);
 }
 
-/// MAC inválido (ou preenchimento no caso de mac-then-encrypt).
+/// Bad MAC (or padding in the case of mac-then-encrypt).
 class TLSBadRecordMAC extends TLSProtocolException {
   TLSBadRecordMAC([String? message]) : super(message);
 }
 
-/// Os parâmetros selecionados pelo usuário são muito fracos.
+/// The parameters selected by the user are too weak.
 class TLSInsufficientSecurity extends TLSProtocolException {
   TLSInsufficientSecurity([String? message]) : super(message);
 }
 
-/// A identidade PSK ou SRP é desconhecida.
+/// The PSK or SRP identity is unknown.
 class TLSUnknownPSKIdentity extends TLSProtocolException {
   TLSUnknownPSKIdentity([String? message]) : super(message);
 }
 
-/// Não foi possível encontrar um conjunto aceitável de parâmetros de handshake.
+/// Could not find an acceptable set of handshake parameters.
 class TLSHandshakeFailure extends TLSProtocolException {
   TLSHandshakeFailure([String? message]) : super(message);
 }
 
 // --- Encryption Errors (Subtypes) ---
 
-/// O maskLen passado para a função é muito alto.
+/// The maskLen passed to the function is too high.
 class MaskTooLongError extends EncryptionError {
   MaskTooLongError([String? message]) : super(message);
 }
 
-/// A mensagem passada para a função é muito longa.
+/// The message passed to the function is too long.
 class MessageTooLongError extends EncryptionError {
   MessageTooLongError([String? message]) : super(message);
 }
 
-/// Um erro apareceu durante a codificação.
+/// An error occurred during encoding.
 class EncodingError extends EncryptionError {
   EncodingError([String? message]) : super(message);
 }
 
-/// A função de verificação encontrou uma assinatura inválida.
+/// The verification function found an invalid signature.
 class InvalidSignature extends EncryptionError {
   InvalidSignature([String? message]) : super(message);
 }
 
-/// Tipo de algoritmo RSA desconhecido passado.
+/// An unknown RSA algorithm type was passed.
 class UnknownRSAType extends EncryptionError {
   UnknownRSAType([String? message]) : super(message);
 }

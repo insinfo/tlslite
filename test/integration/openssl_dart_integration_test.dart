@@ -2,9 +2,9 @@
 ///
 /// These tests start an OpenSSL s_server and connect to it with the Dart TLS client
 /// to test real TLS 1.2 handshakes and data exchange.
-// No runner Windows do GitHub o `openssl` do PATH é o do MSYS/Git: o
-// s_server não encerra com Process.kill e os testes travam no stop(). O
-// cliente testado é Dart puro; a interoperabilidade é coberta no Linux e macOS.
+// On the GitHub Windows runner the `openssl` on the PATH is the MSYS/Git one:
+// its s_server does not exit on Process.kill and the tests hang in stop(). The
+// client under test is pure Dart; interop is covered on Linux and macOS.
 @TestOn('!windows')
 library;
 
@@ -90,8 +90,8 @@ class OpenSSLServer {
       '-key', _keyFile!,
       '-cert', _certFile!,
       _protocolFlag,
-      // OpenSSL 3+ recusa TLS 1.0/1.1 no nível de segurança padrão; o
-      // teste habilita essas versões só no servidor de teste.
+      // OpenSSL 3+ refuses TLS 1.0/1.1 at the default security level; the
+      // test enables those versions only on the test server.
       '-cipher',
       _protocolFlag == '-tls1' || _protocolFlag == '-tls1_1'
           ? '$_cipher:@SECLEVEL=0'

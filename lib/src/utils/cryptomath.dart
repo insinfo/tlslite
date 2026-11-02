@@ -16,16 +16,18 @@ import 'digest/digest.dart' as dg;
 
 // --- Helper Functions ---
 
-/// Converte um BigInt para Uint8List (big-endian, unsigned).
-/// [byteLength] especifica o tamanho desejado. Zeros à esquerda são adicionados se necessário.
-/// Se o número for muito grande para caber, ele será truncado (bytes mais significativos removidos).
+/// Converts a BigInt to a Uint8List (big-endian, unsigned).
+///
+/// [byteLength] is the desired output length; leading zeros are added if
+/// needed. If the number does not fit, it is truncated (the most significant
+/// bytes are dropped).
 Uint8List bigIntToBytes(BigInt number, int byteLength, {bool signed = false}) {
   if (number == BigInt.zero) {
     return Uint8List(byteLength);
   }
 
-  // A implementação toRadixString(16) e manipulação de string é uma forma,
-  // mas pode ser ineficiente. Usar operações bit a bit é geralmente melhor.
+  // Going through toRadixString(16) and string manipulation would work, but
+  // is inefficient; bitwise operations are generally better.
 
   Uint8List bytes = Uint8List(byteLength);
   for (int i = 0; i < byteLength; i++) {
@@ -33,15 +35,15 @@ Uint8List bigIntToBytes(BigInt number, int byteLength, {bool signed = false}) {
     number = number >> 8;
   }
 
-  // Se o número original era maior que o byteLength permitido, `number` ainda
-  // terá bits restantes aqui. A lógica acima já truncou efetivamente.
-  // Para representação signed (two's complement), a lógica seria diferente.
-  // Esta função foca na representação unsigned como a maioria das operações crypto.
+  // If the original number was larger than byteLength allows, `number` still
+  // has bits left here; the loop above has already truncated it.
+  // A signed (two's complement) representation would need different logic.
+  // This function targets the unsigned representation, like most crypto code.
 
   return bytes;
 }
 
-/// Converte um Uint8List para BigInt (assumindo big-endian, unsigned).
+/// Converts a Uint8List to a BigInt (big-endian, unsigned).
 BigInt _bytesToBigInt(Uint8List bytes) {
   BigInt result = BigInt.zero;
   for (int i = 0; i < bytes.length; i++) {
@@ -54,10 +56,10 @@ BigInt _bytesToBigInt(Uint8List bytes) {
 // PRNG Functions
 // **************************************************************************
 
-/// CSPRNG do sistema operacional (getrandom/arc4random/BCryptGenRandom).
+/// Operating system CSPRNG (getrandom/arc4random/BCryptGenRandom).
 final math.Random _secureRandom = math.Random.secure();
 
-/// Gera um Uint8List de bytes aleatórios seguros.
+/// Returns [howMany] cryptographically secure random bytes.
 Uint8List getRandomBytes(int howMany) {
   final bytes = Uint8List(howMany);
   var i = 0;
@@ -80,23 +82,23 @@ const String prngName = "Dart Random.secure";
 // Simple hash functions
 // **************************************************************************
 
-/// Retorna um digest MD5 dos dados.
+/// Returns the MD5 digest of [b].
 Uint8List md5(Uint8List b) {
   return dg.md5Hash(b);
 }
 
-/// Retorna um digest SHA1 dos dados.
+/// Returns the SHA-1 digest of [b].
 Uint8List sha1(Uint8List b) {
   return dg.sha1Hash(b);
 }
 
-/// Retorna um digest dos `data` usando `algorithm` (md5, sha1, sha224,
+/// Returns the digest of [data] using [algorithm] (md5, sha1, sha224,
 /// sha256, sha384, sha512, sha3_224, sha3_256, sha3_384, sha3_512).
 Uint8List secureHash(Uint8List data, String algorithm) {
   return dg.hashBytes(algorithm, data);
 }
 
-/// Retorna um HMAC usando `b` e `k` com `algorithm`.
+/// Returns the HMAC of [b] keyed with [k] using [algorithm].
 Uint8List secureHMAC(Uint8List k, Uint8List b, String algorithm) {
   return dg.hmac(algorithm, k, b);
 }
@@ -117,7 +119,7 @@ Uint8List hmacSha384(Uint8List k, Uint8List b) {
   return secureHMAC(k, b, 'sha384');
 }
 
-// Helper para obter o tamanho do digest
+// Returns the digest size of [algorithm]
 int _getDigestSize(String algorithm) {
   switch (algorithm.toLowerCase()) {
     case 'md5':
@@ -136,7 +138,7 @@ int _getDigestSize(String algorithm) {
 }
 
 Uint8List hkdfExpand(Uint8List prk, Uint8List info, int L, String algorithm) {
-  // HMAC chaveado uma única vez; cada bloco parte de um clone do estado.
+  // Key the HMAC once; each block starts from a clone of that state.
   final prf = dg.createHmac(algorithm, prk);
   final digestSize = prf.digestSize;
   final N = (L + digestSize - 1) ~/ digestSize;
@@ -154,7 +156,7 @@ Uint8List hkdfExpand(Uint8List prk, Uint8List info, int L, String algorithm) {
         .finish();
     out.setRange((i - 1) * digestSize, i * digestSize, tIter);
   }
-  // Retorna os primeiros L bytes
+  // Return the first L bytes
   return out.sublist(0, L);
 }
 
@@ -172,7 +174,7 @@ Uint8List pbkdf2(
   if (derivedKeyLength <= 0) {
     throw ArgumentError('derivedKeyLength must be positive');
   }
-  // HMAC chaveado uma única vez; cada iteração parte de um clone do estado.
+  // Key the HMAC once; each iteration starts from a clone of that state.
   final prf = dg.createHmac(hashAlgorithm, password);
   final hLen = prf.digestSize;
   final blocks = (derivedKeyLength + hLen - 1) ~/ hLen;
@@ -196,26 +198,28 @@ Uint8List pbkdf2(
   return Uint8List.fromList(result.sublist(0, derivedKeyLength));
 }
 
-/// Função de derivação de chave TLS 1.3 (HKDF-Expand-Label).
+/// TLS 1.3 key derivation function (HKDF-Expand-Label).
 Uint8List hkdfExpandLabel(Uint8List secret, Uint8List label,
     Uint8List hashValue, int length, String algorithm) {
   final hkdfLabel = Writer();
   hkdfLabel.addTwo(length);
-  // Concatena "tls13 " com o label
+  // Prepend "tls13 " to the label
   final labelPrefix = utf8.encode("tls13 ");
   final fullLabel = Uint8List.fromList(labelPrefix + label);
   hkdfLabel.addVarSeq(
-      fullLabel, 1, 1); // Assumindo que addVarSeq lida com Uint8List
+      fullLabel, 1, 1); // addVarSeq accepts a Uint8List
   hkdfLabel.addVarSeq(
-      hashValue, 1, 1); // Assumindo que addVarSeq lida com Uint8List
+      hashValue, 1, 1); // addVarSeq accepts a Uint8List
 
   return hkdfExpand(secret, hkdfLabel.bytes, length, algorithm);
 }
 
-/// Função de derivação de chave TLS 1.3 (Derive-Secret).
-/// Nota: O tipo HandshakeHashes não foi fornecido, então assumimos que ele tem
-/// um método `digest(String algorithm)` que retorna `Uint8List` ou é `null`.
-/// Se for diferente, ajuste a lógica de `hsHash`.
+/// TLS 1.3 key derivation function (Derive-Secret).
+///
+/// [handshakeHashes] may be `null` (hash of the empty string is used), the
+/// transcript hash itself as a `Uint8List`/`List<int>`, or an object with a
+/// `digest(String algorithm)` method returning a `Uint8List`, such as
+/// HandshakeHashes.
 Uint8List deriveSecret(Uint8List secret, Uint8List label,
     dynamic /*HandshakeHashes?*/ handshakeHashes, String algorithm) {
   Uint8List hsHash;
@@ -226,7 +230,7 @@ Uint8List deriveSecret(Uint8List secret, Uint8List label,
   } else if (handshakeHashes is List<int>) {
     hsHash = Uint8List.fromList(handshakeHashes);
   } else {
-    // Assumindo que handshake_hashes tem um método digest
+    // Expect an object with a digest(algorithm) method
     hsHash = handshakeHashes.digest(algorithm) as Uint8List;
   }
 
@@ -238,61 +242,62 @@ Uint8List deriveSecret(Uint8List secret, Uint8List label,
 // Converter Functions
 // **************************************************************************
 
-/// Converte um número armazenado em Uint8List para BigInt.
-/// Por padrão, assume codificação big-endian.
+/// Converts a number stored in a Uint8List to a BigInt.
+///
+/// Big-endian encoding is assumed by default; pass `endian: "little"` for
+/// little-endian.
 BigInt bytesToNumber(Uint8List b, {String endian = "big"}) {
   if (endian.toLowerCase() == "little") {
-    // Implementação little-endian
+    // Little-endian
     BigInt result = BigInt.zero;
     for (int i = 0; i < b.length; i++) {
       result |= BigInt.from(b[i]) << (8 * i);
     }
     return result;
   } else {
-    // Implementação big-endian (padrão)
+    // Big-endian (default)
     return _bytesToBigInt(b);
   }
 }
 
-/// Converte um BigInt em um Uint8List, preenchido com zeros até howManyBytes.
-/// O Uint8List retornado pode ser menor que howManyBytes se o número não couber,
-/// mas não será maior (será truncado). Usa codificação big- or little-endian.
-/// Big endian é o padrão.
+/// Converts a BigInt to a Uint8List, zero-padded to [howManyBytes].
+///
+/// The result is never longer than [howManyBytes]: a number that does not fit
+/// is truncated. Uses big- or little-endian encoding; big-endian is the
+/// default.
 Uint8List numberToByteArray(BigInt n,
     {int? howManyBytes, String endian = "big"}) {
   if (n < BigInt.zero) {
-    // A implementação original parece assumir números positivos.
-    // A conversão de BigInt negativo para bytes requer lógica de complemento de dois.
-    // Por simplicidade e para corresponder ao original, lançamos um erro ou lidamos com isso.
-    // Esta implementação se concentrará em números não negativos.
+    // The original implementation assumes non-negative numbers. Converting a
+    // negative BigInt would need two's complement logic, so it is rejected.
     throw ArgumentError("Number must be non-negative for this conversion.");
   }
   if (n == BigInt.zero) {
-    return Uint8List(howManyBytes ?? 1); // Retorna [0] ou lista de zeros
+    return Uint8List(howManyBytes ?? 1); // [0] or a list of zeros
   }
 
-  int length = (n.bitLength + 7) ~/ 8; // Calcula o número mínimo de bytes
+  int length = (n.bitLength + 7) ~/ 8; // Minimum number of bytes
   int targetLength =
-      howManyBytes ?? length; // Usa howManyBytes se fornecido, senão o mínimo
+      howManyBytes ?? length; // howManyBytes if given, else the minimum
 
   Uint8List bytes = Uint8List(targetLength);
   BigInt tempN = n;
 
   if (endian.toLowerCase() == "little") {
     for (int i = 0; i < targetLength; i++) {
-      if (tempN == BigInt.zero) break; // Para de preencher se o número acabar
+      if (tempN == BigInt.zero) break; // Stop once the number is exhausted
       bytes[i] = (tempN & BigInt.from(0xff)).toInt();
       tempN >>= 8;
     }
-    // Truncamento: Se howManyBytes foi fornecido e era menor que 'length',
-    // os bytes mais significativos já foram ignorados pelo loop limitado por targetLength.
+    // Truncation: if howManyBytes was smaller than 'length', the most
+    // significant bytes were skipped by the loop bound (targetLength).
   } else {
     // Big-endian
     int startIdx =
-        targetLength - length; // Onde começar a preencher no array de saída
+        targetLength - length; // Where to start filling the output array
     if (startIdx < 0) {
-      // O número é maior que howManyBytes, precisamos truncar
-      // Descartar os bytes mais significativos do número
+      // The number is larger than howManyBytes and must be truncated:
+      // drop its most significant bytes
       tempN >>= ((-startIdx) * 8);
       startIdx = 0;
     }
@@ -301,48 +306,47 @@ Uint8List numberToByteArray(BigInt n,
       bytes[i] = (tempN & BigInt.from(0xff)).toInt();
       tempN >>= 8;
       if (tempN == BigInt.zero && i > startIdx)
-        break; // Otimização: parar se o resto for zero
+        break; // Optimization: stop if the rest is zero
     }
-    // Preenchimento com zero: Os bytes antes de startIdx já são zero pela inicialização do Uint8List.
-    // Truncamento: Já tratado pelo cálculo de startIdx e/ou deslocamento de tempN.
+    // Zero padding: bytes before startIdx are already zero from the Uint8List
+    // allocation. Truncation: handled by startIdx and the shift of tempN.
   }
 
   return bytes;
 }
 
-/// Converte um MPI (string bignum OpenSSL) para BigInt.
+/// Converts an MPI (OpenSSL bignum string) to a BigInt.
 BigInt mpiToNumber(Uint8List mpi) {
-  // MPI format: 4 bytes de tamanho (big-endian), seguidos pelos bytes do número (big-endian)
+  // MPI format: 4-byte length (big-endian) followed by the number bytes (big-endian)
   if (mpi.length < 4) {
     throw ArgumentError("Invalid MPI format: too short");
   }
-  // Lê o tamanho (ignoramos por enquanto, usamos o comprimento real dos dados)
+  // The length prefix is ignored; the actual data length is used instead
   // int length = (mpi[0] << 24) | (mpi[1] << 16) | (mpi[2] << 8) | mpi[3];
 
   final dataBytes = mpi.sublist(4);
 
-  // Verifica o bit de sinal (o original checava o primeiro byte dos dados)
+  // Check the sign bit (the original checked the first data byte)
   if (dataBytes.isNotEmpty && (dataBytes[0] & 0x80) != 0) {
-    // Nota: A implementação original lançava erro para negativos.
-    // O formato MPI pode incluir um byte 0x00 extra no início para indicar positivo
-    // se o bit mais significativo do próximo byte for 1.
-    // Se quisermos suportar negativos, precisaríamos de lógica de complemento de dois.
-    // Mantendo a restrição original:
+    // The original implementation rejects negative numbers as well. An MPI
+    // may carry an extra leading 0x00 byte to mark a positive value whose
+    // next byte has its top bit set; supporting negatives would need two's
+    // complement logic. Keep the original restriction:
     throw ArgumentError("Input must be a positive integer (MPI sign bit set)");
   }
-  return bytesToNumber(dataBytes); // Usa big-endian por padrão
+  return bytesToNumber(dataBytes); // Big-endian by default
 }
 
-/// Converte um BigInt para um MPI (string bignum OpenSSL).
+/// Converts a BigInt to an MPI (OpenSSL bignum string).
 Uint8List numberToMPI(BigInt n) {
   if (n < BigInt.zero) {
     throw ArgumentError(
         "Cannot convert negative number to MPI format (in this implementation)");
   }
 
-  Uint8List b = numberToByteArray(n, endian: "big"); // Obtem bytes do número
+  Uint8List b = numberToByteArray(n, endian: "big"); // Number bytes
 
-  // Remove zeros à esquerda, exceto se for o único byte [0]
+  // Strip leading zeros, except for a lone [0] byte
   int firstNonZero = 0;
   while (firstNonZero < b.length - 1 && b[firstNonZero] == 0) {
     firstNonZero++;
@@ -352,23 +356,23 @@ Uint8List numberToMPI(BigInt n) {
   }
 
   bool prependZero = false;
-  // Se o bit mais significativo do primeiro byte estiver definido,
-  // adicione um byte zero extra no início para indicar que é positivo.
+  // If the top bit of the first byte is set, prepend an extra zero byte to
+  // mark the value as positive.
   if (b.isNotEmpty && (b[0] & 0x80) != 0) {
     prependZero = true;
   }
   if (n == BigInt.zero && b.isEmpty) {
-    // Caso especial para o número 0
-    b = Uint8List(1); // Representa como um único byte 0
-    // prependZero continua false
+    // Special case for the number 0
+    b = Uint8List(1); // Encoded as a single 0 byte
+    // prependZero stays false
   }
 
   int length = b.length + (prependZero ? 1 : 0);
 
-  // Cria o resultado final: 4 bytes de tamanho + [0x00 opcional] + bytes do número
+  // Build the result: 4-byte length + [optional 0x00] + number bytes
   final result = Uint8List(4 + length);
 
-  // Escreve o tamanho (big-endian)
+  // Write the length (big-endian)
   result[0] = (length >> 24) & 0xFF;
   result[1] = (length >> 16) & 0xFF;
   result[2] = (length >> 8) & 0xFF;
@@ -380,7 +384,7 @@ Uint8List numberToMPI(BigInt n) {
     dataOffset++;
   }
 
-  // Copia os bytes do número
+  // Copy the number bytes
   result.setRange(dataOffset, dataOffset + b.length, b);
 
   return result;
@@ -390,12 +394,12 @@ Uint8List numberToMPI(BigInt n) {
 // Misc. Utility Functions
 // **************************************************************************
 
-/// Retorna o número de bits necessários para representar o número.
+/// Returns the number of bits needed to represent [n].
 int numBits(BigInt n) {
   return n.bitLength;
 }
 
-/// Retorna o número de bytes necessários para representar o número.
+/// Returns the number of bytes needed to represent [n].
 int numBytes(BigInt n) {
   if (n == BigInt.zero) return 1;
   return (n.bitLength + 7) ~/ 8;
@@ -405,7 +409,7 @@ int numBytes(BigInt n) {
 // Big Number Math
 // **************************************************************************
 
-/// Gera um número aleatório BigInt no intervalo [low, high).
+/// Returns a random BigInt in the range [low, high).
 BigInt getRandomNumber(BigInt low, BigInt high) {
   assert(low < high);
 
@@ -418,62 +422,61 @@ BigInt getRandomNumber(BigInt low, BigInt high) {
     Uint8List randomBytes = getRandomBytes(bytes);
     result = _bytesToBigInt(randomBytes); // Big-endian unsigned
 
-    // Garante que o número gerado não exceda o range (importante para distribuição uniforme)
-    // Se o número aleatório gerado (result) for maior ou igual ao tamanho do range,
-    // descarte-o e gere outro. Isso evita bias.
-    // Ex: range = 10 (0-9), bits = 4. Se gerar 1111 (15), não é válido.
+    // Rejection sampling: if the candidate is not below range, discard it and
+    // draw again. This keeps the distribution uniform (no modulo bias).
+    // E.g. range = 10 (0-9), bits = 4: a draw of 1111 (15) is rejected.
   } while (result >= range);
 
   return low + result;
 }
 
-/// Máximo Divisor Comum.
+/// Greatest common divisor.
 BigInt gcd(BigInt a, BigInt b) {
   return a.gcd(b);
 }
 
-/// Mínimo Múltiplo Comum.
+/// Least common multiple.
 BigInt lcm(BigInt a, BigInt b) {
   if (a == BigInt.zero || b == BigInt.zero) return BigInt.zero;
   return (a * b).abs() ~/ a.gcd(b);
 }
 
-/// Retorna o inverso de a mod b, zero se não existir.
+/// Returns the inverse of [a] mod [b], or zero if it does not exist.
 BigInt invMod(BigInt a, BigInt b) {
   try {
-    // modInverse lança RangeError se a == 0 ou se o inverso não existir (gcd != 1)
+    // modInverse throws RangeError if a == 0 or no inverse exists (gcd != 1)
     if (a == BigInt.zero || b <= BigInt.zero) return BigInt.zero;
-    if (a.gcd(b) != BigInt.one) return BigInt.zero; // Inverso não existe
+    if (a.gcd(b) != BigInt.one) return BigInt.zero; // No inverse
     return a.modInverse(b);
   } catch (e) {
-    // Captura especificamente RangeError se gcd != 1
+    // RangeError means gcd != 1
     if (e is RangeError) {
       return BigInt.zero;
     }
-    // Relança outros erros inesperados
+    // Rethrow any other unexpected error
     rethrow;
   }
 }
 
-/// Calcula (base^power) % modulus.
+/// Computes (base^power) % modulus.
 BigInt powMod(BigInt base, BigInt power, BigInt modulus) {
   return base.modPow(power, modulus);
 }
 
-/// Divisão inteira com arredondamento para cima.
+/// Integer division rounded up.
 BigInt divceil(BigInt dividend, BigInt divisor) {
   if (divisor == BigInt.zero) throw ArgumentError("Division by zero");
-  // Equivalente a (dividend + divisor - 1) / divisor para inteiros positivos
-  // Cuidado com negativos se for necessário suportar
+  // (dividend + divisor - 1) / divisor, valid for positive integers;
+  // negative operands are not handled
   if (dividend == BigInt.zero) return BigInt.zero;
   final one = BigInt.one;
   return (dividend + divisor - one) ~/ divisor;
 }
 
-// Pré-calcula um crivo dos primos < 1000:
+// Returns the primes below n (sieve of Eratosthenes):
 List<int> makeSieve(int n) {
   if (n < 2) return [];
-  List<int?> sieve = List<int?>.generate(n, (i) => i); // Usa null para marcar
+  List<int?> sieve = List<int?>.generate(n, (i) => i); // null marks composites
   sieve[0] = null;
   sieve[1] = null;
 
@@ -482,87 +485,88 @@ List<int> makeSieve(int n) {
     if (sieve[count] == null) {
       continue;
     }
-    // Marca múltiplos
+    // Mark multiples
     for (int x = count * 2; x < n; x += count) {
       sieve[x] = null;
     }
   }
-  // Filtra os não-nulos e converte para List<int>
+  // Keep the non-null entries as a List<int>
   return sieve.whereType<int>().toList();
 }
 
-// Crivo padrão para isPrime
+// Default sieve for isPrime (primes < 1000)
 final List<int> _defaultSieve = makeSieve(1000);
 
-/// Testa se n é primo usando divisão por tentativa e Miller-Rabin.
+/// Tests whether [n] is prime using trial division and Miller-Rabin.
 bool isPrime(BigInt n,
     {int iterations = 5, bool display = false, List<int>? sieve}) {
   sieve ??= _defaultSieve;
 
   if (n <= BigInt.one) return false;
-  if (n <= BigInt.from(3)) return true; // 2 e 3 são primos
-  if (n.isEven) return false; // Pares maiores que 2 não são primos
+  if (n <= BigInt.from(3)) return true; // 2 and 3 are prime
+  if (n.isEven) return false; // Even numbers above 2 are not prime
 
-  // Divisão por tentativa com o crivo
+  // Trial division by the sieve primes
   for (int x in sieve) {
     BigInt bx = BigInt.from(x);
-    if (bx >= n) break; // Se o primo do crivo for >= n, paramos
-    if (n % bx == BigInt.zero) return false; // Divisível, não é primo
+    if (bx >= n) break; // Stop once the sieve prime is >= n
+    if (n % bx == BigInt.zero) return false; // Divisible: not prime
   }
 
-  // Passou pela divisão por tentativa, prossiga para Miller-Rabin
-  if (display) print("*"); // Equivalente a print("*", end=' ')
+  // Trial division passed; continue with Miller-Rabin
+  if (display) print("*"); // Python: print("*", end=' ')
 
-  // Calcula s, t para Miller-Rabin: n-1 = 2^t * s, onde s é ímpar
+  // Compute s, t for Miller-Rabin: n-1 = 2^t * s, with s odd
   BigInt s = n - BigInt.one;
   int t = 0;
   while (s.isEven) {
-    s = s >> 1; // Divisão rápida por 2
+    s = s >> 1; // Fast division by 2
     t++;
   }
 
-  // Repete Miller-Rabin 'iterations' vezes
+  // Run Miller-Rabin 'iterations' times
   for (int count = 0; count < iterations; count++) {
-    // Escolhe uma base 'a' aleatória entre [2, n-2]
-    // A primeira iteração usa a=2 para velocidade (como no original)
+    // Pick a random base 'a'; the first iteration uses a=2 for speed
+    // (as the original does)
     BigInt a = (count == 0)
         ? BigInt.two
         : getRandomNumber(
-            BigInt.two, n - BigInt.one); // Gera a no intervalo [2, n-2]
+            BigInt.two, n - BigInt.one); // a in the range [2, n-2]
 
     BigInt v = powMod(a, s, n); // v = a^s mod n
 
     if (v == BigInt.one || v == n - BigInt.one) {
-      continue; // Provavelmente primo, tenta próxima iteração
+      continue; // Probably prime; try the next base
     }
 
     bool possiblePrime = false;
     for (int i = 1; i < t; i++) {
-      // Loop de 1 até t-1
+      // Loop from 1 to t-1
       v = powMod(v, BigInt.two, n); // v = v^2 mod n
       if (v == n - BigInt.one) {
-        possiblePrime = true; // Condição de Miller-Rabin satisfeita
+        possiblePrime = true; // Miller-Rabin condition met
         break;
       }
       if (v == BigInt.one) {
-        return false; // Fator não trivial encontrado (raiz quadrada de 1 mod n)
+        return false; // Non-trivial square root of 1 mod n: composite
       }
     }
 
     if (!possiblePrime) {
-      return false; // Falhou no teste de Miller-Rabin para esta base 'a'
+      return false; // Base 'a' is a Miller-Rabin witness: composite
     }
   }
 
-  return true; // Passou em todas as iterações, provavelmente primo
+  return true; // Passed every iteration: probably prime
 }
 
-/// Gera um número primo aleatório de 'bits' de tamanho.
-/// O número terá 'bits' bits (maior que (2^(bits-1) * 3 ) / 2 e menor que 2^bits).
+/// Returns a random prime of [bits] bits.
+///
+/// The result is at least (2^(bits-1) * 3) / 2 and less than 2^bits.
 BigInt getRandomPrime(int bits, {bool display = false}) {
   assert(bits >= 10);
 
-  // Garante que os 2 MSBs (bits mais significativos) sejam 1.
+  // Make sure the two most significant bits are set.
   // low = floor(1.5 * 2^(bits-1)) = floor(3 * 2^(bits-2))
   BigInt low = (BigInt.from(3) << (bits - 2));
   // high = 2^bits
@@ -571,64 +575,64 @@ BigInt getRandomPrime(int bits, {bool display = false}) {
   while (true) {
     if (display) print(".");
 
-    // Gera um candidato aleatório no intervalo [low, high)
+    // Random candidate in the range [low, high)
     BigInt candP = getRandomNumber(low, high);
 
-    // Garante que seja ímpar
+    // Make it odd
     if (candP.isEven) {
       candP += BigInt.one;
-      // Se candP se tornar >= high após adicionar 1, precisa gerar um novo número.
-      // Isso é raro, mas possível. Uma forma simples é continuar o loop.
+      // Adding 1 can (rarely) push candP to high; just draw a new number.
       if (candP >= high) continue;
     }
 
-    // Testa a primalidade com um número razoável de iterações
-    // (mais iterações aumentam a confiança)
+    // Primality test with a reasonable number of iterations
+    // (more iterations give more confidence)
     if (isPrime(candP, iterations: 15, display: display)) {
       return candP;
     }
   }
 }
 
-/// Gera um "safe prime" aleatório p com 'bits' de tamanho,
-/// tal que p é primo e (p-1)/2 também é primo (q).
+/// Returns a random safe prime p of [bits] bits.
+///
+/// Both p and q = (p-1)/2 are prime.
 BigInt getRandomSafePrime(int bits, {bool display = false}) {
   assert(bits >= 10);
 
-  // Gera q no intervalo apropriado para que p = 2q+1 tenha 'bits' bits.
-  // Se p ~ 2^bits, então q ~ 2^(bits-1).
-  // Usamos um intervalo semelhante a getRandomPrime para q.
-  BigInt qLow = (BigInt.from(3) << (bits - 3)); // Para q ~ 2^(bits-1)
+  // Pick q from a range such that p = 2q+1 has 'bits' bits.
+  // If p ~ 2^bits, then q ~ 2^(bits-1).
+  // The range for q mirrors the one used by getRandomPrime.
+  BigInt qLow = (BigInt.from(3) << (bits - 3)); // For q ~ 2^(bits-1)
   BigInt qHigh = BigInt.one << (bits - 1);
 
   while (true) {
     if (display) print(".");
 
-    // Gera um candidato para q
+    // Candidate for q
     BigInt q = getRandomNumber(qLow, qHigh);
 
-    // Garante que q seja ímpar (necessário para p=2q+1 ser primo > 3)
+    // q must be odd (required for p=2q+1 to be a prime > 3)
     if (q.isEven) {
       q += BigInt.one;
       if (q >= qHigh) continue;
     }
 
-    // Testa a primalidade de q primeiro (mais rápido falhar aqui)
-    // Usamos menos iterações para q, e mais para p se q for primo
+    // Test q first (cheaper to fail here), with fewer iterations;
+    // p gets more iterations once q looks prime
     if (isPrime(q, iterations: 5, display: display)) {
       BigInt p = (q * BigInt.two) + BigInt.one;
 
-      // Verifica se p tem o número de bits desejado.
-      // Se q estava perto do limite superior, p pode ter bits+1 bits.
+      // Check that p has the requested bit length; if q was close to the
+      // upper bound, p may have bits+1 bits.
       if (p.bitLength != bits) {
-        continue; // Tenta um novo q
+        continue; // Try another q
       }
 
-      // Testa a primalidade de p com mais rigor
+      // Test p more rigorously
       if (isPrime(p, iterations: 15, display: display)) {
-        // Re-testar q com mais rigor por segurança (opcional, mas bom)
+        // Re-test q more rigorously as well (optional, but safer)
         if (isPrime(q, iterations: 15, display: display)) {
-          return p; // Encontrou um safe prime!
+          return p; // Found a safe prime
         }
       }
     }

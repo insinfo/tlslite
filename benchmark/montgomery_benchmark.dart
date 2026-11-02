@@ -1,7 +1,7 @@
 /// Benchmark: Montgomery Fast vs BigInt.modPow
 ///
-/// Compara performance da implementação Montgomery otimizada
-/// contra o BigInt.modPow nativo do Dart.
+/// Compares the performance of the optimized Montgomery implementation
+/// against Dart's native BigInt.modPow.
 
 import 'dart:typed_data';
 import 'package:tlslite/src/experimental/montgomery_limbs.dart';
@@ -12,7 +12,7 @@ void main() {
   print('='.padRight(70, '='));
   print('');
 
-  // Testa diferentes tamanhos de chave RSA
+  // Test several RSA key sizes
   _benchmarkSize('RSA-512', 512);
   _benchmarkSize('RSA-1024', 1024);
   _benchmarkSize('RSA-2048', 2048);
@@ -28,7 +28,7 @@ void _benchmarkSize(String name, int bits) {
   print('$name ($bits bits)');
   print('-'.padRight(70, '-'));
 
-  // Gera módulo de teste (número ímpar grande)
+  // Generate a test modulus (large odd number)
   final modBytes = _generateOddNumber(bits ~/ 8);
   final baseBytes = _generateRandomBytes((bits ~/ 8) - 1);
   final expBytes = Uint8List.fromList([0x01, 0x00, 0x01]); // 65537
@@ -37,17 +37,17 @@ void _benchmarkSize(String name, int bits) {
   final baseBigInt = _bytesToBigInt(baseBytes);
   final expBigInt = _bytesToBigInt(expBytes);
 
-  // Verifica correção primeiro
+  // Check correctness first
   final expectedResult = baseBigInt.modPow(expBigInt, modBigInt);
   final montgomeryResult = _bytesToBigInt(modPowBytes(baseBytes, expBytes, modBytes));
   
   if (expectedResult != montgomeryResult) {
-    print('ERRO: Resultados diferentes!');
+    print('ERROR: results differ!');
     print('  BigInt:      $expectedResult');
     print('  Montgomery:  $montgomeryResult');
     return;
   }
-  print('✓ Verificação de correção OK');
+  print('✓ Correctness check OK');
   print('');
 
   // Warmup
@@ -75,7 +75,7 @@ void _benchmarkSize(String name, int bits) {
   montStopwatch.stop();
   final montTimeUs = montStopwatch.elapsedMicroseconds / iterations;
 
-  // Benchmark Montgomery com contexto reutilizado
+  // Benchmark Montgomery with a reused context
   final modBN = BN.fromBytes(modBytes);
   final baseBN = BN.fromBytes(baseBytes);
   final expBN = BN.fromBytes(expBytes);
@@ -88,11 +88,11 @@ void _benchmarkSize(String name, int bits) {
   montReuseStopwatch.stop();
   final montReuseTimeUs = montReuseStopwatch.elapsedMicroseconds / iterations;
 
-  // Resultados
-  print('Resultados ($iterations iterações cada):');
+  // Results
+  print('Results ($iterations iterations each):');
   print('');
   print('  BigInt.modPow:           ${bigIntTimeUs.toStringAsFixed(1)} µs/op');
-  print('  Montgomery (novo ctx):   ${montTimeUs.toStringAsFixed(1)} µs/op');
+  print('  Montgomery (new ctx):    ${montTimeUs.toStringAsFixed(1)} µs/op');
   print('  Montgomery (ctx reuse):  ${montReuseTimeUs.toStringAsFixed(1)} µs/op');
   print('');
 
@@ -100,15 +100,15 @@ void _benchmarkSize(String name, int bits) {
   final speedupReuse = bigIntTimeUs / montReuseTimeUs;
 
   if (speedupNew > 1) {
-    print('  Speedup (novo ctx):   ${speedupNew.toStringAsFixed(2)}x mais rápido');
+    print('  Speedup (new ctx):    ${speedupNew.toStringAsFixed(2)}x faster');
   } else {
-    print('  Speedup (novo ctx):   ${(1/speedupNew).toStringAsFixed(2)}x mais LENTO');
+    print('  Speedup (new ctx):    ${(1/speedupNew).toStringAsFixed(2)}x SLOWER');
   }
 
   if (speedupReuse > 1) {
-    print('  Speedup (ctx reuse):  ${speedupReuse.toStringAsFixed(2)}x mais rápido');
+    print('  Speedup (ctx reuse):  ${speedupReuse.toStringAsFixed(2)}x faster');
   } else {
-    print('  Speedup (ctx reuse):  ${(1/speedupReuse).toStringAsFixed(2)}x mais LENTO');
+    print('  Speedup (ctx reuse):  ${(1/speedupReuse).toStringAsFixed(2)}x SLOWER');
   }
 
   // Throughput
@@ -117,21 +117,21 @@ void _benchmarkSize(String name, int bits) {
   print('  Throughput Montgomery: ${opsPerSec.toStringAsFixed(1)} ops/s');
 }
 
-/// Gera número ímpar de tamanho específico
+/// Generates an odd number with the given bit size.
 Uint8List _generateOddNumber(int byteLength) {
   final bytes = Uint8List(byteLength);
-  // Preenche com padrão determinístico
+  // Fill with a deterministic pattern
   for (int i = 0; i < byteLength; i++) {
     bytes[i] = ((i * 17 + 37) ^ (i * 13)) & 0xFF;
   }
-  // Garante MSB alto para tamanho correto
+  // Set the top bit so the size is exact
   bytes[0] |= 0xC0;
-  // Garante ímpar
+  // Make it odd
   bytes[byteLength - 1] |= 0x01;
   return bytes;
 }
 
-/// Gera bytes pseudo-aleatórios
+/// Generates pseudo-random bytes.
 Uint8List _generateRandomBytes(int length) {
   final bytes = Uint8List(length);
   for (int i = 0; i < length; i++) {
@@ -140,7 +140,7 @@ Uint8List _generateRandomBytes(int length) {
   return bytes;
 }
 
-/// Converte bytes big-endian para BigInt
+/// Converts big-endian bytes to a BigInt.
 BigInt _bytesToBigInt(Uint8List bytes) {
   if (bytes.isEmpty) return BigInt.zero;
   final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();

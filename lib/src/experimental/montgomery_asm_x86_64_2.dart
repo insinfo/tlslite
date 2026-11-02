@@ -1,13 +1,13 @@
 // dart format width=5000
 //
-// Montgomery Multiplication otimizado usando shell code x86_64
-// Compilado com NASM para Ivy Bridge (sem BMI2/ADX)
+// Optimized Montgomery multiplication using x86_64 shellcode
+// Assembled with NASM for Ivy Bridge (no BMI2/ADX)
 //
-// O shellcode suporta QUALQUER tamanho de chave (256, 512, 1024, 2048, 4096 bits)
-// através de parâmetro numLimbs passado na stack.
+// The shellcode supports ANY key size (256, 512, 1024, 2048, 4096 bits)
+// through the numLimbs parameter passed on the stack.
 //
-// Algoritmo: CIOS (Coarsely Integrated Operand Scanning)
-// Compatível com: Qualquer CPU x86_64 (Ivy Bridge, Haswell, etc.)
+// Algorithm: CIOS (Coarsely Integrated Operand Scanning)
+// Runs on: any x86_64 CPU (Ivy Bridge, Haswell, etc.)
 
 import 'dart:ffi' as ffi;
 import 'dart:io' show File, Platform;
@@ -21,7 +21,7 @@ import 'rijndael_fast_asm_x86_64.dart' show ExecutableMemory;
 // FFI Types
 // ============================================================================
 
-/// Assinatura do shellcode Montgomery multiply:
+/// Signature of the Montgomery multiply shellcode:
 /// Windows x64: RCX=res, RDX=a, R8=b, R9=n, [RSP+40]=n0, [RSP+48]=numLimbs
 typedef _MontMulNative = ffi.Void Function(
   ffi.Pointer<ffi.Uint64> res,
@@ -41,7 +41,7 @@ typedef _MontMulDart = void Function(
   int numLimbs,
 );
 
-/// Assinatura do shellcode Montgomery squaring (4 limbs):
+/// Signature of the Montgomery squaring shellcode (4 limbs):
 /// Windows x64: RCX=res, RDX=a, R8=n, R9=n0
 typedef _MontSqrNative = ffi.Void Function(
   ffi.Pointer<ffi.Uint64> res,
@@ -58,22 +58,22 @@ typedef _MontSqrDart = void Function(
 );
 
 // ============================================================================
-// Shellcode compilado com NASM (Ivy Bridge compatible)
+// Shellcode assembled with NASM (Ivy Bridge compatible)
 // ============================================================================
 
-/// Shellcode Montgomery CIOS compilado com NASM v3
-/// Comando: nasm -f bin mont_mul_v3.asm -o mont_mul_v3.bin
+/// Montgomery CIOS shellcode assembled with NASM (v3).
+/// Command: nasm -f bin mont_mul_v3.asm -o mont_mul_v3.bin
 /// 
-/// Suporta qualquer tamanho de chave via parâmetro numLimbs
-/// Usa rep stosq para inicialização mais eficiente
+/// Supports any key size through the numLimbs parameter.
+/// Uses rep stosq for faster initialization.
 Uint8List? _cachedShellCode;
 Uint8List? _cachedShellCode4Limbs;
 
-/// Carrega o shellcode do arquivo .bin ou retorna embedded se não encontrar
+/// Loads the shellcode from the .bin file, or returns the embedded copy if it is missing.
 Uint8List _getShellCode() {
   if (_cachedShellCode != null) return _cachedShellCode!;
   
-  // Tenta carregar do arquivo (útil para desenvolvimento/teste)
+  // Try loading from the file (useful for development/testing)
   try {
     final binFile = File('asm/mont_mul_v3.bin');
     if (binFile.existsSync()) {
@@ -82,12 +82,12 @@ Uint8List _getShellCode() {
     }
   } catch (_) {}
   
-  // Fallback: shellcode embedded
+  // Fallback: embedded shellcode
   _cachedShellCode = _embeddedShellCode;
   return _cachedShellCode!;
 }
 
-/// Carrega o shellcode otimizado para 4 limbs (256-bit)
+/// Loads the shellcode optimized for 4 limbs (256-bit).
 Uint8List _getShellCode4Limbs() {
   if (_cachedShellCode4Limbs != null) return _cachedShellCode4Limbs!;
   
@@ -99,11 +99,11 @@ Uint8List _getShellCode4Limbs() {
     }
   } catch (_) {}
   
-  // Fallback para shellcode genérico se não encontrar
+  // Fall back to the generic shellcode if the file is missing
   return _getShellCode();
 }
 
-/// Shellcode de squaring otimizado para 4 limbs
+/// Squaring shellcode optimized for 4 limbs.
 Uint8List? _cachedShellCodeSqr4Limbs;
 
 Uint8List? _getShellCodeSqr4Limbs() {
@@ -117,10 +117,10 @@ Uint8List? _getShellCodeSqr4Limbs() {
     }
   } catch (_) {}
   
-  return null; // Não tem fallback, usa multiply normal
+  return null; // No fallback; the regular multiply is used
 }
 
-/// Shellcode embedded como fallback
+/// Embedded fallback shellcode.
 final Uint8List _embeddedShellCode = Uint8List.fromList([
   0x53, 0x55, 0x56, 0x57, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57,
   0x49, 0x89, 0xCC, 0x49, 0x89, 0xD5, 0x4D, 0x89, 0xC6, 0x4D, 0x89, 0xCF,
@@ -156,7 +156,7 @@ final Uint8List _embeddedShellCode = Uint8List.fromList([
 ]);
 
 // ============================================================================
-// Detecção de suporte CPU
+// CPU support detection
 // ============================================================================
 
 class MontgomeryAsmSupport {
@@ -227,7 +227,7 @@ class MontgomeryAsmSupport {
 }
 
 // ============================================================================
-// Montgomery Context com ASM
+// Montgomery context with ASM
 // ============================================================================
 
 class MontgomeryAsmContext {
@@ -242,22 +242,22 @@ class MontgomeryAsmContext {
   _MontMulDart? _nativeFunc;
   _MontSqrDart? _nativeFuncSqr;
 
-  // Buffers nativos reutilizáveis (evita malloc em cada chamada)
+  // Reusable native buffers (avoid a malloc on every call)
   ffi.Pointer<ffi.Uint64>? _bufResult;
   ffi.Pointer<ffi.Uint64>? _bufA;
   ffi.Pointer<ffi.Uint64>? _bufB;
   ffi.Pointer<ffi.Uint64>? _bufN;
   
-  // Buffer extra para modPow com swap de ponteiros
+  // Extra buffers for modPow with pointer swapping
   ffi.Pointer<ffi.Uint64>? _bufAcc;
   ffi.Pointer<ffi.Uint64>? _bufBase;
 
-  // Typed lists para acesso direto (evita asTypedList repetido)
+  // Typed lists for direct access (avoid repeated asTypedList calls)
   Uint64List? _aList;
   Uint64List? _bList;
   Uint64List? _resList;
 
-  // Buffers de trabalho para modPow (reutilizáveis)
+  // Reusable work buffers for modPow
   Uint64List? _workAcc;
   Uint64List? _workTemp;
   Uint64List? _workBase;
@@ -274,7 +274,7 @@ class MontgomeryAsmContext {
   }
 
   void _initAsm() {
-    // Aloca buffers de trabalho Dart (sempre úteis)
+    // Allocate the Dart work buffers (always needed)
     _workAcc = Uint64List(numLimbs);
     _workTemp = Uint64List(numLimbs);
     _workBase = Uint64List(numLimbs);
@@ -284,13 +284,13 @@ class MontgomeryAsmContext {
     if (!MontgomeryAsmSupport.isAsmSupported) return;
 
     try {
-      // Usa shellcode otimizado para 4 limbs (256-bit), senão genérico
+      // Use the 4-limb (256-bit) optimized shellcode, otherwise the generic one
       final shellCode = numLimbs == 4 ? _getShellCode4Limbs() : _getShellCode();
       _execMem = ExecutableMemory.allocate(shellCode);
       final funcPtr = _execMem!.pointer.cast<ffi.NativeFunction<_MontMulNative>>();
       _nativeFunc = funcPtr.asFunction<_MontMulDart>();
 
-      // Carrega squaring otimizado para 4 limbs se disponível
+      // Load the 4-limb optimized squaring if available
       if (numLimbs == 4) {
         final sqrCode = _getShellCodeSqr4Limbs();
         if (sqrCode != null) {
@@ -300,28 +300,28 @@ class MontgomeryAsmContext {
         }
       }
 
-      // Aloca buffers nativos persistentes
+      // Allocate persistent native buffers
       _bufResult = pkg_ffi.calloc<ffi.Uint64>(numLimbs);
       _bufA = pkg_ffi.calloc<ffi.Uint64>(numLimbs);
       _bufB = pkg_ffi.calloc<ffi.Uint64>(numLimbs);
       _bufN = pkg_ffi.calloc<ffi.Uint64>(numLimbs);
       
-      // Buffers extras para modPow (evita cópias no loop)
+      // Extra buffers for modPow (avoid copies in the loop)
       _bufAcc = pkg_ffi.calloc<ffi.Uint64>(numLimbs);
       _bufBase = pkg_ffi.calloc<ffi.Uint64>(numLimbs);
 
-      // Cria typed lists para acesso direto (evita asTypedList repetido)
+      // Create typed lists for direct access (avoid repeated asTypedList calls)
       _aList = _bufA!.asTypedList(numLimbs);
       _bList = _bufB!.asTypedList(numLimbs);
       _resList = _bufResult!.asTypedList(numLimbs);
 
-      // Copia modulus para buffer nativo (constante)
+      // Copy the modulus into its native buffer (constant)
       final nList = _bufN!.asTypedList(numLimbs);
       for (int i = 0; i < numLimbs; i++) {
         nList[i] = modulus[i];
       }
     } catch (e) {
-      print('Erro ao inicializar ASM: $e');
+      print('Failed to initialize ASM: $e');
       _nativeFunc = null;
     }
   }
@@ -343,37 +343,37 @@ class MontgomeryAsmContext {
   /// Montgomery multiplication: result = a * b * R^-1 mod n
   void montMul(Uint64List result, Uint64List a, Uint64List b) {
     if (_nativeFunc != null) {
-      // Usa typed lists pré-criados (evita asTypedList)
+      // Use the pre-created typed lists (avoids asTypedList)
       final aList = _aList!;
       final bList = _bList!;
       final resList = _resList!;
 
-      // Copia dados para buffers nativos
+      // Copy the operands into the native buffers
       for (int i = 0; i < numLimbs; i++) {
         aList[i] = a[i];
         bList[i] = b[i];
       }
 
-      // Executa shellcode ASM!
+      // Run the ASM shellcode
       _nativeFunc!(_bufResult!, _bufA!, _bufB!, _bufN!, n0, numLimbs);
 
-      // Copia resultado de volta
+      // Copy the result back
       for (int i = 0; i < numLimbs; i++) {
         result[i] = resList[i];
       }
     } else {
-      // Fallback para Dart puro (32-bit limbs para evitar overflow)
+      // Pure Dart fallback (32-bit limbs to avoid overflow)
       _montMulDart(result, a, b);
     }
   }
 
-  /// Montgomery multiplication direto nos buffers nativos (evita cópias)
-  /// a e b já devem estar nos buffers _aList e _bList
+  /// Montgomery multiplication directly on the native buffers (avoids copies).
+  /// a and b must already be in the _aList and _bList buffers.
   void _montMulNative() {
     _nativeFunc!(_bufResult!, _bufA!, _bufB!, _bufN!, n0, numLimbs);
   }
 
-  /// Fallback Dart puro usando limbs de 32 bits
+  /// Pure Dart fallback using 32-bit limbs.
   void _montMulDart(Uint64List result, Uint64List a, Uint64List b) {
     final n32 = numLimbs * 2;
     final a32 = Uint32List(n32);
@@ -381,7 +381,7 @@ class MontgomeryAsmContext {
     final mod32 = Uint32List(n32);
     final t = Uint64List(n32 * 2 + 2);
 
-    // Expande 64->32 bits
+    // Split 64-bit limbs into 32-bit limbs
     for (var i = 0; i < numLimbs; i++) {
       a32[i * 2] = a[i] & 0xFFFFFFFF;
       a32[i * 2 + 1] = (a[i] >> 32) & 0xFFFFFFFF;
@@ -393,7 +393,7 @@ class MontgomeryAsmContext {
 
     final n0_32 = n0 & 0xFFFFFFFF;
 
-    // CIOS com 32-bit limbs
+    // CIOS with 32-bit limbs
     for (var i = 0; i < n32; i++) {
       int carry = 0;
       final ai = a32[i];
@@ -415,14 +415,14 @@ class MontgomeryAsmContext {
       t[i + n32] += carry;
     }
 
-    // Copia parte alta e converte 32->64 bits
+    // Copy the high half and join 32-bit limbs back into 64-bit limbs
     for (var i = 0; i < numLimbs; i++) {
       final lo = t[n32 + i * 2] & 0xFFFFFFFF;
       final hi = t[n32 + i * 2 + 1] & 0xFFFFFFFF;
       result[i] = lo | (hi << 32);
     }
 
-    // Subtração condicional
+    // Conditional subtraction
     if (_cmpUnsigned(result, modulus) >= 0) {
       _subInPlace(result, modulus);
     }
@@ -430,11 +430,11 @@ class MontgomeryAsmContext {
 
   static int _cmpUnsigned(Uint64List a, Uint64List b) {
     for (var i = a.length - 1; i >= 0; i--) {
-      // Comparação unsigned: trata bits negativos como valores grandes
+      // Unsigned comparison: negative values are treated as large ones
       final ai = a[i];
       final bi = b[i];
       if (ai == bi) continue;
-      // Se sinais diferentes (bit 63): negativo é maior em unsigned
+      // Different signs (bit 63): the negative one is larger as unsigned
       final aSign = ai < 0;
       final bSign = bi < 0;
       if (aSign != bSign) return aSign ? 1 : -1;
@@ -450,25 +450,25 @@ class MontgomeryAsmContext {
       final bi = b[i];
       final diff = ai - bi - borrow;
       a[i] = diff;
-      // Borrow detection usando Hacker's Delight
+      // Borrow detection from Hacker's Delight
       borrow = ((~ai & bi) | ((~ai | bi) & diff)) >>> 63;
     }
   }
 
-  /// Exponenciação modular: base^exp mod n
+  /// Modular exponentiation: base^exp mod n.
   Uint8List modPow(Uint8List baseBytes, Uint8List expBytes) {
-    // Se temos ASM para 4 limbs, usa versão totalmente nativa
+    // With 4-limb ASM available, use the fully native version
     if (_nativeFunc != null && numLimbs == 4) {
       return _modPowNative(baseBytes, expBytes);
     }
     
-    // Fallback para versão híbrida
+    // Fall back to the hybrid version
     return _modPowDart(baseBytes, expBytes);
   }
   
-  /// modPow totalmente nativo para 4 limbs (minimiza cópias FFI)
+  /// Fully native modPow for 4 limbs (minimizes FFI copies).
   Uint8List _modPowNative(Uint8List baseBytes, Uint8List expBytes) {
-    // Ponteiros para os buffers
+    // Buffer pointers
     final pAcc = _bufAcc!;
     final pBase = _bufBase!;
     final pResult = _bufResult!;
@@ -483,7 +483,7 @@ class MontgomeryAsmContext {
     final aList = pA.asTypedList(4);
     final bList = pB.asTypedList(4);
     
-    // Converte base para limbs e copia para buffer nativo
+    // Convert the base to limbs and copy it into the native buffer
     final base = _bytesToLimbs64(baseBytes, 4);
     for (int i = 0; i < 4; i++) {
       aList[i] = base[i];
@@ -493,35 +493,35 @@ class MontgomeryAsmContext {
     // baseMont = base * R mod n (via montMul)
     _nativeFunc!(pBase, pA, pB, pN, n0, 4);
     
-    // Inicializa acc = 1 * R mod n (one_mont)
+    // Initialize acc = 1 * R mod n (one_mont)
     aList[0] = 1;
     aList[1] = 0;
     aList[2] = 0;
     aList[3] = 0;
-    // bList já tem rr
+    // Reload rr into bList
     for (int i = 0; i < 4; i++) {
       bList[i] = rr[i];
     }
     _nativeFunc!(pAcc, pA, pB, pN, n0, 4);
     
-    // Converte expoente para limbs
+    // Convert the exponent to limbs
     final exp = _bytesToLimbs64(expBytes, 4);
     final expBits = _countBits64(exp);
     
-    // Verifica se temos squaring otimizado
+    // Check whether optimized squaring is available
     final hasOptimizedSqr = _nativeFuncSqr != null;
     
-    // Loop de exponenciação binária
+    // Binary exponentiation loop
     for (int i = expBits - 1; i >= 0; i--) {
       // Square: acc = acc^2
       if (hasOptimizedSqr) {
-        // Copia acc para pA, calcula sqr(acc) -> pResult
+        // Copy acc to pA, compute sqr(acc) -> pResult
         for (int j = 0; j < 4; j++) {
           aList[j] = accList[j];
         }
         _nativeFuncSqr!(pResult, pA, pN, n0);
       } else {
-        // Usa multiplicação: acc * acc
+        // Use multiplication: acc * acc
         for (int j = 0; j < 4; j++) {
           aList[j] = accList[j];
           bList[j] = accList[j];
@@ -529,7 +529,7 @@ class MontgomeryAsmContext {
         _nativeFunc!(pResult, pA, pB, pN, n0, 4);
       }
       
-      // Copia resultado de volta para acc
+      // Copy the result back to acc
       for (int j = 0; j < 4; j++) {
         accList[j] = resultList[j];
       }
@@ -551,7 +551,7 @@ class MontgomeryAsmContext {
       }
     }
     
-    // Converte de volta do domínio Montgomery: result = acc * 1
+    // Convert back from the Montgomery domain: result = acc * 1
     aList[0] = accList[0];
     aList[1] = accList[1];
     aList[2] = accList[2];
@@ -562,7 +562,7 @@ class MontgomeryAsmContext {
     bList[3] = 0;
     _nativeFunc!(pResult, pA, pB, pN, n0, 4);
     
-    // Copia resultado para Dart e converte para bytes
+    // Copy the result back to Dart and convert it to bytes
     final result = Uint64List(4);
     for (int i = 0; i < 4; i++) {
       result[i] = resultList[i];
@@ -571,35 +571,35 @@ class MontgomeryAsmContext {
     return _limbs64ToBytes(result, 4);
   }
   
-  /// modPow versão Dart/híbrida
+  /// Dart/hybrid modPow.
   Uint8List _modPowDart(Uint8List baseBytes, Uint8List expBytes) {
-    // Usa buffers de trabalho persistentes
+    // Use the persistent work buffers
     final base = _workBase!;
     final baseMont = _workBaseMont!;
     final acc = _workAcc!;
     final temp = _workTemp!;
     final one = _workOne!;
 
-    // Converte bytes para limbs diretamente nos buffers
+    // Convert bytes to limbs directly into the buffers
     _bytesToLimbs64Into(baseBytes, base);
     final exp = _bytesToLimbs64(expBytes, numLimbs);
 
-    // Converte base para domínio Montgomery: baseMont = base * R mod n
+    // Convert the base to the Montgomery domain: baseMont = base * R mod n
     montMul(baseMont, base, rr);
 
-    // Inicializa acumulador como 1 em Montgomery: 1_Mont = 1 * R mod n
+    // Initialize the accumulator to 1 in Montgomery form: 1_Mont = 1 * R mod n
     _clearLimbs(one);
     one[0] = 1;
     montMul(acc, one, rr);
 
-    // Exponenciação binária (left-to-right)
+    // Binary exponentiation (left-to-right)
     final expBits = _countBits64(exp);
 
     if (_nativeFunc != null) {
-      // Versão otimizada usando buffers nativos diretamente
+      // Optimized version working on the native buffers directly
       _modPowLoopAsm(acc, baseMont, exp, expBits, temp);
     } else {
-      // Versão Dart
+      // Dart version
       for (int i = expBits - 1; i >= 0; i--) {
         // Square
         montMul(temp, acc, acc);
@@ -615,7 +615,7 @@ class MontgomeryAsmContext {
       }
     }
 
-    // Converte de volta do domínio Montgomery: result = acc * 1 * R^-1 mod n
+    // Convert back from the Montgomery domain: result = acc * 1 * R^-1 mod n
     _clearLimbs(one);
     one[0] = 1;
     montMul(temp, acc, one);
@@ -623,13 +623,13 @@ class MontgomeryAsmContext {
     return _limbs64ToBytes(temp, numLimbs);
   }
 
-  /// Loop de exponenciação otimizado para ASM
+  /// Exponentiation loop optimized for ASM.
   void _modPowLoopAsm(Uint64List acc, Uint64List baseMont, Uint64List exp, int expBits, Uint64List temp) {
     final aList = _aList!;
     final bList = _bList!;
     final resList = _resList!;
 
-    // Verifica se temos squaring otimizado disponível
+    // Check whether optimized squaring is available
     final hasOptimizedSqr = _nativeFuncSqr != null;
 
     for (int i = expBits - 1; i >= 0; i--) {
@@ -639,10 +639,10 @@ class MontgomeryAsmContext {
       }
 
       if (hasOptimizedSqr) {
-        // Usa squaring otimizado (menos multiplicações)
+        // Use optimized squaring (fewer multiplications)
         _nativeFuncSqr!(_bufResult!, _bufA!, _bufN!, n0);
       } else {
-        // Usa multiplicação genérica para squaring
+        // Use the generic multiplication for squaring
         for (int j = 0; j < numLimbs; j++) {
           bList[j] = acc[j];
         }
@@ -669,7 +669,7 @@ class MontgomeryAsmContext {
     }
   }
 
-  /// Limpa um array de limbs
+  /// Clears a limb array.
   @pragma('vm:prefer-inline')
   static void _clearLimbs(Uint64List limbs) {
     for (int i = 0; i < limbs.length; i++) {
@@ -677,7 +677,7 @@ class MontgomeryAsmContext {
     }
   }
 
-  /// Copia limbs de src para dst
+  /// Copies limbs from [src] to [dst].
   @pragma('vm:prefer-inline')
   static void _copyLimbs(Uint64List src, Uint64List dst) {
     for (int i = 0; i < src.length; i++) {
@@ -685,9 +685,9 @@ class MontgomeryAsmContext {
     }
   }
 
-  /// Converte bytes para limbs diretamente em um buffer existente
+  /// Converts bytes to limbs directly into an existing buffer.
   void _bytesToLimbs64Into(Uint8List bytes, Uint64List limbs) {
-    // Limpa primeiro
+    // Clear it first
     for (int i = 0; i < limbs.length; i++) {
       limbs[i] = 0;
     }
@@ -733,12 +733,12 @@ class MontgomeryAsmContext {
     BigInt limb = BigInt.zero;
     final mask64 = BigInt.parse('FFFFFFFFFFFFFFFF', radix: 16);
 
-    // Processa bytes de trás para frente (little-endian limbs)
+    // Walk the bytes backwards (little-endian limbs)
     for (int i = bytes.length - 1; i >= 0; i--) {
       limb |= BigInt.from(bytes[i]) << shift;
       shift += 8;
       if (shift >= 64) {
-        // toSigned(64) preserva todos os 64 bits como unsigned
+        // toSigned(64) keeps all 64 bits (read back as unsigned)
         limbs[limbIdx++] = (limb & mask64).toSigned(64).toInt();
         limb = BigInt.zero;
         shift = 0;
@@ -751,17 +751,17 @@ class MontgomeryAsmContext {
   }
 
   static int _computeN0Inv64(int n0word) {
-    // Newton-Raphson para calcular -n^-1 mod 2^64
+    // Newton-Raphson to compute -n^-1 mod 2^64
     int x = n0word;
     for (int i = 0; i < 6; i++) {
       x = x * (2 - n0word * x);
     }
-    return -x; // Dart wraps automaticamente em 64 bits
+    return -x; // Dart wraps around at 64 bits automatically
   }
 
   static Uint64List _computeRR64(Uint64List mod, int numLimbs) {
-    // Calcula R^2 mod n onde R = 2^(numLimbs*64)
-    // Usa BigInt apenas no setup (roda uma vez)
+    // Compute R^2 mod n where R = 2^(numLimbs*64)
+    // BigInt is only used during setup (runs once)
     BigInt mVal = BigInt.zero;
     for (int i = numLimbs - 1; i >= 0; i--) {
       mVal = (mVal << 64) | BigInt.from(mod[i]).toUnsigned(64);
@@ -803,7 +803,7 @@ class MontgomeryAsmContext {
   }
 }
 
-/// Função conveniente para modPow usando ASM
+/// Convenience function: modPow using ASM.
 Uint8List modPowAsm(Uint8List base, Uint8List exp, Uint8List mod) {
   final ctx = MontgomeryAsmContext.fromModulus(mod);
   try {

@@ -1,69 +1,69 @@
 // dart format width=5000
 //
-// Versão otimizada do Poly1305 baseada em OpenSSL poly1305.c
+// Optimized Poly1305 implementation based on OpenSSL poly1305.c
 //
-// Esta implementação evita BigInt completamente usando aritmética de limbs
-// com inteiros nativos de 64 bits para multiplicação.
+// This implementation avoids BigInt entirely by using limb arithmetic
+// with native 64-bit integers for multiplication.
 //
-// O Poly1305 original usa BigInt que é lento em Dart.
-// Esta versão usa representação em 5 limbs de 32 bits (130 bits total).
+// The original Poly1305 uses BigInt, which is slow in Dart.
+// This version uses a 5 x 32-bit limb representation (130 bits in total).
 //
-// Referência: openssl-master/crypto/poly1305/poly1305.c (versão u32/u64)
+// Reference: openssl-master/crypto/poly1305/poly1305.c (u32/u64 version)
 //
-// Speedup esperado: 3-10x sobre BigInt
+// Expected speedup: 3-10x over BigInt
 
 import 'dart:typed_data';
 
-/// Poly1305 otimizado usando limbs de 32 bits (sem BigInt)
+/// Optimized Poly1305 using 32-bit limbs (no BigInt).
 ///
-/// Representa números com 5 limbs de 32 bits:
+/// Numbers are represented with 5 limbs of 32 bits:
 /// h = h0 + h1*2^32 + h2*2^64 + h3*2^96 + h4*2^128
 ///
-/// Multiplicação 32x32=64 bits cabe em int64
+/// A 32x32=64-bit multiplication fits in an int64.
 class Poly1305Asm {
-  // Estado: acumulador em 5 limbs de 32 bits cada
+  // State: accumulator in 5 limbs of 32 bits each
   int _h0 = 0;
   int _h1 = 0;
   int _h2 = 0;
   int _h3 = 0;
   int _h4 = 0;
 
-  // Chave r em 4 limbs de 32 bits (clamped)
+  // Key r in 4 limbs of 32 bits (clamped)
   late final int _r0;
   late final int _r1;
   late final int _r2;
   late final int _r3;
 
-  // Pré-computados para redução: s = r + (r >> 2) = r * 5/4
+  // Precomputed for reduction: s = r + (r >> 2) = r * 5/4
   late final int _s1;
   late final int _s2;
   late final int _s3;
 
-  // Nonce para adição final - 4 limbs de 32 bits
+  // Nonce for the final addition - 4 limbs of 32 bits
   late final int _pad0;
   late final int _pad1;
   late final int _pad2;
   late final int _pad3;
 
-  // Buffer para bloco parcial
+  // Buffer for a partial block
   final Uint8List _buffer = Uint8List(16);
   int _bufferLen = 0;
 
-  /// Cria instância Poly1305 com chave de 32 bytes
+  /// Creates a Poly1305 instance with a 32-byte key.
   Poly1305Asm(Uint8List key) {
     if (key.length != 32) {
       throw ArgumentError('Poly1305 key must be 32 bytes');
     }
 
-    // r = key[0..15] com clamping
+    // r = key[0..15] with clamping
     // r &= 0xffffffc0ffffffc0ffffffc0fffffff
     _r0 = _loadLe32(key, 0) & 0x0fffffff;
     _r1 = _loadLe32(key, 4) & 0x0ffffffc;
     _r2 = _loadLe32(key, 8) & 0x0ffffffc;
     _r3 = _loadLe32(key, 12) & 0x0ffffffc;
 
-    // Pré-computa s = r + (r >> 2) para redução mod 2^130-5
-    // Isso é equivalente a r * 5/4 usado na redução
+    // Precompute s = r + (r >> 2) for reduction mod 2^130-5
+    // This is equivalent to the r * 5/4 used in the reduction
     _s1 = _r1 + (_r1 >> 2);
     _s2 = _r2 + (_r2 >> 2);
     _s3 = _r3 + (_r3 >> 2);
@@ -75,16 +75,16 @@ class Poly1305Asm {
     _pad3 = _loadLe32(key, 28);
   }
 
-  /// Carrega 32 bits little-endian
+  /// Loads a 32-bit little-endian value.
   static int _loadLe32(Uint8List data, int offset) {
     return (data[offset] & 0xFF) | ((data[offset + 1] & 0xFF) << 8) | ((data[offset + 2] & 0xFF) << 16) | ((data[offset + 3] & 0xFF) << 24);
   }
 
-  /// Atualiza com dados
+  /// Feeds [data] into the MAC.
   void update(Uint8List data) {
     int offset = 0;
 
-    // Completa buffer parcial primeiro
+    // Fill the partial buffer first
     if (_bufferLen > 0) {
       final need = 16 - _bufferLen;
       final take = data.length < need ? data.length : need;
@@ -98,22 +98,22 @@ class Poly1305Asm {
       }
     }
 
-    // Processa blocos completos
+    // Process full blocks
     while (offset + 16 <= data.length) {
       _processBlock(data, offset, 1);
       offset += 16;
     }
 
-    // Guarda sobra no buffer
+    // Keep the remainder in the buffer
     if (offset < data.length) {
       _buffer.setRange(0, data.length - offset, data.sublist(offset));
       _bufferLen = data.length - offset;
     }
   }
 
-  /// Processa um bloco de 16 bytes
+  /// Processes a 16-byte block.
   void _processBlock(Uint8List data, int offset, int padbit) {
-    // h += m[i] com carry propagation
+    // h += m[i] with carry propagation
     int d0 = _h0 + _loadLe32(data, offset);
     _h0 = d0 & 0xFFFFFFFF;
     int d1 = _h1 + (d0 >> 32) + _loadLe32(data, offset + 4);
@@ -128,10 +128,10 @@ class Poly1305Asm {
     _multiply();
   }
 
-  /// Multiplica h * r e reduz mod 2^130-5
+  /// Multiplies h * r and reduces mod 2^130-5.
   void _multiply() {
     // d = h * r
-    // Usando multiplicação 32x32->64 bits
+    // Using 32x32->64-bit multiplication
     int d0 = _h0 * _r0 + _h1 * _s3 + _h2 * _s2 + _h3 * _s1;
     int d1 = _h0 * _r1 + _h1 * _r0 + _h2 * _s3 + _h3 * _s2 + _h4 * _s1;
     int d2 = _h0 * _r2 + _h1 * _r1 + _h2 * _r0 + _h3 * _s3 + _h4 * _s2;
@@ -153,7 +153,7 @@ class Poly1305Asm {
     int c = (h4 >> 2) + (h4 & ~3);
     _h4 = h4 & 3;
 
-    // Adiciona c com carry propagation
+    // Add c with carry propagation
     _h0 += c;
     c = _constantTimeCarry(_h0, c);
     _h0 &= 0xFFFFFFFF;
@@ -175,18 +175,18 @@ class Poly1305Asm {
     return ((a ^ ((a ^ b) | ((a - b) ^ b))) >> 31) & 1;
   }
 
-  /// Finaliza e retorna a tag de 16 bytes
+  /// Finalizes and returns the 16-byte tag.
   Uint8List finalize() {
-    // Processa bloco parcial (se houver)
+    // Process the partial block (if any)
     if (_bufferLen > 0) {
-      // Cria bloco com padding: dados + 0x01 + zeros
+      // Build a padded block: data + 0x01 + zeros
       final block = Uint8List(16);
       block.setRange(0, _bufferLen, _buffer.sublist(0, _bufferLen));
       block[_bufferLen] = 0x01;
-      _processBlock(block, 0, 0); // padbit = 0 para bloco parcial
+      _processBlock(block, 0, 0); // padbit = 0 for a partial block
     }
 
-    // Compara com módulo computando h + -p
+    // Compare with the modulus by computing h + -p
     // g = h + 5
     int t = _h0 + 5;
     int g0 = t & 0xFFFFFFFF;
@@ -198,7 +198,7 @@ class Poly1305Asm {
     int g3 = t & 0xFFFFFFFF;
     int g4 = _h4 + (t >> 32);
 
-    // Se houve carry para o bit 131, usa g
+    // If there was a carry into bit 131, use g
     // mask = 0 - (g4 >> 2)
     int mask = 0 - (g4 >> 2);
     g0 &= mask;
@@ -221,7 +221,7 @@ class Poly1305Asm {
     t = h3 + (t >> 32) + _pad3;
     h3 = t & 0xFFFFFFFF;
 
-    // Converte para bytes little-endian
+    // Convert to little-endian bytes
     final result = Uint8List(16);
     result[0] = h0 & 0xFF;
     result[1] = (h0 >> 8) & 0xFF;
@@ -243,14 +243,14 @@ class Poly1305Asm {
     return result;
   }
 
-  /// Calcula tag de uma vez
+  /// Computes the tag for [data] in one shot.
   Uint8List createTag(Uint8List data) {
     reset();
     update(data);
     return finalize();
   }
 
-  /// Reset para reutilização (mantém chave)
+  /// Resets the state for reuse (keeps the key).
   void reset() {
     _h0 = 0;
     _h1 = 0;

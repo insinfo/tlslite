@@ -1,5 +1,5 @@
 name: tlslite
-version: 1.0.0
+version: 1.0.1
 description: >-
   Pure-Dart TLS 1.0-1.3 client/server (port of tlslite-ng) with X.509 chain
   and host name validation, custom transports and optional OpenSSL FFI sockets.

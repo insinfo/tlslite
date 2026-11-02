@@ -1,8 +1,8 @@
-/// Script para compilar os arquivos C de Montgomery e gerar shellcodes Dart
+/// Compiles the Montgomery C sources and generates Dart shellcode files.
 /// 
-/// Uso: dart run tool/build_montgomery_shellcodes.dart
+/// Usage: dart run tool/build_montgomery_shellcodes.dart
 /// 
-/// Requer: GCC (MinGW64) e objcopy instalados e no PATH
+/// Requires GCC (MinGW64) and objcopy installed and on the PATH.
 
 import 'dart:io';
 
@@ -13,13 +13,13 @@ void main() async {
   final asmDir = Directory('asm');
   
   if (!asmDir.existsSync()) {
-    print('Erro: Diretorio asm/ nao encontrado');
+    print('Error: asm/ directory not found');
     exit(1);
   }
   
-  print('=== Compilando shellcodes Montgomery ===\n');
+  print('=== Building Montgomery shellcodes ===\n');
   
-  // Compila mont_modpow_4limbs.c (256-bit)
+  // Build mont_modpow_4limbs.c (256-bit)
   await compileShellcode(
     sourceFile: 'asm/mont_modpow_4limbs.c',
     outputDart: 'lib/src/utils/montgomery_modpow_256_bit_shellcode.dart',
@@ -27,7 +27,7 @@ void main() async {
     functionName: 'mont_modpow_256',
   );
   
-  // Compila mont_modpow_generic.c (generico ate 1024-bit)
+  // Build mont_modpow_generic.c (generic, up to 1024-bit)
   await compileShellcode(
     sourceFile: 'asm/mont_modpow_generic.c',
     outputDart: 'lib/src/utils/montgomery_modpow_generic_shellcode.dart',
@@ -35,7 +35,7 @@ void main() async {
     functionName: 'mont_modpow_generic',
   );
   
-  print('\n=== Concluido! ===');
+  print('\n=== Done! ===');
 }
 
 Future<void> compileShellcode({
@@ -46,7 +46,7 @@ Future<void> compileShellcode({
 }) async {
   final source = File(sourceFile);
   if (!source.existsSync()) {
-    print('ERRO: $sourceFile nao encontrado');
+    print('ERROR: $sourceFile not found');
     return;
   }
   
@@ -54,9 +54,9 @@ Future<void> compileShellcode({
   final objFile = 'asm/$baseName.o';
   final binFile = 'asm/$baseName.bin';
   
-  print('Compilando $sourceFile...');
+  print('Compiling $sourceFile...');
   
-  // 1. Compilar para objeto
+  // 1. Compile to an object file
   var result = await Process.run(gccPath, [
     '-O3',
     '-fno-stack-protector',
@@ -69,13 +69,13 @@ Future<void> compileShellcode({
   ]);
   
   if (result.exitCode != 0) {
-    print('ERRO ao compilar:');
+    print('ERROR while compiling:');
     print(result.stderr);
     return;
   }
-  print('  Objeto criado: $objFile');
+  print('  Object file created: $objFile');
   
-  // 2. Extrair secao .text para binario
+  // 2. Extract the .text section to a raw binary
   result = await Process.run(objcopyPath, [
     '-O', 'binary',
     '-j', '.text',
@@ -84,31 +84,31 @@ Future<void> compileShellcode({
   ]);
   
   if (result.exitCode != 0) {
-    print('ERRO ao extrair shellcode:');
+    print('ERROR while extracting shellcode:');
     print(result.stderr);
     return;
   }
-  print('  Binario criado: $binFile');
+  print('  Binary created: $binFile');
   
-  // 3. Ler bytes do binario
+  // 3. Read the binary's bytes
   final binBytes = File(binFile).readAsBytesSync();
-  print('  Tamanho: ${binBytes.length} bytes');
+  print('  Size: ${binBytes.length} bytes');
   
   if (binBytes.isEmpty) {
-    print('ERRO: Shellcode vazio!');
+    print('ERROR: empty shellcode!');
     return;
   }
   
-  // 4. Verificar primeiros bytes
+  // 4. Show the first bytes
   final firstBytes = binBytes.take(16).map((b) => '0x' + b.toRadixString(16).padLeft(2, '0').toUpperCase()).join(', ');
-  print('  Primeiros 16 bytes: $firstBytes');
+  print('  First 16 bytes: $firstBytes');
   
-  // 5. Gerar arquivo Dart
+  // 5. Generate the Dart file
   final dartContent = generateDartFile(constName, functionName, binBytes);
   File(outputDart).writeAsStringSync(dartContent);
-  print('  Dart gerado: $outputDart');
+  print('  Dart file generated: $outputDart');
   
-  // Limpar arquivos temporarios
+  // Remove temporary files
   try {
     File(objFile).deleteSync();
     File(binFile).deleteSync();
@@ -122,14 +122,14 @@ String generateDartFile(String constName, String functionName, List<int> bytes) 
   
   sb.writeln('// dart format width=5000');
   sb.writeln('// AUTO-GENERATED - DO NOT EDIT');
-  sb.writeln('// Shellcode compilado de $functionName');
-  sb.writeln('// Tamanho: ${bytes.length} bytes');
-  sb.writeln('// Gerado em: ${DateTime.now().toIso8601String()}');
+  sb.writeln('// Shellcode compiled from $functionName');
+  sb.writeln('// Size: ${bytes.length} bytes');
+  sb.writeln('// Generated at: ${DateTime.now().toIso8601String()}');
   sb.writeln('');
-  sb.writeln('/// Shellcode x86_64 para $functionName');
+  sb.writeln('/// x86_64 shellcode for $functionName.');
   sb.writeln('const List<int> $constName = [');
   
-  // Escreve bytes em linhas de 16
+  // Write the bytes in rows of 16
   for (int i = 0; i < bytes.length; i += 16) {
     final end = (i + 16 > bytes.length) ? bytes.length : i + 16;
     final line = bytes.sublist(i, end);

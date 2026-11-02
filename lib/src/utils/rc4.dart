@@ -4,53 +4,53 @@
 
 import 'dart:typed_data';
 
-/// Representação abstrata da cifra de fluxo RC4.
+/// Abstract representation of the RC4 stream cipher.
 ///
-/// Esta classe define a estrutura e as propriedades básicas esperadas
-/// de uma implementação RC4, mas não contém a lógica de criptografia
-/// em si, que deve ser fornecida por subclasses concretas.
+/// This class defines the basic structure and properties expected of an RC4
+/// implementation, but does not contain the encryption logic itself, which
+/// must be provided by concrete subclasses.
 abstract class RC4 {
-  /// Indica se é uma cifra de bloco. Sempre `false` para RC4.
+  /// Whether this is a block cipher. Always `false` for RC4.
   final bool isBlockCipher = false;
 
-  /// Indica se fornece criptografia autenticada com dados associados (AEAD).
-  /// Sempre `false` para RC4 padrão.
+  /// Whether it provides authenticated encryption with associated data (AEAD).
+  /// Always `false` for standard RC4.
   final bool isAEAD = false;
 
-  /// Nome da cifra.
+  /// Cipher name.
   final String name = "rc4";
 
-  /// Referência à implementação concreta subjacente.
-  /// O tipo [Object] é usado para generalidade; substitua por um tipo
-  /// mais específico se os detalhes da implementação forem conhecidos.
+  /// Reference to the underlying concrete implementation.
+  /// The [Object] type is used for generality; replace it with a more
+  /// specific type if the implementation details are known.
   final Object implementation;
 
-  /// Configura a cifra RC4.
+  /// Sets up the RC4 cipher.
   ///
-  /// Lança um [ArgumentError] se o comprimento de [keyBytes] não estiver
-  /// entre 16 e 256 bytes (inclusive).
+  /// Throws an [ArgumentError] if the length of [keyBytes] is not between
+  /// 16 and 256 bytes (inclusive).
   ///
-  /// - [keyBytes]: Os bytes da chave para a cifra RC4.
-  /// - [implementation]: A instância da implementação concreta.
+  /// - [keyBytes]: the key bytes for the RC4 cipher.
+  /// - [implementation]: the concrete implementation instance.
   RC4(Uint8List keyBytes, this.implementation) {
-    // Valida o comprimento da chave
+    // Validate the key length
     if (keyBytes.length < 16 || keyBytes.length > 256) {
       throw ArgumentError(
-          'O comprimento da chave RC4 deve estar entre 16 e 256 bytes, inclusive. '
-          'Recebido: ${keyBytes.length}');
+          'RC4 key length must be between 16 and 256 bytes, inclusive. '
+          'Got: ${keyBytes.length}');
     }
-    // Nota: A chave em si (keyBytes) não é armazenada nesta classe abstrata.
-    // Assume-se que a subclasse concreta ou a 'implementation' a gerenciará.
+    // Note: the key itself (keyBytes) is not stored in this abstract class.
+    // The concrete subclass or the 'implementation' is expected to manage it.
   }
 
-  /// Criptografa o [plaintext] (texto claro).
+  /// Encrypts [plaintext].
   ///
-  /// Retorna o [ciphertext] (texto cifrado) como [Uint8List].
+  /// Returns the ciphertext as a [Uint8List].
   Uint8List encrypt(Uint8List plaintext);
 
-  /// Decriptografa o [ciphertext] (texto cifrado).
+  /// Decrypts [ciphertext].
   ///
-  /// Para RC4, a operação é tipicamente idêntica à criptografia.
-  /// Retorna o [plaintext] (texto claro) como [Uint8List].
+  /// For RC4, the operation is typically identical to encryption.
+  /// Returns the plaintext as a [Uint8List].
   Uint8List decrypt(Uint8List ciphertext);
 }

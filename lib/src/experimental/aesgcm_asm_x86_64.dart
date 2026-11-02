@@ -1,18 +1,18 @@
 // dart format width=5000
 //
-// Versão otimizada do AES-GCM que usa instruções PCLMULQDQ via shell code x86_64
-// para multiplicação em GF(2^128) - GHASH
+// Optimized AES-GCM that uses PCLMULQDQ instructions via x86_64 shellcode
+// for multiplication in GF(2^128) - GHASH.
 //
-// Esta implementação oferece speedup de 50-100x sobre a versão BigInt
+// This implementation is 50-100x faster than the BigInt version.
 //
-// Instruções usadas:
-// - PCLMULQDQ: Multiplicação carry-less (polynomial) de 64x64 bits
-// - PSHUFD: Shuffle de doublewords
-// - PXOR: XOR 128-bit
-// - MOVDQU: Load/store unaligned 128-bit
+// Instructions used:
+// - PCLMULQDQ: 64x64-bit carry-less (polynomial) multiplication
+// - PSHUFD: doubleword shuffle
+// - PXOR: 128-bit XOR
+// - MOVDQU: unaligned 128-bit load/store
 //
-// IMPORTANTE: Requer suporte PCLMULQDQ (CPUID.01H:ECX.PCLMULQDQ[bit 1])
-// Disponível desde: Intel Westmere (2010), AMD Bulldozer (2011)
+// IMPORTANT: requires PCLMULQDQ support (CPUID.01H:ECX.PCLMULQDQ[bit 1]).
+// Available since Intel Westmere (2010) and AMD Bulldozer (2011).
 
 import 'dart:ffi' as ffi;
 import 'dart:io' show Platform;
@@ -22,11 +22,11 @@ import 'package:tlslite/src/ffi/native_memory.dart' as pkgffi;
 
 import 'rijndael_fast_asm_x86_64.dart' show ExecutableMemory;
 
-/// Verifica se PCLMULQDQ é suportado
+/// Checks whether PCLMULQDQ is supported.
 class PclmulqdqSupport {
   static bool? _supported;
 
-  /// Retorna true se PCLMULQDQ é suportado
+  /// Returns true if PCLMULQDQ is supported.
   static bool get isSupported {
     _supported ??= _checkSupport();
     return _supported!;
@@ -44,10 +44,10 @@ class PclmulqdqSupport {
     }
   }
 
-  /// CPUID check para PCLMULQDQ (bit 1 de ECX quando EAX=1)
+  /// CPUID check for PCLMULQDQ (bit 1 of ECX with EAX=1).
   static bool _executeCpuidCheck() {
-    // Shell code para verificar PCLMULQDQ
-    // CPUID com EAX=1, verifica bit 1 de ECX
+    // Shellcode that checks for PCLMULQDQ
+    // CPUID with EAX=1, checks bit 1 of ECX
     final cpuidCode = Uint8List.fromList([
       0x53, // push rbx
       0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1
@@ -71,23 +71,23 @@ class PclmulqdqSupport {
   }
 }
 
-/// Shell codes para operações GHASH usando PCLMULQDQ
+/// Shellcodes for GHASH operations using PCLMULQDQ.
 class GhashShellCode {
-  /// Shell code para multiplicação GF(2^128) usando PCLMULQDQ
+  /// Shellcode for GF(2^128) multiplication using PCLMULQDQ.
   ///
-  /// Implementa: result = a * b mod P onde P = x^128 + x^7 + x^2 + x + 1
+  /// Computes: result = a * b mod P where P = x^128 + x^7 + x^2 + x + 1
   ///
-  /// Parâmetros (Windows x64):
-  ///   rcx = ponteiro para a (16 bytes, big-endian)
-  ///   rdx = ponteiro para b (16 bytes, big-endian) 
-  ///   r8  = ponteiro para result (16 bytes, big-endian)
+  /// Parameters (Windows x64):
+  ///   rcx = pointer to a (16 bytes, big-endian)
+  ///   rdx = pointer to b (16 bytes, big-endian) 
+  ///   r8  = pointer to result (16 bytes, big-endian)
   ///
-  /// Algoritmo Karatsuba para PCLMULQDQ:
-  /// 1. Calcula produto parcial low:  a_lo * b_lo
-  /// 2. Calcula produto parcial high: a_hi * b_hi  
-  /// 3. Calcula produto parcial mid:  (a_lo ^ a_hi) * (b_lo ^ b_hi)
-  /// 4. Combina: result = high || (mid ^ low ^ high) || low
-  /// 5. Reduz mod x^128 + x^7 + x^2 + x + 1
+  /// Karatsuba algorithm for PCLMULQDQ:
+  /// 1. Compute the low partial product:  a_lo * b_lo
+  /// 2. Compute the high partial product: a_hi * b_hi  
+  /// 3. Compute the mid partial product:  (a_lo ^ a_hi) * (b_lo ^ b_hi)
+  /// 4. Combine: result = high || (mid ^ low ^ high) || low
+  /// 5. Reduce mod x^128 + x^7 + x^2 + x + 1
   static Uint8List getGfMul128ShellCode() {
     if (Platform.isWindows) {
       return _getGfMul128Windows();
@@ -99,28 +99,28 @@ class GhashShellCode {
   /// Windows x64 calling convention: rcx, rdx, r8, r9
   static Uint8List _getGfMul128Windows() {
     return Uint8List.fromList([
-      // Prólogo - salvar registradores XMM não-voláteis
-      0x48, 0x83, 0xEC, 0x58, // sub rsp, 88 (alinhamento + espaço para XMM)
+      // Prologue - save the non-volatile XMM registers
+      0x48, 0x83, 0xEC, 0x58, // sub rsp, 88 (alignment + space for XMM)
       0x0F, 0x29, 0x74, 0x24, 0x20, // movaps [rsp+32], xmm6
       0x0F, 0x29, 0x7C, 0x24, 0x30, // movaps [rsp+48], xmm7
 
-      // Carregar operandos (big-endian, precisa byte-swap)
+      // Load the operands (big-endian, need a byte swap)
       0xF3, 0x0F, 0x6F, 0x01, // movdqu xmm0, [rcx]  ; a
       0xF3, 0x0F, 0x6F, 0x0A, // movdqu xmm1, [rdx]  ; b
 
-      // Byte-swap para little-endian interno (PSHUFB com máscara)
-      // Carrega constante de swap na pilha
+      // Byte-swap to internal little-endian (PSHUFB with a mask)
+      // Put the swap constant on the stack
       0x48, 0xB8, 0x0F, 0x0E, 0x0D, 0x0C, 0x0B, 0x0A, 0x09, 0x08, // mov rax, 0x08090A0B0C0D0E0F
       0x48, 0x89, 0x44, 0x24, 0x00, // mov [rsp], rax
       0x48, 0xB8, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00, // mov rax, 0x0001020304050607
       0x48, 0x89, 0x44, 0x24, 0x08, // mov [rsp+8], rax
-      0xF3, 0x0F, 0x6F, 0x34, 0x24, // movdqu xmm6, [rsp] ; máscara de swap
+      0xF3, 0x0F, 0x6F, 0x34, 0x24, // movdqu xmm6, [rsp] ; swap mask
 
-      // Aplicar byte-swap
+      // Apply the byte swap
       0x66, 0x0F, 0x38, 0x00, 0xC6, // pshufb xmm0, xmm6
       0x66, 0x0F, 0x38, 0x00, 0xCE, // pshufb xmm1, xmm6
 
-      // === Multiplicação Karatsuba ===
+      // === Karatsuba multiplication ===
       // xmm0 = a, xmm1 = b
       // xmm2 = a_lo * b_lo (PCLMULQDQ imm8=0x00)
       0x66, 0x0F, 0x6F, 0xD0, // movdqa xmm2, xmm0
@@ -138,15 +138,15 @@ class GhashShellCode {
       0x66, 0x0F, 0x6F, 0xE8, // movdqa xmm5, xmm0
       0x66, 0x0F, 0x3A, 0x44, 0xE9, 0x01, // pclmulqdq xmm5, xmm1, 0x01
 
-      // xmm4 = xmm4 ^ xmm5 (termos médios combinados)
+      // xmm4 = xmm4 ^ xmm5 (combined middle terms)
       0x66, 0x0F, 0xEF, 0xE5, // pxor xmm4, xmm5
 
-      // Alinhar termos médios
-      // xmm5 = xmm4 >> 64 (para adicionar ao high)
+      // Align the middle terms
+      // xmm5 = xmm4 >> 64 (to add into high)
       0x66, 0x0F, 0x6F, 0xEC, // movdqa xmm5, xmm4
       0x66, 0x0F, 0x73, 0xDD, 0x40, // psrldq xmm5, 8
 
-      // xmm4 = xmm4 << 64 (para adicionar ao low)  
+      // xmm4 = xmm4 << 64 (to add into low)  
       0x66, 0x0F, 0x73, 0xFC, 0x08, // pslldq xmm4, 8
 
       // xmm2 = low ^ mid_low
@@ -155,37 +155,37 @@ class GhashShellCode {
       // xmm3 = high ^ mid_high
       0x66, 0x0F, 0xEF, 0xDD, // pxor xmm3, xmm5
 
-      // === Redução mod x^128 + x^7 + x^2 + x + 1 ===
-      // Polinômio de redução em little-endian: 0xE100000000000000 (bits 127,126,121,120)
-      // Mas para GCM usamos reflected: bit 0 = coef de x^127
+      // === Reduction mod x^128 + x^7 + x^2 + x + 1 ===
+      // Reduction polynomial in little-endian: 0xE100000000000000 (bits 127,126,121,120)
+      // but GCM uses the reflected form: bit 0 = coefficient of x^127
 
-      // Constante de redução
+      // Reduction constant
       0x48, 0xB8, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC2, // mov rax, 0xC200000000000001
       0x66, 0x48, 0x0F, 0x6E, 0xF0, // movq xmm6, rax
 
-      // Primeira fase de redução
+      // First reduction phase
       0x66, 0x0F, 0x6F, 0xFA, // movdqa xmm7, xmm2
       0x66, 0x0F, 0x3A, 0x44, 0xFE, 0x00, // pclmulqdq xmm7, xmm6, 0x00
       0x66, 0x0F, 0x70, 0xFF, 0x4E, // pshufd xmm7, xmm7, 0x4E (swap halves)
       0x66, 0x0F, 0xEF, 0xD7, // pxor xmm2, xmm7
 
-      // Segunda fase de redução
+      // Second reduction phase
       0x66, 0x0F, 0x6F, 0xFA, // movdqa xmm7, xmm2
       0x66, 0x0F, 0x3A, 0x44, 0xFE, 0x10, // pclmulqdq xmm7, xmm6, 0x10
       0x66, 0x0F, 0x70, 0xFF, 0x4E, // pshufd xmm7, xmm7, 0x4E
       0x66, 0x0F, 0xEF, 0xD7, // pxor xmm2, xmm7
 
-      // Resultado final = high ^ reduced_low
+      // Final result = high ^ reduced_low
       0x66, 0x0F, 0xEF, 0xDA, // pxor xmm3, xmm2
 
-      // Byte-swap de volta para big-endian
+      // Byte-swap back to big-endian
       0xF3, 0x0F, 0x6F, 0x34, 0x24, // movdqu xmm6, [rsp]
       0x66, 0x0F, 0x38, 0x00, 0xDE, // pshufb xmm3, xmm6
 
-      // Store resultado
+      // Store the result
       0xF3, 0x41, 0x0F, 0x7F, 0x18, // movdqu [r8], xmm3
 
-      // Epílogo - restaurar registradores
+      // Epilogue - restore the registers
       0x0F, 0x28, 0x74, 0x24, 0x20, // movaps xmm6, [rsp+32]
       0x0F, 0x28, 0x7C, 0x24, 0x30, // movaps xmm7, [rsp+48]
       0x48, 0x83, 0xC4, 0x58, // add rsp, 88
@@ -197,11 +197,11 @@ class GhashShellCode {
   /// Linux System V AMD64 ABI: rdi, rsi, rdx, rcx
   static Uint8List _getGfMul128Linux() {
     return Uint8List.fromList([
-      // Carregar operandos
+      // Load the operands
       0xF3, 0x0F, 0x6F, 0x07, // movdqu xmm0, [rdi]  ; a
       0xF3, 0x0F, 0x6F, 0x0E, // movdqu xmm1, [rsi]  ; b
 
-      // Criar máscara de byte-swap na pilha
+      // Build the byte-swap mask on the stack
       0x48, 0x83, 0xEC, 0x18, // sub rsp, 24
       0x48, 0xB8, 0x0F, 0x0E, 0x0D, 0x0C, 0x0B, 0x0A, 0x09, 0x08,
       0x48, 0x89, 0x04, 0x24, // mov [rsp], rax
@@ -233,7 +233,7 @@ class GhashShellCode {
       0x66, 0x0F, 0xEF, 0xD4, // pxor xmm2, xmm4
       0x66, 0x0F, 0xEF, 0xDD, // pxor xmm3, xmm5
 
-      // Redução
+      // Reduction
       0x48, 0xB8, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC2,
       0x66, 0x48, 0x0F, 0x6E, 0xF0, // movq xmm6, rax
 
@@ -249,7 +249,7 @@ class GhashShellCode {
 
       0x66, 0x0F, 0xEF, 0xDA, // pxor xmm3, xmm2
 
-      // Byte-swap de volta
+      // Byte-swap back
       0xF3, 0x0F, 0x6F, 0x34, 0x24,
       0x66, 0x0F, 0x38, 0x00, 0xDE,
 
@@ -262,13 +262,13 @@ class GhashShellCode {
   }
 }
 
-/// Tipo de função nativa para GF multiply
+/// Native function type for the GF multiply.
 typedef GfMulNativeFunc = ffi.Void Function(
     ffi.Pointer<ffi.Uint8>, ffi.Pointer<ffi.Uint8>, ffi.Pointer<ffi.Uint8>);
 typedef GfMulDartFunc = void Function(
     ffi.Pointer<ffi.Uint8>, ffi.Pointer<ffi.Uint8>, ffi.Pointer<ffi.Uint8>);
 
-/// GHASH otimizado usando PCLMULQDQ
+/// Optimized GHASH using PCLMULQDQ.
 class GhashAsm {
   late final ExecutableMemory _gfMulMem;
   late final GfMulDartFunc _gfMul;
@@ -276,62 +276,62 @@ class GhashAsm {
   /// H = AES_K(0^128) - hash key
   final Uint8List h;
 
-  /// Acumulador do GHASH
+  /// GHASH accumulator.
   Uint8List _acc;
 
   GhashAsm(this.h) : _acc = Uint8List(16) {
     if (!PclmulqdqSupport.isSupported) {
-      throw UnsupportedError('PCLMULQDQ não suportado nesta plataforma');
+      throw UnsupportedError('PCLMULQDQ is not supported on this platform');
     }
 
-    // Aloca e prepara o shell code
+    // Allocate and prepare the shellcode
     _gfMulMem = ExecutableMemory.allocate(GhashShellCode.getGfMul128ShellCode());
     final funcPtr = _gfMulMem.pointer.cast<ffi.NativeFunction<GfMulNativeFunc>>();
     _gfMul = funcPtr.asFunction<GfMulDartFunc>();
   }
 
-  /// Reset do acumulador
+  /// Resets the accumulator.
   void reset() {
     for (int i = 0; i < 16; i++) {
       _acc[i] = 0;
     }
   }
 
-  /// Atualiza GHASH com dados (deve ser múltiplo de 16 bytes ou será padded)
+  /// Updates GHASH with [data] (zero-padded if not a multiple of 16 bytes).
   void update(Uint8List data) {
     final fullBlocks = data.length ~/ 16;
 
-    // Aloca buffers nativos para a operação
+    // Allocate native buffers for the operation
     final aPtr = pkgffi.calloc<ffi.Uint8>(16);
     final bPtr = pkgffi.calloc<ffi.Uint8>(16);
     final resultPtr = pkgffi.calloc<ffi.Uint8>(16);
 
     try {
-      // Copia H para bPtr (permanece constante)
+      // Copy H into bPtr (stays constant)
       for (int i = 0; i < 16; i++) {
         bPtr[i] = h[i];
       }
 
-      // Processa blocos completos
+      // Process full blocks
       for (int i = 0; i < fullBlocks; i++) {
-        // XOR acumulador com bloco de dados
+        // XOR the accumulator with the data block
         for (int j = 0; j < 16; j++) {
           aPtr[j] = _acc[j] ^ data[i * 16 + j];
         }
 
-        // Multiplica em GF(2^128)
+        // Multiply in GF(2^128)
         _gfMul(aPtr, bPtr, resultPtr);
 
-        // Copia resultado para acumulador
+        // Copy the result into the accumulator
         for (int j = 0; j < 16; j++) {
           _acc[j] = resultPtr[j];
         }
       }
 
-      // Processa bloco parcial (se houver)
+      // Process the partial block (if any)
       final extra = data.length % 16;
       if (extra != 0) {
-        // XOR com bloco parcial (zero-padded)
+        // XOR with the partial block (zero-padded)
         for (int j = 0; j < 16; j++) {
           if (j < extra) {
             aPtr[j] = _acc[j] ^ data[fullBlocks * 16 + j];
@@ -353,14 +353,14 @@ class GhashAsm {
     }
   }
 
-  /// Finaliza e retorna o digest
+  /// Finishes and returns the digest.
   Uint8List finalize(int aadLength, int ciphertextLength) {
-    // Bloco de comprimentos: aadLen (64-bit BE) || ctLen (64-bit BE)
+    // Lengths block: aadLen (64-bit BE) || ctLen (64-bit BE)
     final lenBlock = Uint8List(16);
     final aadBits = aadLength * 8;
     final ctBits = ciphertextLength * 8;
 
-    // AAD length em bits (big-endian)
+    // AAD length in bits (big-endian)
     lenBlock[0] = (aadBits >> 56) & 0xFF;
     lenBlock[1] = (aadBits >> 48) & 0xFF;
     lenBlock[2] = (aadBits >> 40) & 0xFF;
@@ -370,7 +370,7 @@ class GhashAsm {
     lenBlock[6] = (aadBits >> 8) & 0xFF;
     lenBlock[7] = aadBits & 0xFF;
 
-    // Ciphertext length em bits (big-endian)
+    // Ciphertext length in bits (big-endian)
     lenBlock[8] = (ctBits >> 56) & 0xFF;
     lenBlock[9] = (ctBits >> 48) & 0xFF;
     lenBlock[10] = (ctBits >> 40) & 0xFF;
@@ -385,22 +385,22 @@ class GhashAsm {
     return Uint8List.fromList(_acc);
   }
 
-  /// Libera recursos
+  /// Frees resources.
   void dispose() {
     _gfMulMem.free();
   }
 }
 
-/// Tipo de função para encriptação AES de bloco único
+/// Function type for single-block AES encryption.
 typedef RawAesEncryptFunc = Uint8List Function(Uint8List block);
 
-/// AES-GCM otimizado usando AES-NI + PCLMULQDQ
+/// Optimized AES-GCM using AES-NI + PCLMULQDQ.
 ///
-/// Esta classe combina:
-/// - AES-NI para encriptação de blocos (via RijndaelAsmX8664)
-/// - PCLMULQDQ para GHASH (multiplicação GF(2^128))
+/// This class combines:
+/// - AES-NI for block encryption (via RijndaelAsmX8664)
+/// - PCLMULQDQ for GHASH (GF(2^128) multiplication)
 ///
-/// Speedup esperado: 50-100x sobre a implementação BigInt
+/// Expected speedup: 50-100x over the BigInt implementation.
 class AESGCMAsm {
   final Uint8List key;
   final String implementation = 'asm-x86_64';
@@ -424,36 +424,36 @@ class AESGCMAsm {
       throw ArgumentError('AES-GCM key must be 16 or 32 bytes long');
     }
 
-    // Calcula H = AES_K(0^128)
+    // Compute H = AES_K(0^128)
     _h = _rawAesEncrypt(Uint8List(16));
     _ghash = GhashAsm(_h);
   }
 
-  /// Verifica se a implementação otimizada está disponível
+  /// Whether the optimized implementation is available.
   static bool get isSupported => PclmulqdqSupport.isSupported;
 
-  /// Encripta e autentica plaintext com AAD
+  /// Encrypts and authenticates [plaintext] with [aad].
   Uint8List seal(Uint8List nonce, Uint8List plaintext, Uint8List aad) {
     _checkNonce(nonce);
 
-    // Gera o contador inicial para a tag (counter = 1)
+    // Build the initial counter for the tag (counter = 1)
     final tagCounter = _buildCounter(nonce, 1);
     final tagMask = _rawAesEncrypt(tagCounter);
 
-    // Encripta plaintext com counter mode (counter inicial = 2)
+    // Encrypt the plaintext in counter mode (initial counter = 2)
     final ciphertext = _encryptCtr(nonce, plaintext, 2);
 
-    // Calcula tag via GHASH
+    // Compute the tag via GHASH
     final tag = _computeTag(aad, ciphertext, tagMask);
 
-    // Retorna ciphertext || tag
+    // Return ciphertext || tag
     final result = Uint8List(ciphertext.length + tagLength);
     result.setRange(0, ciphertext.length, ciphertext);
     result.setRange(ciphertext.length, result.length, tag);
     return result;
   }
 
-  /// Decripta e verifica ciphertextWithTag
+  /// Decrypts and verifies [ciphertextWithTag].
   Uint8List? open(Uint8List nonce, Uint8List ciphertextWithTag, Uint8List aad) {
     _checkNonce(nonce);
 
@@ -461,21 +461,21 @@ class AESGCMAsm {
       return null;
     }
 
-    // Separa ciphertext e tag
+    // Split ciphertext and tag
     final ciphertext = ciphertextWithTag.sublist(0, ciphertextWithTag.length - tagLength);
     final tag = ciphertextWithTag.sublist(ciphertextWithTag.length - tagLength);
 
-    // Gera tag mask
+    // Build the tag mask
     final tagCounter = _buildCounter(nonce, 1);
     final tagMask = _rawAesEncrypt(tagCounter);
 
-    // Verifica tag
+    // Verify the tag
     final expectedTag = _computeTag(aad, ciphertext, tagMask);
     if (!_constantTimeCompare(expectedTag, tag)) {
       return null;
     }
 
-    // Decripta (CTR mode é simétrico)
+    // Decrypt (CTR mode is symmetric)
     return _encryptCtr(nonce, ciphertext, 2);
   }
 
@@ -503,16 +503,16 @@ class AESGCMAsm {
 
     final fullBlocks = input.length ~/ 16;
     for (int i = 0; i < fullBlocks; i++) {
-      // Atualiza contador
+      // Update the counter
       counter[12] = (counterVal >> 24) & 0xFF;
       counter[13] = (counterVal >> 16) & 0xFF;
       counter[14] = (counterVal >> 8) & 0xFF;
       counter[15] = counterVal & 0xFF;
 
-      // Encripta contador
+      // Encrypt the counter
       final keystream = _rawAesEncrypt(counter);
 
-      // XOR com input
+      // XOR with the input
       for (int j = 0; j < 16; j++) {
         output[i * 16 + j] = input[i * 16 + j] ^ keystream[j];
       }
@@ -520,7 +520,7 @@ class AESGCMAsm {
       counterVal++;
     }
 
-    // Bloco parcial
+    // Partial block
     final extra = input.length % 16;
     if (extra > 0) {
       counter[12] = (counterVal >> 24) & 0xFF;
@@ -538,24 +538,24 @@ class AESGCMAsm {
     return output;
   }
 
-  /// Computa tag via GHASH
+  /// Computes the tag via GHASH.
   Uint8List _computeTag(Uint8List aad, Uint8List ciphertext, Uint8List tagMask) {
     _ghash.reset();
 
-    // Processa AAD (com padding)
+    // Process the AAD (with padding)
     if (aad.isNotEmpty) {
       _ghash.update(_padTo16(aad));
     }
 
-    // Processa ciphertext (com padding)
+    // Process the ciphertext (with padding)
     if (ciphertext.isNotEmpty) {
       _ghash.update(_padTo16(ciphertext));
     }
 
-    // Finaliza com blocos de comprimento
+    // Finish with the lengths block
     final digest = _ghash.finalize(aad.length, ciphertext.length);
 
-    // XOR com tag mask
+    // XOR with the tag mask
     for (int i = 0; i < 16; i++) {
       digest[i] ^= tagMask[i];
     }
@@ -563,7 +563,7 @@ class AESGCMAsm {
     return digest;
   }
 
-  /// Padding para múltiplo de 16 bytes
+  /// Pads to a multiple of 16 bytes.
   Uint8List _padTo16(Uint8List data) {
     final remainder = data.length % 16;
     if (remainder == 0) {
@@ -574,7 +574,7 @@ class AESGCMAsm {
     return padded;
   }
 
-  /// Comparação em tempo constante
+  /// Constant-time comparison.
   bool _constantTimeCompare(Uint8List a, Uint8List b) {
     if (a.length != b.length) return false;
     int diff = 0;
@@ -584,7 +584,7 @@ class AESGCMAsm {
     return diff == 0;
   }
 
-  /// Libera recursos nativos
+  /// Frees native resources.
   void dispose() {
     _ghash.dispose();
   }
