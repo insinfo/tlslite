@@ -105,12 +105,11 @@ void main() {
         // print('✓ HTTP response received');
         // print('  Status: ${response.status} ${response.reason}');
 
-        if (response.status == 200 && response.body.isNotEmpty) {
-          // final bodyText = utf8.decode(response.body, allowMalformed: true);
-          // print('  Zen: $bodyText');
-        }
-
-        expect(response.status, equals(200));
+        // The TLS session worked if a complete HTTP response came back. The
+        // unauthenticated GitHub API answers 403 once the shared CI runner IP
+        // exceeds its rate limit (60 requests per hour), so accept that too.
+        expect(response.status, anyOf(200, 403));
+        expect(response.body, isNotEmpty);
       } finally {
         await conn.close();
       }
