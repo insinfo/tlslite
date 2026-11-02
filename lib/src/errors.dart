@@ -1,3 +1,7 @@
+// Ported to Dart from tlslite-ng tlslite/errors.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 import 'constants.dart';
 
 /// Metaclasse para exceções TLS Lite.
@@ -150,6 +154,80 @@ class TLSValidationError extends TLSAuthenticationError {
     final baseStr = super.toString();
     return info == null ? baseStr : '$baseStr (Info: $info)';
   }
+}
+
+/// Why an X.509 certificate chain was rejected by `X509Validator`.
+enum CertificateVerificationFailure {
+  /// The peer did not present any certificate.
+  noCertificate,
+
+  /// A certificate on the path is past its notAfter date.
+  expired,
+
+  /// A certificate on the path is before its notBefore date.
+  notYetValid,
+
+  /// No path to a trust anchor could be built (issuer not found).
+  unknownIssuer,
+
+  /// The leaf is self-signed and is not one of the trust anchors.
+  selfSigned,
+
+  /// A certificate signature did not verify with its issuer's key.
+  badSignature,
+
+  /// An issuing certificate is not a CA (basicConstraints cA=false/absent).
+  notCA,
+
+  /// An issuer's basicConstraints pathLenConstraint was exceeded.
+  pathLengthExceeded,
+
+  /// An issuer's keyUsage does not allow keyCertSign.
+  keyUsage,
+
+  /// The leaf's extendedKeyUsage does not allow the required purpose
+  /// (serverAuth by default).
+  extendedKeyUsage,
+
+  /// A name in the leaf violates an issuer's nameConstraints.
+  nameConstraints,
+
+  /// A certificate carries a critical extension the validator does not
+  /// understand.
+  unhandledCriticalExtension,
+
+  /// The leaf does not match the expected host name / IP address.
+  hostnameMismatch,
+
+  /// The chain is longer than the validator's maximum depth.
+  chainTooLong,
+
+  /// The certificate (or its signature algorithm / key) is malformed or
+  /// unsupported.
+  malformed,
+}
+
+/// The peer's X.509 certificate chain failed validation (path building,
+/// signature, validity period, constraints or host name check).
+///
+/// Thrown by `X509Validator.validate` and, when the validator is used as a
+/// `Checker` during `TlsConnection.handshakeClient`, raised from the
+/// handshake after a fatal alert (`bad_certificate`, `certificate_expired`
+/// or `unknown_ca`) has been sent to the peer.
+class TLSCertificateVerificationError extends TLSValidationError {
+  /// Machine readable failure category.
+  final CertificateVerificationFailure reason;
+
+  /// The certificate that caused the failure, when known (an `X509`).
+  final Object? certificate;
+
+  TLSCertificateVerificationError(this.reason, String message,
+      {this.certificate})
+      : super(message);
+
+  @override
+  String toString() => 'TLSCertificateVerificationError(${reason.name}): '
+      '$message';
 }
 
 // --- Other TLS Errors ---

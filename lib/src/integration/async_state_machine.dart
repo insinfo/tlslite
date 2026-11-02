@@ -1,3 +1,7 @@
+// Ported to Dart from tlslite-ng tlslite/integration/asyncstatemachine.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 /// A state machine for using TLS Lite with asynchronous I/O.
 ///
 /// In the implementation, this class bridges TLS Lite with asyncore and Twisted.

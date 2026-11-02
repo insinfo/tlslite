@@ -26,7 +26,7 @@ void main() {
       );
 
       final kex = ADHKeyExchange(
-        tls_constants.CipherSuite.TLS_DH_ANON_WITH_AES_128_CBC_SHA,
+        tls_constants.CipherSuite.tlsDhAnonWithAes128CbcSha,
         clientHello,
         serverHello,
         null,
@@ -57,7 +57,7 @@ void main() {
       );
 
       final kex = ADHKeyExchange(
-        tls_constants.CipherSuite.TLS_DH_ANON_WITH_AES_128_CBC_SHA,
+        tls_constants.CipherSuite.tlsDhAnonWithAes128CbcSha,
         clientHello,
         serverHello,
         null,
@@ -88,7 +88,7 @@ void main() {
       );
 
       final kex = ADHKeyExchange(
-        tls_constants.CipherSuite.TLS_DH_ANON_WITH_AES_128_CBC_SHA,
+        tls_constants.CipherSuite.tlsDhAnonWithAes128CbcSha,
         clientHello,
         serverHello,
         null,
@@ -138,19 +138,19 @@ void main() {
         randomSeed: 11,
         supportedGroups: const [tls_constants.GroupName.secp256r1],
         ecPointFormats: const [
-          tls_constants.ECPointFormat.ansiX962_compressed_prime,
+          tls_constants.ECPointFormat.ansiX962CompressedPrime,
         ],
       );
       final serverHello = _FakeHello(
         version: const [3, 3],
         randomSeed: 22,
         ecPointFormats: const [
-          tls_constants.ECPointFormat.ansiX962_compressed_char2,
+          tls_constants.ECPointFormat.ansiX962CompressedChar2,
         ],
       );
 
       final kex = AECDHKeyExchange(
-        tls_constants.CipherSuite.TLS_ECDH_ANON_WITH_AES_128_CBC_SHA,
+        tls_constants.CipherSuite.tlsEcdhAnonWithAes128CbcSha,
         clientHello,
         serverHello,
         null,
@@ -169,7 +169,7 @@ void main() {
         randomSeed: 33,
         supportedGroups: const [tls_constants.GroupName.secp256r1],
         ecPointFormats: const [
-          tls_constants.ECPointFormat.ansiX962_compressed_prime,
+          tls_constants.ECPointFormat.ansiX962CompressedPrime,
           tls_constants.ECPointFormat.uncompressed,
         ],
       );
@@ -178,12 +178,12 @@ void main() {
         randomSeed: 44,
         ecPointFormats: const [
           tls_constants.ECPointFormat.uncompressed,
-          tls_constants.ECPointFormat.ansiX962_compressed_prime,
+          tls_constants.ECPointFormat.ansiX962CompressedPrime,
         ],
       );
 
       final serverKex = AECDHKeyExchange(
-        tls_constants.CipherSuite.TLS_ECDH_ANON_WITH_AES_128_CBC_SHA,
+        tls_constants.CipherSuite.tlsEcdhAnonWithAes128CbcSha,
         clientHello,
         serverHello,
         null,
@@ -303,18 +303,16 @@ class _FakeHello {
   final List<int>? ecPointFormats;
   final bool advertiseSupportedGroupsExtension;
 
-  List<int> get client_version => _version;
   List<int> get clientVersion => _version;
-  List<int> get server_version => _version;
   List<int> get serverVersion => _version;
 
   dynamic getExtension(int type) {
-    if (type == tls_constants.ExtensionType.supported_groups &&
+    if (type == tls_constants.ExtensionType.supportedGroups &&
         supportedGroups != null &&
         advertiseSupportedGroupsExtension) {
       return _FakeSupportedGroups(supportedGroups!);
     }
-    if (type == tls_constants.ExtensionType.ec_point_formats &&
+    if (type == tls_constants.ExtensionType.ecPointFormats &&
         ecPointFormats != null) {
       return _FakeEcPointFormats(ecPointFormats!);
     }
@@ -343,7 +341,7 @@ class _FakeClientKeyExchange {
 SRPKeyExchange _buildSrpKeyExchange({HandshakeSettings? settings}) {
   final hello = _FakeHello(version: const [3, 3], randomSeed: 55);
   return SRPKeyExchange(
-    tls_constants.CipherSuite.TLS_SRP_SHA_WITH_AES_128_CBC_SHA,
+    tls_constants.CipherSuite.tlsSrpShaWithAes128CbcSha,
     hello,
     hello,
     null,
@@ -357,7 +355,7 @@ SRPKeyExchange _buildSrpKeyExchange({HandshakeSettings? settings}) {
 ADHKeyExchange _buildAdhKeyExchange({HandshakeSettings? settings}) {
   final hello = _FakeHello(version: const [3, 3], randomSeed: 77);
   return ADHKeyExchange(
-    tls_constants.CipherSuite.TLS_DH_ANON_WITH_AES_128_CBC_SHA,
+    tls_constants.CipherSuite.tlsDhAnonWithAes128CbcSha,
     hello,
     hello,
     null,
@@ -370,7 +368,7 @@ TlsServerKeyExchange _buildDhServerKeyExchange({
   required BigInt generator,
 }) {
   return TlsServerKeyExchange(
-    cipherSuite: tls_constants.CipherSuite.TLS_DH_ANON_WITH_AES_128_CBC_SHA,
+    cipherSuite: tls_constants.CipherSuite.tlsDhAnonWithAes128CbcSha,
     version: const [3, 3],
     dhP: prime,
     dhG: generator,
@@ -383,7 +381,7 @@ TlsServerKeyExchange _buildSrpServerKeyExchange({
   required BigInt generator,
 }) {
   return TlsServerKeyExchange(
-    cipherSuite: tls_constants.CipherSuite.TLS_SRP_SHA_WITH_AES_128_CBC_SHA,
+    cipherSuite: tls_constants.CipherSuite.tlsSrpShaWithAes128CbcSha,
     version: const [3, 3],
     srpN: prime,
     srpG: generator,

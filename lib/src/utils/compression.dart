@@ -1,9 +1,13 @@
+// Ported to Dart from tlslite-ng tlslite/utils/compression.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 import 'dart:typed_data';
 
 import '../constants.dart';
 import '../errors.dart';
 import '../brotli/enc/brotli_encoder.dart';
-import '../brotli/dec/Decode.dart';
+import '../brotli/dec/decode.dart';
 import 'lists.dart';
 import '../zstd/zstd_decoder.dart';
 import '../zstd/zstd_encoder.dart';

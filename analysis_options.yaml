@@ -4,3 +4,11 @@ analyzer:
     - oracledb_dart/**
     - dart-pg/**
     - referencias/**
+    - packages/**
+    - native_tools/**
+linter:
+  rules:
+    - non_constant_identifier_names
+    - constant_identifier_names
+    - camel_case_types
+    - file_names

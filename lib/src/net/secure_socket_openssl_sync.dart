@@ -4,7 +4,7 @@ import 'dart:async';
 import 'dart:ffi' as ffi;
 import 'dart:io' as io;
 import 'dart:typed_data';
-import 'package:ffi/ffi.dart';
+import 'package:tlslite/src/ffi/native_memory.dart';
 
 import '../net_ffi/native_buffer_utils.dart';
 import '../openssl/generated/ffi.dart';

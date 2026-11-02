@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'bit_stream_writer.dart';
 import 'block_split.dart';
-import '../dec/Huffman.dart' show MAX_LENGTH;
+import '../dec/huffman.dart' show maxLength;
 import 'huffman_builder.dart';
 import 'huffman_writer.dart';
 import 'literal_histogram.dart';
@@ -420,13 +420,13 @@ class BrotliEncoder {
   Uint8List _buildLiteralTree(BrotliLiteralHistogram histogram) {
     final counts = histogram.counts;
     _ensureHistogramHasSymbol(counts);
-    return buildLimitedHuffmanCodeLengths(counts, counts.length, MAX_LENGTH);
+    return buildLimitedHuffmanCodeLengths(counts, counts.length, maxLength);
   }
 
   Uint8List _buildCodeLengths(List<int> histogram, int alphabetSize) {
     _ensureHistogramHasSymbol(histogram);
     _ensureHistogramHasMultipleSymbols(histogram);
-    return buildLimitedHuffmanCodeLengths(histogram, alphabetSize, MAX_LENGTH);
+    return buildLimitedHuffmanCodeLengths(histogram, alphabetSize, maxLength);
   }
 
   void _writeCommandStream(

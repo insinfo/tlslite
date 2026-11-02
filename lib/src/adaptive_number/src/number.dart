@@ -1,6 +1,4 @@
-import 'stub.dart'
-    if (dart.library.io) '../src/int.dart'
-    if (dart.library.html) '../src/int64.dart';
+import 'stub.dart' if (dart.library.io) '../src/int.dart';
 
 abstract class Number {
   static Number zero = Number(0);

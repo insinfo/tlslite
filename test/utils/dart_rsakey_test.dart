@@ -17,7 +17,7 @@ void main() {
   tearDown(resetRsaRandomBytes);
 
   test('MGF1 matches dart vector', () {
-    final mask = key.MGF1(_hexBytes(_mgfSeedHex), 107, 'sha1');
+    final mask = key.mgf1(_hexBytes(_mgfSeedHex), 107, 'sha1');
     expect(mask, _hexBytes(_mgfExpectedHex));
   });
 
@@ -30,7 +30,7 @@ void main() {
       return Uint8List.fromList(salt);
     });
     final mHash = secureHash(_dartMessageForPss(), 'sha1');
-    final em = key.EMSA_PSS_encode(mHash, 1023, 'sha1', saltLen: 10);
+    final em = key.emsaPssEncode(mHash, 1023, 'sha1', saltLen: 10);
     expect(randomCalled, isTrue, reason: 'salt RNG override not used');
     expect(em, _hexBytes(_pssEncodedHex));
   });
@@ -38,7 +38,7 @@ void main() {
   test('EMSA_PSS_verify accepts known vector', () {
     final mHash = secureHash(_dartMessageForPss(), 'sha1');
     expect(
-      key.EMSA_PSS_verify(mHash, _hexBytes(_pssEncodedHex), 1023, 'sha1',
+      key.emsaPssVerify(mHash, _hexBytes(_pssEncodedHex), 1023, 'sha1',
           saltLen: 10),
       isTrue,
     );
@@ -79,7 +79,8 @@ void main() {
     expect(parsed.privateExponent, equals(key.privateExponent));
   });
 
-  test('write serializes private key to encrypted PKCS#8 when password set', () {
+  test('write serializes private key to encrypted PKCS#8 when password set',
+      () {
     final pemData = key.write(password: 'hunter2');
     expect(pemData, contains('-----BEGIN ENCRYPTED PRIVATE KEY-----'));
     final parsed = parsePEMKey(

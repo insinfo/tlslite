@@ -116,8 +116,8 @@ void main() {
     for (final variant in variants) {
       test('Handshake (${variant['name']})', () async {
         // Certificados - use custom se especificado, senão usa nginx padrão
-        final certPath = (variant['certFile'] as String?) ?? 'scripts/nginx/server.crt';
-        final keyPath = (variant['keyFile'] as String?) ?? 'scripts/nginx/server.key';
+        final certPath = (variant['certFile'] as String?) ?? 'test/certificates/nginx/server.crt';
+        final keyPath = (variant['keyFile'] as String?) ?? 'test/certificates/nginx/server.key';
         final certPem = await File(certPath).readAsString();
         final keyPem = await File(keyPath).readAsString();
         final certChain = X509CertChain()..parsePemList(certPem);

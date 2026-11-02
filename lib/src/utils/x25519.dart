@@ -1,3 +1,7 @@
+// Ported to Dart from tlslite-ng tlslite/utils/x25519.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 import 'dart:typed_data';
 
 import 'cryptomath.dart';
@@ -5,21 +9,21 @@ import 'cryptomath.dart';
 const int _x25519Bits = 255;
 const int _x448Bits = 448;
 
-final Uint8List X25519_G = numberToByteArray(
+final Uint8List x25519G = numberToByteArray(
   BigInt.from(9),
   howManyBytes: 32,
   endian: 'little',
 );
 
-const int X25519_ORDER_SIZE = 32;
+const int x25519OrderSize = 32;
 
-final Uint8List X448_G = numberToByteArray(
+final Uint8List x448G = numberToByteArray(
   BigInt.from(5),
   howManyBytes: 56,
   endian: 'little',
 );
 
-const int X448_ORDER_SIZE = 56;
+const int x448OrderSize = 56;
 
 BigInt decodeUCoordinate(List<int> u, int bits) {
   if (bits != _x25519Bits && bits != _x448Bits) {
@@ -92,20 +96,20 @@ Uint8List _x25519Generic(
     swap = kt;
 
     final A = (x2 + z2) % p;
-    final AA = (A * A) % p;
+    final aa = (A * A) % p;
     final B = (x2 - z2) % p;
-    final BB = (B * B) % p;
-    final E = (AA - BB) % p;
+    final bb = (B * B) % p;
+    final E = (aa - bb) % p;
     final C = (x3 + z3) % p;
     final D = (x3 - z3) % p;
-    final DA = (D * A) % p;
-    final CB = (C * B) % p;
-    final tmp = (DA + CB) % p;
+    final da = (D * A) % p;
+    final cb = (C * B) % p;
+    final tmp = (da + cb) % p;
     x3 = (tmp * tmp) % p;
-    final tmp2 = (DA - CB) % p;
+    final tmp2 = (da - cb) % p;
     z3 = (x1 * ((tmp2 * tmp2) % p)) % p;
-    x2 = (AA * BB) % p;
-    final inner = (AA + (a24 * E) % p) % p;
+    x2 = (aa * bb) % p;
+    final inner = (aa + (a24 * E) % p) % p;
     z2 = (E * inner) % p;
   }
 

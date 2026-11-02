@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:test/test.dart';
-import 'package:tlslite/src/brotli/dec/Decode.dart';
+import 'package:tlslite/src/brotli/dec/decode.dart';
 import 'package:tlslite/src/brotli/enc/brotli_encoder.dart';
 import 'package:tlslite/src/brotli/enc/match_finder.dart';
 

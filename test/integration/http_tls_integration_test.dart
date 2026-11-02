@@ -199,7 +199,7 @@ void main() {
             'Connection: close\r\n'
             '\r\n';
         await tls.sendRecord(Message(
-          ContentType.application_data,
+          ContentType.applicationData,
           Uint8List.fromList(utf8.encode(request)),
         ));
 
@@ -240,7 +240,7 @@ void main() {
             'Connection: close\r\n'
             '\r\n';
         await tls.sendRecord(Message(
-          ContentType.application_data,
+          ContentType.applicationData,
           Uint8List.fromList(utf8.encode(request)),
         ));
 
@@ -281,7 +281,7 @@ void main() {
             'Connection: close\r\n'
             '\r\n';
         await tls.sendRecord(Message(
-          ContentType.application_data,
+          ContentType.applicationData,
           Uint8List.fromList(utf8.encode(request)),
         ));
 
@@ -317,14 +317,14 @@ void main() {
               'Connection: close\r\n'
               '\r\n';
           await tls.sendRecord(Message(
-            ContentType.application_data,
+            ContentType.applicationData,
             Uint8List.fromList(utf8.encode(request)),
           ));
 
           while (true) {
             final (header, parser) = await tls.recvMessage();
             final payload = parser.getFixBytes(parser.getRemainingLength());
-            if (header.type == ContentType.application_data) {
+            if (header.type == ContentType.applicationData) {
               expect(payload, isNotEmpty);
               break;
             }
@@ -479,7 +479,7 @@ void main() {
             'Connection: close\r\n'
             '\r\n';
         await tls.sendRecord(Message(
-          ContentType.application_data,
+          ContentType.applicationData,
           Uint8List.fromList(utf8.encode(request)),
         ));
 
@@ -862,14 +862,14 @@ Future<void> _tlsIsolateHandshakeEntry(List<dynamic> args) async {
           'Connection: close\r\n'
           '\r\n';
       await tls.sendRecord(Message(
-        ContentType.application_data,
+        ContentType.applicationData,
         Uint8List.fromList(utf8.encode(request)),
       ));
 
       while (true) {
         final (header, parser) = await tls.recvMessage();
         final payload = parser.getFixBytes(parser.getRemainingLength());
-        if (header.type == ContentType.application_data) {
+        if (header.type == ContentType.applicationData) {
           if (payload.isEmpty) {
             throw StateError('Isolate $index received empty payload');
           }

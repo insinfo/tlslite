@@ -1,0 +1,35 @@
+# When this file exists pub ignores the root .gitignore, so its rules are
+# repeated here.
+pubspec.lock
+.dart_tool/
+
+# Upstream sources, vendored packages and native build tooling (not needed by
+# users of the library).
+/referencias/
+/packages/
+/native_tools/
+
+# Developer material: internal notes, benchmarks, scripts, assembly sources,
+# tests and their (large) fixtures. lib/ does not load any of these at
+# runtime (the experimental Montgomery shellcode has an embedded fallback for
+# asm/*.bin).
+/docs/
+/TODO.md
+/asm/
+/benchmark/
+/tool/
+/bin/
+/test/
+/ffigen.yaml
+/.github/
+
+# OS / download artefacts and build outputs
+*:Zone.Identifier
+.DS_Store
+build/
+*.exe
+*.dll
+*.so
+*.dylib
+*.obj
+*.o

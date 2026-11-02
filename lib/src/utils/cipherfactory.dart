@@ -1,3 +1,7 @@
+// Ported to Dart from tlslite-ng tlslite/utils/cipherfactory.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 import 'dart:typed_data';
 
 import 'aes.dart';
@@ -22,7 +26,7 @@ AES createAES(Uint8List key, Uint8List iv, {List<String>? implementations}) {
       }
       return dart_aes.newAES(
         Uint8List.fromList(key),
-        aesModeCBC,
+        aesModeCbc,
         Uint8List.fromList(iv),
       );
     }
@@ -39,7 +43,7 @@ AES createAESCTR(Uint8List key, Uint8List iv, {List<String>? implementations}) {
       }
       return dart_aes.newAES(
         Uint8List.fromList(key),
-        aesModeCTR_OR_GCM,
+        aesModeCtrOrGcm,
         Uint8List.fromList(iv),
       );
     }

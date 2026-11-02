@@ -386,7 +386,7 @@ void bnMontMul(BN ret, BN a, BN b, MontgomeryCtx mont) {
       final bj = (j < bTop) ? bDigits[j] : 0;
       final sum = t[j] + ai * bj + carry;
       t[j] = sum & _digitMask;
-      carry = sum >> _digitBits;
+      carry = sum >>> _digitBits;
     }
     int acc = t[numLimbs] + carry;
     t[numLimbs] = acc & _digitMask;
@@ -400,7 +400,7 @@ void bnMontMul(BN ret, BN a, BN b, MontgomeryCtx mont) {
     for (int j = 0; j < numLimbs; j++) {
       final sum = t[j] + m * nDigits[j] + carry;
       t[j] = sum & _digitMask;
-      carry = sum >> _digitBits;
+      carry = sum >>> _digitBits;
     }
     acc = t[numLimbs] + carry;
     t[numLimbs] = acc & _digitMask;

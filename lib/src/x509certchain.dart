@@ -1,3 +1,7 @@
+// Ported to Dart from tlslite-ng tlslite/x509certchain.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 import 'utils/pem.dart';
 import 'x509.dart';
 

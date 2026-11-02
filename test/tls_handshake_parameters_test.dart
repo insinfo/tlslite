@@ -56,18 +56,18 @@ void main() {
     test('picks first overlap', () {
       final scheme = negotiator.selectScheme(
         peerPreferred: <int>[
-          tls_constants.SignatureScheme.ecdsa_secp256r1_sha256.value,
-          tls_constants.SignatureScheme.rsa_pss_rsae_sha256.value,
+          tls_constants.SignatureScheme.ecdsaSecp256r1Sha256.value,
+          tls_constants.SignatureScheme.rsaPssRsaeSha256.value,
         ],
         localSupported: <int>[
           tls_constants.SignatureScheme.ed25519.value,
-          tls_constants.SignatureScheme.ecdsa_secp256r1_sha256.value,
+          tls_constants.SignatureScheme.ecdsaSecp256r1Sha256.value,
         ],
       );
 
       expect(
         scheme,
-        equals(tls_constants.SignatureScheme.ecdsa_secp256r1_sha256.value),
+        equals(tls_constants.SignatureScheme.ecdsaSecp256r1Sha256.value),
       );
     });
 
@@ -76,7 +76,7 @@ void main() {
         peerPreferred: const <int>[],
         localSupported: <int>[
           tls_constants.SignatureScheme.ed25519.value,
-          tls_constants.SignatureScheme.rsa_pss_rsae_sha256.value,
+          tls_constants.SignatureScheme.rsaPssRsaeSha256.value,
         ],
       );
 
@@ -90,10 +90,10 @@ void main() {
       expect(
         () => negotiator.selectScheme(
           peerPreferred: <int>[
-            tls_constants.SignatureScheme.ecdsa_secp256r1_sha256.value,
+            tls_constants.SignatureScheme.ecdsaSecp256r1Sha256.value,
           ],
           localSupported: <int>[
-            tls_constants.SignatureScheme.rsa_pss_rsae_sha256.value,
+            tls_constants.SignatureScheme.rsaPssRsaeSha256.value,
           ],
         ),
         throwsStateError,

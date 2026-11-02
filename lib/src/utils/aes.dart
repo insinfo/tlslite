@@ -1,3 +1,7 @@
+// Ported to Dart from tlslite-ng tlslite/utils/aes.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 import 'dart:typed_data';
 
 typedef RawAesEncrypt = Uint8List Function(Uint8List block);
@@ -8,9 +12,9 @@ typedef RawAesEncrypt = Uint8List Function(Uint8List block);
 // Based on standard libraries, 2 often corresponds to CBC.
 // 6 might correspond to CTR or GCM, depending on the original library's intent.
 // Let's assume 2 is CBC for validation clarity.
-const int aesModeCBC = 2;
+const int aesModeCbc = 2;
 // Let's assume 6 is another common mode like CTR or GCM for the example.
-const int aesModeCTR_OR_GCM = 6; // Or another specific mode constant
+const int aesModeCtrOrGcm = 6; // Or another specific mode constant
 
 abstract class AES {
   /// The encryption key. Must be 16, 24, or 32 bytes long.
@@ -66,19 +70,19 @@ abstract class AES {
 
     // Validate mode
     // Using constants for clarity if modes are known (e.g., aesModeCBC)
-    if (mode != aesModeCBC && mode != aesModeCTR_OR_GCM) {
+    if (mode != aesModeCbc && mode != aesModeCtrOrGcm) {
       throw ArgumentError('Invalid mode: $mode. Supported modes are 2 and 6.');
     }
 
     // Validate IV length based on mode
-    if (mode == aesModeCBC) {
+    if (mode == aesModeCbc) {
       // Assuming mode 2 is CBC
       if (iv.length != blockSize) {
         // CBC IV must match block size
         throw ArgumentError(
             'Invalid IV length for mode $mode (CBC): ${iv.length}. Must be $blockSize bytes.');
       }
-    } else if (mode == aesModeCTR_OR_GCM) {
+    } else if (mode == aesModeCtrOrGcm) {
       // Assuming mode 6 needs IV <= block size
       if (iv.length > blockSize) {
         // Some modes like CTR/GCM might use variable nonce lengths, but the
@@ -136,66 +140,3 @@ abstract class AES {
   /// Returns the plaintext as a [Uint8List]. May include padding that needs removal.
   Uint8List decrypt(Uint8List ciphertext);
 }
-
-// Example of how a concrete implementation might start:
-/*
-import 'package:pointycastle/export.dart' as pc; // Example using pointycastle
-
-class ConcreteAES extends AES {
-  // Specific fields for the chosen implementation (e.g., Pointy Castle cipher objects)
-  late pc.BlockCipher _cipher; // Or AEADCipher, PaddedBlockCipher etc.
-
-  ConcreteAES(Uint8List key, int mode, Uint8List iv, Object implementation)
-      : super(key, mode, iv, implementation) {
-
-    // Initialize the underlying cipher based on mode, key, iv
-    // This is just a conceptual example
-    if (mode == aesModeCBC) {
-       // Example: Initialize CBC block cipher from Pointy Castle
-       _cipher = pc.PaddedBlockCipherImpl(
-         pc.PKCS7Padding(), // Choose appropriate padding
-         pc.CBCBlockCipher(pc.AESEngine())
-       );
-       final params = pc.ParametersWithIV<pc.KeyParameter>(pc.KeyParameter(key), iv);
-       // Need separate params for encrypt/decrypt with PaddedBlockCipher
-       // _cipher.init(true, params); // true for encryption
-    } else if (mode == aesModeCTR_OR_GCM) {
-       // Initialize CTR or GCM cipher...
-    } else {
-       // This case is already handled by the super constructor validation
-    }
-    // Store or use the 'implementation' object if needed
-  }
-
-  @override
-  Uint8List encrypt(Uint8List plaintext) {
-    // Example using Pointy Castle PaddedBlockCipher
-    if (mode == aesModeCBC && _cipher is pc.PaddedBlockCipher) {
-        final paddedCipher = _cipher as pc.PaddedBlockCipher;
-        final params = pc.ParametersWithIV<pc.KeyParameter>(pc.KeyParameter(key), iv);
-        paddedCipher.init(true, params); // true for encryption
-        return paddedCipher.process(plaintext);
-    }
-    // Handle other modes...
-    throw UnimplementedError('Encryption for mode $mode not implemented.');
-  }
-
-  @override
-  Uint8List decrypt(Uint8List ciphertext) {
-     // Example using Pointy Castle PaddedBlockCipher
-     if (mode == aesModeCBC && _cipher is pc.PaddedBlockCipher) {
-        final paddedCipher = _cipher as pc.PaddedBlockCipher;
-        final params = pc.ParametersWithIV<pc.KeyParameter>(pc.KeyParameter(key), iv);
-        paddedCipher.init(false, params); // false for decryption
-        try {
-          return paddedCipher.process(ciphertext);
-        } on pc.ArgumentError catch (e) {
-           // Pointy Castle can throw ArgumentError on invalid padding during decrypt
-           throw ArgumentError('Decryption failed, possibly due to invalid padding or key: $e');
-        }
-     }
-     // Handle other modes...
-     throw UnimplementedError('Decryption for mode $mode not implemented.');
-  }
-}
-*/

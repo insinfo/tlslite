@@ -1,3 +1,7 @@
+// Ported to Dart from tlslite-ng tlslite/utils/aesccm.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 import 'dart:typed_data';
 
 import 'aes.dart';
@@ -29,14 +33,14 @@ class AESCCM {
       name = 'aes256ccm';
     }
 
-    _ctr = dart_aes.Dart_AES_CTR.Dart_AES_CTR(
+    _ctr = dart_aes.DartAesCtr(
       Uint8List.fromList(this.key),
-      aesModeCTR_OR_GCM,
+      aesModeCtrOrGcm,
       Uint8List(16),
     );
-    _cbc = dart_aes.Dart_AES(
+    _cbc = dart_aes.DartAes(
       Uint8List.fromList(this.key),
-      aesModeCBC,
+      aesModeCbc,
       Uint8List(16),
     );
   }
@@ -51,8 +55,8 @@ class AESCCM {
   // ignore: unused_field
   final RawAesEncrypt _rawAesEncrypt;
 
-  late final dart_aes.Dart_AES_CTR _ctr;
-  late final dart_aes.Dart_AES _cbc;
+  late final dart_aes.DartAesCtr _ctr;
+  late final dart_aes.DartAes _cbc;
 
   Uint8List seal(Uint8List nonce, Uint8List msg, Uint8List aad) {
     _checkNonce(nonce);

@@ -2,6 +2,25 @@
 
 **Status**: 98% completo | **Testes**: 600+ passando
 
+## TODO: algoritmos em assembly com o asmjit
+
+Depois que corrigirmos o [asmjit](https://github.com/insinfo/asmjit)
+(`/Volumes/ssd_dock/MyProjectsDart/asmjit`), implementar os algoritmos quentes
+em assembly gerado em tempo de execução pelo asmjit, para chegar perto do
+desempenho do OpenSSL, substituindo os shellcodes experimentais de `asm/` e
+`lib/src/experimental/`:
+
+- AES-GCM: AES-NI + PCLMULQDQ (x86_64) e AES + PMULL (ARMv8)
+- ChaCha20-Poly1305: SSE2/AVX2 e NEON
+- SHA-1/SHA-256: SHA-NI e extensões SHA da ARMv8; SHA-512: SHA512 da ARMv8.2
+- Keccak (SHA-3/SHAKE, usado pelo ML-KEM)
+- Aritmética de campo para X25519 e P-256/P-384 (MULX/ADX, UMULH) e a
+  multiplicação de Montgomery do RSA
+
+A implementação em Dart puro continua como fallback (CPU sem a extensão,
+plataforma sem suporte) e os testes cruzados com as referências valem para as
+duas versões.
+
 ## PRIORIDADES
 
 ### 🔴 CRÍTICO (para TLS funcionar)

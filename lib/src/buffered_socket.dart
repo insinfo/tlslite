@@ -1,3 +1,7 @@
+// Ported to Dart from tlslite-ng tlslite/bufferedsocket.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 import 'dart:collection';
 import 'dart:math' as math;
 import 'dart:typed_data';

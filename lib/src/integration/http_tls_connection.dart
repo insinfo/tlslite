@@ -1,3 +1,7 @@
+// Ported to Dart from tlslite-ng tlslite/integration/httptlsconnection.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:convert';
@@ -131,7 +135,7 @@ class HttpTlsConnection {
       if (end > data.length) end = data.length;
       final chunk = data.sublist(offset, end);
       await _connection!
-          .sendRecord(Message(ContentType.application_data, chunk));
+          .sendRecord(Message(ContentType.applicationData, chunk));
       offset = end;
     }
   }
@@ -153,7 +157,7 @@ class HttpTlsConnection {
 
         final payload = parser.getFixBytes(parser.getRemainingLength());
 
-        if (type == ContentType.application_data) {
+        if (type == ContentType.applicationData) {
           _readBuffer.addAll(payload);
         } else if (type == ContentType.alert) {
           if (payload.isNotEmpty) {

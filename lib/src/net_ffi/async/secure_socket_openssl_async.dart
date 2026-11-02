@@ -1,12 +1,11 @@
-// ignore_for_file: camel_case_types, non_constant_identifier_names
-// ignore_for_file: constant_identifier_names, public_member_api_docs
+// ignore_for_file: public_member_api_docs
 // ignore_for_file: unused_field, lines_longer_than_80_chars
 
 import 'dart:async';
 import 'dart:ffi' as ffi;
 import 'dart:isolate';
 import 'dart:typed_data';
-import 'package:ffi/ffi.dart';
+import 'package:tlslite/src/ffi/native_memory.dart';
 import 'package:tlslite/src/net/ciphertext_callback.dart';
 import 'package:tlslite/src/net_ffi/socket_exceptions.dart';
 import 'package:tlslite/src/net_ffi/native_buffer_utils.dart';
@@ -33,9 +32,9 @@ class SecureSocketOpenSSLIsolateClient {
   static Future<SecureSocketOpenSSLIsolateClient> connect({
     required String host,
     required int port,
-    int family = AF_INET,
-    int type = SOCK_STREAM,
-    int protocol = IPPROTO_TCP,
+    int family = afInet,
+    int type = sockStream,
+    int protocol = ipprotoTcp,
   }) async {
     final transport = await _IsolatedSocketTransport.connect(
       host: host,

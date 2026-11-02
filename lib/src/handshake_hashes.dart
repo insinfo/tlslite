@@ -1,42 +1,37 @@
-
+// Ported to Dart from tlslite-ng tlslite/handshakehashes.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
 
 /// Handling cryptographic hashes for handshake protocol.
 
 import 'dart:typed_data';
-import 'package:crypto/crypto.dart' as crypto;
+import 'utils/digest/digest.dart';
 
 /// Store and calculate necessary hashes for handshake protocol.
 ///
 /// Calculates message digests of messages exchanged in handshake protocol
 /// of SSLv3 and TLS.
 class HandshakeHashes {
-  late _HashWrapper _handshakeMD5;
-  late _HashWrapper _handshakeSHA;
-  late _HashWrapper _handshakeSHA224;
-  late _HashWrapper _handshakeSHA256;
-  late _HashWrapper _handshakeSHA384;
-  late _HashWrapper _handshakeSHA512;
+  MessageDigest _handshakeMD5 = Md5();
+  MessageDigest _handshakeSHA = Sha1();
+  MessageDigest _handshakeSHA224 = Sha224();
+  MessageDigest _handshakeSHA256 = Sha256();
+  MessageDigest _handshakeSHA384 = Sha384();
+  MessageDigest _handshakeSHA512 = Sha512();
   final _handshakeBuffer = <int>[];
 
   /// Create instance.
-  HandshakeHashes() {
-    _handshakeMD5 = _HashWrapper(() => crypto.md5);
-    _handshakeSHA = _HashWrapper(() => crypto.sha1);
-    _handshakeSHA224 = _HashWrapper(() => crypto.sha224);
-    _handshakeSHA256 = _HashWrapper(() => crypto.sha256);
-    _handshakeSHA384 = _HashWrapper(() => crypto.sha384);
-    _handshakeSHA512 = _HashWrapper(() => crypto.sha512);
-  }
+  HandshakeHashes();
 
   /// Reset all hashes and replace with the state from another HandshakeHashes.
   /// Used for HelloRetryRequest transcript replacement (RFC 8446 Section 4.4.1).
   void replaceWith(HandshakeHashes other) {
-    _handshakeMD5 = other._handshakeMD5.copy();
-    _handshakeSHA = other._handshakeSHA.copy();
-    _handshakeSHA224 = other._handshakeSHA224.copy();
-    _handshakeSHA256 = other._handshakeSHA256.copy();
-    _handshakeSHA384 = other._handshakeSHA384.copy();
-    _handshakeSHA512 = other._handshakeSHA512.copy();
+    _handshakeMD5 = other._handshakeMD5.clone();
+    _handshakeSHA = other._handshakeSHA.clone();
+    _handshakeSHA224 = other._handshakeSHA224.clone();
+    _handshakeSHA256 = other._handshakeSHA256.clone();
+    _handshakeSHA384 = other._handshakeSHA384.clone();
+    _handshakeSHA512 = other._handshakeSHA512.clone();
     _handshakeBuffer.clear();
     _handshakeBuffer.addAll(other._handshakeBuffer);
   }
@@ -56,7 +51,8 @@ class HandshakeHashes {
 
   /// Calculate and return digest for the already consumed data.
   ///
-  /// Used for Finished and CertificateVerify messages.
+  /// Used for Finished and CertificateVerify messages. The running hashes are
+  /// not finalized, so more messages can be added afterwards.
   ///
   /// [digest] - name of digest to return (md5, sha1, sha224, sha256, sha384,
   /// sha512, intrinsic). If null, returns MD5+SHA1 concatenation (for SSLv3/TLS1.0).
@@ -65,7 +61,9 @@ class HandshakeHashes {
       // SSLv3/TLS 1.0/1.1 use MD5+SHA1
       final md5Bytes = _handshakeMD5.digest();
       final sha1Bytes = _handshakeSHA.digest();
-      return Uint8List.fromList([...md5Bytes, ...sha1Bytes]);
+      return Uint8List(md5Bytes.length + sha1Bytes.length)
+        ..setAll(0, md5Bytes)
+        ..setAll(md5Bytes.length, sha1Bytes);
     }
 
     switch (digest) {
@@ -95,35 +93,35 @@ class HandshakeHashes {
   /// [masterSecret] - value of the master secret
   /// [label] - label to include in the calculation
   Uint8List digestSSL(Uint8List masterSecret, Uint8List label) {
-    final imacMD5 = _handshakeMD5.copy();
-    final imacSHA = _handshakeSHA.copy();
+    final imacMD5 = _handshakeMD5.clone();
+    final imacSHA = _handshakeSHA.clone();
 
     // The below difference in input for MD5 and SHA-1 is why we can't reuse
     // digest() method
-    imacMD5.update(Uint8List.fromList([
-      ...label,
-      ...masterSecret,
-      ...List.filled(48, 0x36),
-    ]));
-    imacSHA.update(Uint8List.fromList([
-      ...label,
-      ...masterSecret,
-      ...List.filled(40, 0x36),
-    ]));
+    imacMD5
+      ..update(label)
+      ..update(masterSecret)
+      ..update(Uint8List(48)..fillRange(0, 48, 0x36));
+    imacSHA
+      ..update(label)
+      ..update(masterSecret)
+      ..update(Uint8List(40)..fillRange(0, 40, 0x36));
 
-    final md5Bytes = Uint8List.fromList(crypto.md5.convert([
-      ...masterSecret,
-      ...List.filled(48, 0x5c),
-      ...imacMD5.digest(),
-    ]).bytes);
+    final md5Bytes = (Md5()
+          ..update(masterSecret)
+          ..update(Uint8List(48)..fillRange(0, 48, 0x5c))
+          ..update(imacMD5.finish()))
+        .finish();
 
-    final shaBytes = Uint8List.fromList(crypto.sha1.convert([
-      ...masterSecret,
-      ...List.filled(40, 0x5c),
-      ...imacSHA.digest(),
-    ]).bytes);
+    final shaBytes = (Sha1()
+          ..update(masterSecret)
+          ..update(Uint8List(40)..fillRange(0, 40, 0x5c))
+          ..update(imacSHA.finish()))
+        .finish();
 
-    return Uint8List.fromList([...md5Bytes, ...shaBytes]);
+    return Uint8List(md5Bytes.length + shaBytes.length)
+      ..setAll(0, md5Bytes)
+      ..setAll(md5Bytes.length, shaBytes);
   }
 
   /// Copy object.
@@ -132,36 +130,13 @@ class HandshakeHashes {
   /// as the source object.
   HandshakeHashes copy() {
     final other = HandshakeHashes();
-    other._handshakeMD5 = _handshakeMD5.copy();
-    other._handshakeSHA = _handshakeSHA.copy();
-    other._handshakeSHA224 = _handshakeSHA224.copy();
-    other._handshakeSHA256 = _handshakeSHA256.copy();
-    other._handshakeSHA384 = _handshakeSHA384.copy();
-    other._handshakeSHA512 = _handshakeSHA512.copy();
+    other._handshakeMD5 = _handshakeMD5.clone();
+    other._handshakeSHA = _handshakeSHA.clone();
+    other._handshakeSHA224 = _handshakeSHA224.clone();
+    other._handshakeSHA256 = _handshakeSHA256.clone();
+    other._handshakeSHA384 = _handshakeSHA384.clone();
+    other._handshakeSHA512 = _handshakeSHA512.clone();
     other._handshakeBuffer.addAll(_handshakeBuffer);
-    return other;
-  }
-}
-
-/// Wrapper for hash functions that maintains incremental state.
-class _HashWrapper {
-  final crypto.Hash Function() _hashFactory;
-  final List<int> _buffer = [];
-  
-  _HashWrapper(this._hashFactory);
-
-  void update(Uint8List data) {
-    _buffer.addAll(data);
-  }
-
-  Uint8List digest() {
-    final hash = _hashFactory();
-    return Uint8List.fromList(hash.convert(_buffer).bytes);
-  }
-
-  _HashWrapper copy() {
-    final other = _HashWrapper(_hashFactory);
-    other._buffer.addAll(_buffer);
     return other;
   }
 }

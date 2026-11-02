@@ -54,7 +54,7 @@ void main() {
     );
 
     final port = await readyCompleter.future;
-    final client = SecureFFISocketOpenSSL(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    final client = SecureFFISocketOpenSSL(afInet, sockStream, ipprotoTcp);
     addTearDown(client.close);
     client.connect('127.0.0.1', port);
     client.ensureHandshakeCompleted();
@@ -87,9 +87,9 @@ void _ffiServerEntry(_FfiServerConfig config) {
   final sendPort = config.sendPort;
   try {
     final listener = SecureFFISocketOpenSSL.server(
-      AF_INET,
-      SOCK_STREAM,
-      IPPROTO_TCP,
+      afInet,
+      sockStream,
+      ipprotoTcp,
       config.certPath,
       config.keyPath,
     );

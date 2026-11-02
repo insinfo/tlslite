@@ -10,7 +10,7 @@
 import 'dart:ffi' as ffi;
 import 'dart:io' show Platform;
 import 'dart:typed_data';
-import 'package:ffi/ffi.dart' as pkgffi;
+import 'package:tlslite/src/ffi/native_memory.dart' as pkgffi;
 
 /// Verifica suporte a SSE2
 class ChaChaAsmSupport {

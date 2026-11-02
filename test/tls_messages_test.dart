@@ -75,8 +75,8 @@ void main() {
     final req = TlsCertificateRequest(
       version: TlsProtocolVersion.tls12,
       certificateTypes: <int>[
-        tls_constants.ClientCertificateType.rsa_sign,
-        tls_constants.ClientCertificateType.ecdsa_sign,
+        tls_constants.ClientCertificateType.rsaSign,
+        tls_constants.ClientCertificateType.ecdsaSign,
       ],
       signatureAlgorithms: <int>[0x0401, 0x0503],
       certificateAuthorities: <Uint8List>[
@@ -385,7 +385,7 @@ void main() {
   group('TlsServerKeyExchange', () {
     test('SRP suites keep large parameter encodings', () {
       final ske = TlsServerKeyExchange(
-        cipherSuite: tls_constants.CipherSuite.TLS_SRP_SHA_WITH_AES_128_CBC_SHA,
+        cipherSuite: tls_constants.CipherSuite.tlsSrpShaWithAes128CbcSha,
         version: const <int>[3, 3],
         srpN: BigInt.parse('E487B9', radix: 16),
         srpG: BigInt.from(5),
@@ -408,9 +408,9 @@ void main() {
     test('ECDHE suites retain curve identifiers and public share', () {
       final ske = TlsServerKeyExchange(
         cipherSuite:
-            tls_constants.CipherSuite.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+            tls_constants.CipherSuite.tlsEcdheRsaWithAes128GcmSha256,
         version: const <int>[3, 3],
-        curveType: tls_constants.ECCurveType.named_curve,
+        curveType: tls_constants.ECCurveType.namedCurve,
         namedCurve: tls_constants.GroupName.x25519,
         ecdhYs: <int>[0x01, 0x02, 0x03],
         signature: <int>[0x10, 0x11, 0x12],

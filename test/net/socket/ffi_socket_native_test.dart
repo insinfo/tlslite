@@ -23,7 +23,7 @@ void main() {
       });
       addTearDown(() async => await subscription.cancel());
 
-      final client = SocketNative(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+      final client = SocketNative(afInet, sockStream, ipprotoTcp);
       addTearDown(() => client.close());
       client.connect(InternetAddress.loopbackIPv4.address, server.port);
 
@@ -59,7 +59,7 @@ void main() {
       });
       addTearDown(() async => await subscription.cancel());
 
-      final client = SocketNative(AF_INET, SOCK_DGRAM, 0);
+      final client = SocketNative(afInet, sockDgram, 0);
       addTearDown(() => client.close());
       final payload = Uint8List.fromList(utf8.encode('ping'));
       client.sendto(payload, InternetAddress.loopbackIPv4.address, server.port);

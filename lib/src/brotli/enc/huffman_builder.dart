@@ -1,8 +1,6 @@
 import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:collection/collection.dart';
-
 /// Builds canonical Huffman code lengths for a given histogram while enforcing
 /// a maximum depth using the same count-lifting strategy as the reference
 /// Brotli encoder.
@@ -30,7 +28,7 @@ Uint8List buildLimitedHuffmanCodeLengths(
 
   var countLimit = 1;
   while (true) {
-    final queue = PriorityQueue<_BuilderNode>();
+    final queue = _MinHeap<_BuilderNode>();
     for (var symbol = 0; symbol < alphabetSize; symbol++) {
       final count = counts[symbol];
       if (count <= 0) {
@@ -161,5 +159,81 @@ class _BuilderNode implements Comparable<_BuilderNode> {
       return 1;
     }
     return 0;
+  }
+}
+
+/// Minimal binary min-heap. Mirrors the algorithm of `HeapPriorityQueue`
+/// from `package:collection` exactly (same tie-breaking), so the generated
+/// Huffman trees stay byte-identical.
+class _MinHeap<E extends Comparable<E>> {
+  final List<E> _queue = <E>[];
+
+  int get length => _queue.length;
+  bool get isEmpty => _queue.isEmpty;
+
+  E get first {
+    if (_queue.isEmpty) throw StateError('No element');
+    return _queue[0];
+  }
+
+  void add(E element) {
+    _queue.add(element);
+    _bubbleUp(element, _queue.length - 1);
+  }
+
+  E removeFirst() {
+    if (_queue.isEmpty) throw StateError('No element');
+    final result = _queue[0];
+    final last = _queue.removeLast();
+    if (_queue.isNotEmpty) {
+      _bubbleDown(last, 0);
+    }
+    return result;
+  }
+
+  void _bubbleUp(E element, int index) {
+    while (index > 0) {
+      final parentIndex = (index - 1) ~/ 2;
+      final parent = _queue[parentIndex];
+      if (element.compareTo(parent) > 0) break;
+      _queue[index] = parent;
+      index = parentIndex;
+    }
+    _queue[index] = element;
+  }
+
+  void _bubbleDown(E element, int index) {
+    final length = _queue.length;
+    var rightChildIndex = index * 2 + 2;
+    while (rightChildIndex < length) {
+      final leftChildIndex = rightChildIndex - 1;
+      final leftChild = _queue[leftChildIndex];
+      final rightChild = _queue[rightChildIndex];
+      int minChildIndex;
+      E minChild;
+      if (leftChild.compareTo(rightChild) < 0) {
+        minChild = leftChild;
+        minChildIndex = leftChildIndex;
+      } else {
+        minChild = rightChild;
+        minChildIndex = rightChildIndex;
+      }
+      if (element.compareTo(minChild) <= 0) {
+        _queue[index] = element;
+        return;
+      }
+      _queue[index] = minChild;
+      index = minChildIndex;
+      rightChildIndex = index * 2 + 2;
+    }
+    final leftChildIndex = rightChildIndex - 1;
+    if (leftChildIndex < length) {
+      final child = _queue[leftChildIndex];
+      if (element.compareTo(child) > 0) {
+        _queue[index] = child;
+        index = leftChildIndex;
+      }
+    }
+    _queue[index] = element;
   }
 }

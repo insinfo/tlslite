@@ -536,7 +536,7 @@ void main() {
 
       // This should not throw
       layer.calcPendingStates(
-        CipherSuite.TLS_RSA_WITH_AES_128_CBC_SHA,
+        CipherSuite.tlsRsaWithAes128CbcSha,
         Uint8List(48), // master secret
         Uint8List(32), // client random
         Uint8List(32), // server random
@@ -551,7 +551,7 @@ void main() {
       layer.version = const TlsProtocolVersion(3, 3);
 
       layer.calcPendingStates(
-        CipherSuite.TLS_RSA_WITH_AES_128_CBC_SHA,
+        CipherSuite.tlsRsaWithAes128CbcSha,
         Uint8List(48),
         Uint8List(32),
         Uint8List(32),
@@ -569,7 +569,7 @@ void main() {
       layer.version = const TlsProtocolVersion(3, 3);
 
       layer.calcPendingStates(
-        CipherSuite.TLS_RSA_WITH_AES_128_CBC_SHA,
+        CipherSuite.tlsRsaWithAes128CbcSha,
         Uint8List(48),
         Uint8List(32),
         Uint8List(32),

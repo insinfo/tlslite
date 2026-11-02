@@ -1,7 +1,12 @@
+// Ported to Dart from tlslite-ng tlslite/tlsconnection.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 import 'dart:collection';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'checker.dart';
 import 'constants.dart';
 import 'defragmenter.dart';
 import 'errors.dart';
@@ -103,6 +108,14 @@ class TlsConnection extends MessageSocket {
   Uint8List? _pendingSharedSecret;
   TlsClientHello? _clientHelloMsg;
   TlsServerHello? _serverHelloMsg;
+
+  /// Whether the last handshake resumed a previous session. Read by
+  /// [Checker] to skip re-validation of resumed sessions.
+  bool resumed = false;
+
+  /// Peer certificate checker of the handshake in progress, if any.
+  Checker? _peerChecker;
+  bool _peerCheckerRan = false;
 
   /// Replace the active handshake settings after validation.
   void configureHandshakeSettings(HandshakeSettings settings) {
@@ -247,7 +260,7 @@ class TlsConnection extends MessageSocket {
 
   /// Send application data.
   Future<void> write(Uint8List data) async {
-    await sendMessage(Message(ContentType.application_data, data));
+    await sendMessage(Message(ContentType.applicationData, data));
   }
 
   /// Closes the TLS connection.
@@ -256,7 +269,7 @@ class TlsConnection extends MessageSocket {
   Future<void> close() async {
     try {
       // Send close_notify alert (level=1 warning, description=0 close_notify)
-      await _sendAlert(AlertLevel.warning, AlertDescription.close_notify);
+      await _sendAlert(AlertLevel.warning, AlertDescription.closeNotify);
     } catch (_) {
       // Ignore errors when sending close_notify
     }
@@ -278,7 +291,7 @@ class TlsConnection extends MessageSocket {
       // Check pending messages first
       if (_pendingMessages.isNotEmpty) {
         final (header, parser) = _pendingMessages.first;
-        if (header.type == ContentType.application_data) {
+        if (header.type == ContentType.applicationData) {
           _pendingMessages.removeFirst();
           _appDataBuffer
               .addAll(parser.getFixBytes(parser.getRemainingLength()));
@@ -290,7 +303,7 @@ class TlsConnection extends MessageSocket {
       }
 
       final (header, parser) = await _recvMessageInternal();
-      if (header.type == ContentType.application_data) {
+      if (header.type == ContentType.applicationData) {
         _appDataBuffer.addAll(parser.getFixBytes(parser.getRemainingLength()));
       } else if (header.type == ContentType.handshake) {
         // Handle handshake
@@ -328,7 +341,7 @@ class TlsConnection extends MessageSocket {
     final defragmenter = Defragmenter();
     defragmenter.addDynamicSize(ContentType.handshake, 1, 3);
     defragmenter.addStaticSize(ContentType.alert, 2);
-    defragmenter.addStaticSize(ContentType.change_cipher_spec, 1);
+    defragmenter.addStaticSize(ContentType.changeCipherSpec, 1);
     return defragmenter;
   }
 
@@ -472,16 +485,16 @@ class TlsConnection extends MessageSocket {
   Future<void> _handleHeartbeatRecord(Uint8List payload) async {
     final heartbeat = TlsHeartbeat.parse(payload);
     if (!heartbeatSupported) {
-      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpectedMessage);
       throw TLSUnexpectedMessage(
           'Heartbeat message received without prior negotiation');
     }
 
     switch (heartbeat.messageType) {
-      case HeartbeatMessageType.heartbeat_request:
+      case HeartbeatMessageType.heartbeatRequest:
         if (!heartbeatCanReceive) {
           await _sendAlert(
-              AlertLevel.fatal, AlertDescription.unexpected_message);
+              AlertLevel.fatal, AlertDescription.unexpectedMessage);
           throw TLSUnexpectedMessage(
               'Heartbeat request received when peer_not_allowed_to_send');
         }
@@ -490,7 +503,7 @@ class TlsConnection extends MessageSocket {
         }
         final paddingLength = heartbeat.padding.length;
         final response = TlsHeartbeat(
-          messageType: HeartbeatMessageType.heartbeat_response,
+          messageType: HeartbeatMessageType.heartbeatResponse,
           payload: heartbeat.payload,
           padding: paddingLength == 0
               ? const <int>[]
@@ -500,11 +513,11 @@ class TlsConnection extends MessageSocket {
             Message(ContentType.heartbeat, response.serialize()));
         await flushBlocking();
         return;
-      case HeartbeatMessageType.heartbeat_response:
+      case HeartbeatMessageType.heartbeatResponse:
         heartbeatResponseCallback?.call(heartbeat);
         return;
       default:
-        await _sendAlert(AlertLevel.fatal, AlertDescription.illegal_parameter);
+        await _sendAlert(AlertLevel.fatal, AlertDescription.illegalParameter);
         throw TLSUnexpectedMessage(
             'Heartbeat message type ${heartbeat.messageType} unsupported');
     }
@@ -550,7 +563,7 @@ class TlsConnection extends MessageSocket {
     if (!defragmenter.hasPending(ContentType.handshake)) {
       return;
     }
-    await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+    await _sendAlert(AlertLevel.fatal, AlertDescription.unexpectedMessage);
     throw TLSUnexpectedMessage(
         'Interleaved handshake and ${ContentType.toStr(header.type)} records during TLS 1.3 handshake');
   }
@@ -566,7 +579,7 @@ class TlsConnection extends MessageSocket {
     if (!defragmenter.hasPending(ContentType.handshake)) {
       return;
     }
-    await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+    await _sendAlert(AlertLevel.fatal, AlertDescription.unexpectedMessage);
     throw TLSUnexpectedMessage(
         '${message.handshakeType.name} must be aligned to a single record in TLS 1.3');
   }
@@ -586,6 +599,18 @@ class TlsConnection extends MessageSocket {
 
   bool _isTls13Plus() => version > const TlsProtocolVersion(3, 3);
 
+  /// Performs a TLS client handshake.
+  ///
+  /// By default the server certificate is NOT authenticated (only the
+  /// end-entity validity period is checked). To verify the chain against
+  /// trust anchors and the host name, pass a [checker] such as
+  /// `X509Validator(anchors).checker(hostname: host)`; it runs as soon as the
+  /// server's Certificate message is received (before the handshake
+  /// finishes and before any application data is exchanged). When it throws
+  /// a `TLSAuthenticationError` (e.g. `TLSCertificateVerificationError`), a
+  /// fatal alert is sent to the server and the error propagates from this
+  /// method. If the server sends no Certificate message the checker is run at
+  /// the end of the handshake.
   Future<void> handshakeClient({
     HandshakeSettings? settings,
     Session? session,
@@ -597,8 +622,12 @@ class TlsConnection extends MessageSocket {
     List<String> nextProtos = const [],
     bool reqTack = false,
     List<String> alpn = const [],
+    Checker? checker,
   }) async {
     client = true;
+    resumed = false;
+    _peerChecker = checker;
+    _peerCheckerRan = false;
     handshakeSettings = settings ?? HandshakeSettings();
     this.session = session ?? Session();
 
@@ -623,7 +652,7 @@ class TlsConnection extends MessageSocket {
         allowedTypes: [TlsHandshakeType.serverHello]);
 
     if (message is! TlsServerHello) {
-      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpectedMessage);
       throw TLSUnexpectedMessage(
           'Expected ServerHello, got ${message.handshakeType.name}');
     }
@@ -636,10 +665,10 @@ class TlsConnection extends MessageSocket {
       // Determine the hash algorithm to use based on selected cipher suite
       final cipherSuite = message.cipherSuite;
       String hashName = 'sha256'; // Default for most TLS 1.3 suites
-      if (cipherSuite == CipherSuite.TLS_AES_256_GCM_SHA384 ||
-          cipherSuite == CipherSuite.TLS_CHACHA20_POLY1305_SHA256) {
+      if (cipherSuite == CipherSuite.tlsAes256GcmSha384 ||
+          cipherSuite == CipherSuite.tlsChacha20Poly1305Sha256) {
         // SHA384 for AES_256_GCM
-        if (cipherSuite == CipherSuite.TLS_AES_256_GCM_SHA384) {
+        if (cipherSuite == CipherSuite.tlsAes256GcmSha384) {
           hashName = 'sha384';
         }
       }
@@ -650,7 +679,7 @@ class TlsConnection extends MessageSocket {
       // Create synthetic message_hash handshake message
       // Format: msg_type (1) || length (3) || Hash(ClientHello1)
       final messageHashMsg = Uint8List(4 + clientHello1Hash.length);
-      messageHashMsg[0] = HandshakeType.message_hash; // 254
+      messageHashMsg[0] = HandshakeType.messageHash; // 254
       messageHashMsg[1] = 0;
       messageHashMsg[2] = 0;
       messageHashMsg[3] = clientHello1Hash.length;
@@ -698,13 +727,13 @@ class TlsConnection extends MessageSocket {
           allowedTypes: [TlsHandshakeType.serverHello]);
 
       if (message is! TlsServerHello) {
-        await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+        await _sendAlert(AlertLevel.fatal, AlertDescription.unexpectedMessage);
         throw TLSUnexpectedMessage(
             'Expected ServerHello after HRR, got ${message.handshakeType.name}');
       }
 
       if (message.isHelloRetryRequest) {
-        await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+        await _sendAlert(AlertLevel.fatal, AlertDescription.unexpectedMessage);
         throw TLSUnexpectedMessage('Second HelloRetryRequest received');
       }
     }
@@ -716,6 +745,46 @@ class TlsConnection extends MessageSocket {
     } else {
       await _clientHandshake12(certParams);
     }
+
+    // Handshakes without a server Certificate message (anonymous suites,
+    // resumption) still give the checker a chance to object.
+    if (_peerChecker != null && !_peerCheckerRan) {
+      await _runPeerChecker();
+    }
+    _peerChecker = null;
+  }
+
+  /// Runs the [Checker] passed to [handshakeClient], sending a fatal alert
+  /// and rethrowing when it rejects the peer.
+  Future<void> _runPeerChecker() async {
+    final checker = _peerChecker;
+    if (checker == null || _peerCheckerRan) return;
+    _peerCheckerRan = true;
+    try {
+      checker(this);
+    } on TLSAuthenticationError catch (error) {
+      var alert = AlertDescription.badCertificate;
+      if (error is TLSCertificateVerificationError) {
+        switch (error.reason) {
+          case CertificateVerificationFailure.expired:
+          case CertificateVerificationFailure.notYetValid:
+            alert = AlertDescription.certificateExpired;
+            break;
+          case CertificateVerificationFailure.unknownIssuer:
+          case CertificateVerificationFailure.selfSigned:
+            alert = AlertDescription.unknownCa;
+            break;
+          default:
+            break;
+        }
+      }
+      try {
+        await _sendAlert(AlertLevel.fatal, alert);
+      } catch (_) {
+        // The checker's error is more useful than a transport failure.
+      }
+      rethrow;
+    }
   }
 
   Future<void> _clientHandleServerHello(TlsServerHello serverHello) async {
@@ -724,7 +793,7 @@ class TlsConnection extends MessageSocket {
 
     // Check Supported Versions (TLS 1.3)
     final supportedVersions =
-        serverHello.extensions?.byType(ExtensionType.supported_versions);
+        serverHello.extensions?.byType(ExtensionType.supportedVersions);
     if (supportedVersions is TlsSupportedVersionsExtension) {
       if (supportedVersions.selectedVersion != null) {
         negotiatedVersion = supportedVersions.selectedVersion!;
@@ -739,8 +808,8 @@ class TlsConnection extends MessageSocket {
     final maxV = TlsProtocolVersion(
         handshakeSettings.maxVersion.$1, handshakeSettings.maxVersion.$2);
     if (version < minV || version > maxV) {
-      await _sendAlert(AlertLevel.fatal, AlertDescription.protocol_version);
-      throw TLSLocalAlert(AlertDescription.protocol_version, AlertLevel.fatal,
+      await _sendAlert(AlertLevel.fatal, AlertDescription.protocolVersion);
+      throw TLSLocalAlert(AlertDescription.protocolVersion, AlertLevel.fatal,
           detailedMessage:
               'Server selected version $version which is not in range [$minV, $maxV]');
     }
@@ -753,8 +822,8 @@ class TlsConnection extends MessageSocket {
     // Check if the cipher suite is valid for this version
     if (version < const TlsProtocolVersion(3, 3) &&
         CipherSuite.sha256Suites.contains(session.cipherSuite)) {
-      await _sendAlert(AlertLevel.fatal, AlertDescription.illegal_parameter);
-      throw TLSLocalAlert(AlertDescription.illegal_parameter, AlertLevel.fatal,
+      await _sendAlert(AlertLevel.fatal, AlertDescription.illegalParameter);
+      throw TLSLocalAlert(AlertDescription.illegalParameter, AlertLevel.fatal,
           detailedMessage: 'SHA256 cipher suite with TLS < 1.2');
     }
 
@@ -765,18 +834,18 @@ class TlsConnection extends MessageSocket {
     final extensions = serverHello.extensions;
     if (extensions != null) {
       // EMS
-      if (extensions.byType(ExtensionType.extended_master_secret) != null) {
+      if (extensions.byType(ExtensionType.extendedMasterSecret) != null) {
         session.extendedMasterSecret = true;
       }
 
       // Encrypt-then-MAC
-      if (extensions.byType(ExtensionType.encrypt_then_mac) != null) {
+      if (extensions.byType(ExtensionType.encryptThenMac) != null) {
         session.encryptThenMAC = true;
       }
 
       // Pre-Shared Key (TLS 1.3)
       if (version >= const TlsProtocolVersion(3, 4)) {
-        final pskExt = extensions.byType(ExtensionType.pre_shared_key);
+        final pskExt = extensions.byType(ExtensionType.preSharedKey);
         if (pskExt is TlsServerPreSharedKeyExtension) {
           _negotiatedClientHelloPskIndex = pskExt.selectedIdentity;
         }
@@ -786,7 +855,7 @@ class TlsConnection extends MessageSocket {
     // Key Share (TLS 1.3)
     if (version >= const TlsProtocolVersion(3, 4)) {
       final keyShareExt =
-          serverHello.extensions?.byType(ExtensionType.key_share);
+          serverHello.extensions?.byType(ExtensionType.keyShare);
       if (keyShareExt is TlsKeyShareExtension) {
         final serverShare = keyShareExt.serverShare;
         if (serverShare != null) {
@@ -822,7 +891,7 @@ class TlsConnection extends MessageSocket {
 
     KeyExchange? keyExchange;
     if (isECDHE) {
-      keyExchange = ECDHE_RSAKeyExchange(
+      keyExchange = EcdheRsaKeyExchange(
         session.cipherSuite,
         _clientHelloMsg,
         _serverHelloMsg,
@@ -830,7 +899,7 @@ class TlsConnection extends MessageSocket {
         acceptedCurves: acceptedCurves.isNotEmpty ? acceptedCurves : null,
       );
     } else if (isDHE) {
-      keyExchange = DHE_RSAKeyExchange(
+      keyExchange = DheRsaKeyExchange(
           session.cipherSuite, _clientHelloMsg, _serverHelloMsg, null);
     } else if (isRSA) {
       keyExchange = RSAKeyExchange(
@@ -888,6 +957,7 @@ class TlsConnection extends MessageSocket {
         }
         session.serverCertChain = X509CertChain(certs);
         _validateCertificateChain(session.serverCertChain!);
+        await _runPeerChecker();
       } else if (message is TlsCertificateStatus) {
         if (message.statusType == 1) {
           // ocsp
@@ -918,20 +988,20 @@ class TlsConnection extends MessageSocket {
           if (!isTls12OrLater) {
             if (pubKey is RSAKey) {
               // Legacy RSA: Hash is MD5 || SHA1
-              final md5Hash = MD5(signedData);
-              final sha1Hash = SHA1(signedData);
+              final md5Hash = md5(signedData);
+              final sha1Hash = sha1(signedData);
               final legacyHash = Uint8List.fromList([...md5Hash, ...sha1Hash]);
               valid = pubKey.verify(
                   Uint8List.fromList(message.signature), legacyHash);
             } else if (pubKey is ECDSAKey) {
               // Legacy ECDSA: SHA1 only
-              final sha1Hash = SHA1(signedData);
+              final sha1Hash = sha1(signedData);
               valid = pubKey.verify(
                   Uint8List.fromList(message.signature), sha1Hash,
                   hashAlg: 'sha1');
             } else if (pubKey is DSAKey) {
               // Legacy DSA: SHA1 only
-              final sha1Hash = SHA1(signedData);
+              final sha1Hash = sha1(signedData);
               valid = pubKey.verify(
                   Uint8List.fromList(message.signature), sha1Hash);
             } else {
@@ -1020,7 +1090,7 @@ class TlsConnection extends MessageSocket {
       } else if (message is TlsCertificateRequest) {
         certificateRequest = message;
       } else {
-        await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+        await _sendAlert(AlertLevel.fatal, AlertDescription.unexpectedMessage);
         throw TLSUnexpectedMessage(
             'Unexpected message in TLS 1.2 handshake: ${message.handshakeType.name}');
       }
@@ -1033,11 +1103,11 @@ class TlsConnection extends MessageSocket {
         final pubKey = certParams.key;
         int? certType;
         if (pubKey is RSAKey) {
-          certType = ClientCertificateType.rsa_sign;
+          certType = ClientCertificateType.rsaSign;
         } else if (pubKey is ECDSAKey) {
-          certType = ClientCertificateType.ecdsa_sign;
+          certType = ClientCertificateType.ecdsaSign;
         } else if (pubKey is DSAKey) {
-          certType = ClientCertificateType.dss_sign;
+          certType = ClientCertificateType.dssSign;
         }
 
         if (certType != null &&
@@ -1083,18 +1153,18 @@ class TlsConnection extends MessageSocket {
 
       if (certParams!.key is RSAKey) {
         signatureScheme =
-            isTls12 ? SignatureScheme.rsa_pkcs1_sha256.value : null;
+            isTls12 ? SignatureScheme.rsaPkcs1Sha256.value : null;
         padding = 'pkcs1';
         hashAlg = null; // Implicit in verifyBytes for RSA
         keyType = 'rsa';
       } else if (certParams.key is ECDSAKey) {
         signatureScheme =
-            isTls12 ? SignatureScheme.ecdsa_secp256r1_sha256.value : null;
+            isTls12 ? SignatureScheme.ecdsaSecp256r1Sha256.value : null;
         padding = null;
         hashAlg = isTls12 ? 'sha256' : 'sha1';
         keyType = 'ecdsa';
       } else if (certParams.key is DSAKey) {
-        signatureScheme = isTls12 ? SignatureScheme.dsa_sha256.value : null;
+        signatureScheme = isTls12 ? SignatureScheme.dsaSha256.value : null;
         padding = null;
         hashAlg = isTls12 ? 'sha256' : 'sha1';
         keyType = 'dsa';
@@ -1142,7 +1212,7 @@ class TlsConnection extends MessageSocket {
 
     // Send ChangeCipherSpec
     await queueMessageBlocking(
-        Message(ContentType.change_cipher_spec, Uint8List.fromList([1])));
+        Message(ContentType.changeCipherSpec, Uint8List.fromList([1])));
     await flushBlocking();
 
     // Calculate pending states for encryption (keys derived from master secret)
@@ -1172,7 +1242,7 @@ class TlsConnection extends MessageSocket {
         throw TLSRemoteAlert(alert.description.code, alert.level.code);
       }
 
-      if (header.type == ContentType.change_cipher_spec) {
+      if (header.type == ContentType.changeCipherSpec) {
         changeReadState();
         for (final pending in pendingEncryptedHandshakes) {
           final (_, plaintext) = decryptRecordPayload(pending.$1, pending.$2);
@@ -1207,7 +1277,7 @@ class TlsConnection extends MessageSocket {
         break;
       }
 
-      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpectedMessage);
       throw TLSUnexpectedMessage('Expected ChangeCipherSpec');
     }
 
@@ -1234,7 +1304,7 @@ class TlsConnection extends MessageSocket {
         ));
         finishedHandshakeSnapshot = handshakeHashes.copy();
       } else {
-        await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+        await _sendAlert(AlertLevel.fatal, AlertDescription.unexpectedMessage);
         throw TLSUnexpectedMessage('Expected Finished');
       }
     }
@@ -1248,7 +1318,7 @@ class TlsConnection extends MessageSocket {
       false,
     );
     if (!_bytesEqual(finishedMsg.verifyData, expectedVerifyData)) {
-      await _sendAlert(AlertLevel.fatal, AlertDescription.decrypt_error);
+      await _sendAlert(AlertLevel.fatal, AlertDescription.decryptError);
       throw TLSHandshakeFailure('Finished verification failed');
     }
 
@@ -1276,7 +1346,7 @@ class TlsConnection extends MessageSocket {
     final earlySecret = secureHMAC(psk, Uint8List(hashLen), hashName);
 
     // Derive Handshake Secret
-    final derivedSecret = derive_secret(
+    final derivedSecret = deriveSecret(
         earlySecret, Uint8List.fromList('derived'.codeUnits), null, hashName);
 
     final handshakeSecret = secureHMAC(derivedSecret, sharedSecret, hashName);
@@ -1285,14 +1355,14 @@ class TlsConnection extends MessageSocket {
     // Calculate Client/Server Handshake Traffic Secrets
     final helloHash = handshakeHashes.digest(hashName);
 
-    final clientHandshakeTrafficSecret = HKDF_expand_label(
+    final clientHandshakeTrafficSecret = hkdfExpandLabel(
         handshakeSecret,
         Uint8List.fromList('c hs traffic'.codeUnits),
         helloHash,
         hashLen,
         hashName);
 
-    final serverHandshakeTrafficSecret = HKDF_expand_label(
+    final serverHandshakeTrafficSecret = hkdfExpandLabel(
         handshakeSecret,
         Uint8List.fromList('s hs traffic'.codeUnits),
         helloHash,
@@ -1322,7 +1392,7 @@ class TlsConnection extends MessageSocket {
         }
       }
     } else {
-      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpectedMessage);
       throw TLSUnexpectedMessage(
           'Expected EncryptedExtensions, got ${encExtMsg.handshakeType.name}');
     }
@@ -1344,7 +1414,7 @@ class TlsConnection extends MessageSocket {
     }
 
     if (message is! TlsCertificate) {
-      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpectedMessage);
       throw TLSUnexpectedMessage(
           'Expected Certificate, got ${message.handshakeType.name}');
     }
@@ -1360,7 +1430,7 @@ class TlsConnection extends MessageSocket {
         try {
           final extBlock = TlsExtensionBlock.fromBytes(entry.extensions,
               context: TlsExtensionContext.certificate);
-          final statusExt = extBlock.byType(ExtensionType.status_request);
+          final statusExt = extBlock.byType(ExtensionType.statusRequest);
           if (statusExt is TlsCertificateStatusExtension) {
             if (statusExt.statusType == 1) {
               // ocsp
@@ -1374,13 +1444,14 @@ class TlsConnection extends MessageSocket {
     }
     session.serverCertChain = X509CertChain(certs);
     _validateCertificateChain(session.serverCertChain!);
+    await _runPeerChecker();
 
     // Receive CertificateVerify
     final certVerifyTranscript = handshakeHashes.copy();
     final certVerifyMsg = await recvHandshakeMessage(
         allowedTypes: [TlsHandshakeType.certificateVerify]);
     if (certVerifyMsg is! TlsCertificateVerify) {
-      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpectedMessage);
       throw TLSUnexpectedMessage(
           'Expected CertificateVerify, got ${certVerifyMsg.handshakeType.name}');
     }
@@ -1470,7 +1541,7 @@ class TlsConnection extends MessageSocket {
     }
 
     if (!signatureValid) {
-      await _sendAlert(AlertLevel.fatal, AlertDescription.decrypt_error);
+      await _sendAlert(AlertLevel.fatal, AlertDescription.decryptError);
       throw TLSHandshakeFailure('Invalid signature');
     }
 
@@ -1479,7 +1550,7 @@ class TlsConnection extends MessageSocket {
     final finishedMsg =
         await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.finished]);
     if (finishedMsg is! TlsFinished) {
-      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpectedMessage);
       throw TLSUnexpectedMessage(
           'Expected Finished, got ${finishedMsg.handshakeType.name}');
     }
@@ -1490,27 +1561,27 @@ class TlsConnection extends MessageSocket {
       handshakeSnapshot: finishedTranscript,
     );
     if (!_bytesEqual(finishedMsg.verifyData, expectedVerifyData)) {
-      await _sendAlert(AlertLevel.fatal, AlertDescription.decrypt_error);
+      await _sendAlert(AlertLevel.fatal, AlertDescription.decryptError);
       throw TLSHandshakeFailure('Finished verification failed');
     }
 
     // Prepare application traffic secrets using the transcript up through the
     // server's Finished so we can immediately accept TLS 1.3 application data.
     final trafficHandshakeHash = handshakeHashes.digest(hashName);
-    final derivedSecret2 = derive_secret(handshakeSecret,
+    final derivedSecret2 = deriveSecret(handshakeSecret,
         Uint8List.fromList('derived'.codeUnits), null, hashName);
 
     masterSecret = secureHMAC(derivedSecret2, Uint8List(hashLen), hashName);
     session.masterSecret = masterSecret;
 
-    final clientAppTrafficSecret = HKDF_expand_label(
+    final clientAppTrafficSecret = hkdfExpandLabel(
         masterSecret,
         Uint8List.fromList('c ap traffic'.codeUnits),
         trafficHandshakeHash,
         hashLen,
         hashName);
 
-    final serverAppTrafficSecret = HKDF_expand_label(
+    final serverAppTrafficSecret = hkdfExpandLabel(
         masterSecret,
         Uint8List.fromList('s ap traffic'.codeUnits),
         trafficHandshakeHash,
@@ -1543,30 +1614,30 @@ class TlsConnection extends MessageSocket {
 
         if (pubKey is RSAKey) {
           if (supportedSchemes
-              .contains(SignatureScheme.rsa_pss_rsae_sha256.value)) {
-            selectedScheme = SignatureScheme.rsa_pss_rsae_sha256.value;
+              .contains(SignatureScheme.rsaPssRsaeSha256.value)) {
+            selectedScheme = SignatureScheme.rsaPssRsaeSha256.value;
           } else if (supportedSchemes
-              .contains(SignatureScheme.rsa_pss_rsae_sha384.value)) {
-            selectedScheme = SignatureScheme.rsa_pss_rsae_sha384.value;
+              .contains(SignatureScheme.rsaPssRsaeSha384.value)) {
+            selectedScheme = SignatureScheme.rsaPssRsaeSha384.value;
           } else if (supportedSchemes
-              .contains(SignatureScheme.rsa_pkcs1_sha256.value)) {
-            selectedScheme = SignatureScheme.rsa_pkcs1_sha256.value;
+              .contains(SignatureScheme.rsaPkcs1Sha256.value)) {
+            selectedScheme = SignatureScheme.rsaPkcs1Sha256.value;
           }
         } else if (pubKey is ECDSAKey) {
           if (supportedSchemes
-              .contains(SignatureScheme.ecdsa_secp256r1_sha256.value)) {
-            selectedScheme = SignatureScheme.ecdsa_secp256r1_sha256.value;
+              .contains(SignatureScheme.ecdsaSecp256r1Sha256.value)) {
+            selectedScheme = SignatureScheme.ecdsaSecp256r1Sha256.value;
           } else if (supportedSchemes
-              .contains(SignatureScheme.ecdsa_secp384r1_sha384.value)) {
-            selectedScheme = SignatureScheme.ecdsa_secp384r1_sha384.value;
+              .contains(SignatureScheme.ecdsaSecp384r1Sha384.value)) {
+            selectedScheme = SignatureScheme.ecdsaSecp384r1Sha384.value;
           }
         }
 
         if (selectedScheme == null) {
           if (pubKey is RSAKey)
-            selectedScheme = SignatureScheme.rsa_pss_rsae_sha256.value;
+            selectedScheme = SignatureScheme.rsaPssRsaeSha256.value;
           else if (pubKey is ECDSAKey)
-            selectedScheme = SignatureScheme.ecdsa_secp256r1_sha256.value;
+            selectedScheme = SignatureScheme.ecdsaSecp256r1Sha256.value;
           else
             throw UnimplementedError(
                 'Unsupported key type: ${pubKey.runtimeType}');
@@ -1641,7 +1712,7 @@ class TlsConnection extends MessageSocket {
     // After sending our Finished, derive the resumption master secret using
     // the full transcript (which now includes the client's handshake)
     final fullHandshakeHash = handshakeHashes.digest(hashName);
-    final resumptionMasterSecret = derive_secret(
+    final resumptionMasterSecret = deriveSecret(
         masterSecret,
         Uint8List.fromList('res master'.codeUnits),
         fullHandshakeHash,
@@ -1671,7 +1742,7 @@ class TlsConnection extends MessageSocket {
     final message = await recvHandshakeMessage(
         allowedTypes: [TlsHandshakeType.clientHello]);
     if (message is! TlsClientHello) {
-      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpectedMessage);
       throw TLSUnexpectedMessage(
           'Expected ClientHello, got ${message.handshakeType.name}');
     }
@@ -1687,7 +1758,7 @@ class TlsConnection extends MessageSocket {
     );
 
     final supportedVersionsExt =
-        message.extensions?.byType(ExtensionType.supported_versions);
+        message.extensions?.byType(ExtensionType.supportedVersions);
     TlsProtocolVersion? negotiatedVersion;
 
     if (supportedVersionsExt is TlsSupportedVersionsExtension) {
@@ -1707,7 +1778,7 @@ class TlsConnection extends MessageSocket {
     );
 
     if (negotiatedVersion == null) {
-      await _sendAlert(AlertLevel.fatal, AlertDescription.protocol_version);
+      await _sendAlert(AlertLevel.fatal, AlertDescription.protocolVersion);
       throw TLSHandshakeFailure(
         'Client offered ${message.clientVersion} but server requires $minSupported–$maxSupported',
       );
@@ -1732,7 +1803,7 @@ class TlsConnection extends MessageSocket {
     List<String>? alpn,
   }) async {
     if (certChain == null || privateKey == null) {
-      await _sendAlert(AlertLevel.fatal, AlertDescription.internal_error);
+      await _sendAlert(AlertLevel.fatal, AlertDescription.internalError);
       throw TLSHandshakeFailure('Server certificate and private key required');
     }
     session.serverCertChain = certChain;
@@ -1747,15 +1818,15 @@ class TlsConnection extends MessageSocket {
       }
     }
     if (selectedSuite == null) {
-      await _sendAlert(AlertLevel.fatal, AlertDescription.handshake_failure);
+      await _sendAlert(AlertLevel.fatal, AlertDescription.handshakeFailure);
       throw TLSHandshakeFailure('No shared cipher suites');
     }
     session.cipherSuite = selectedSuite;
 
     // 2. Process Key Share
-    final keyShareExt = clientHello.extensions?.byType(ExtensionType.key_share);
+    final keyShareExt = clientHello.extensions?.byType(ExtensionType.keyShare);
     if (keyShareExt is! TlsKeyShareExtension) {
-      await _sendAlert(AlertLevel.fatal, AlertDescription.missing_extension);
+      await _sendAlert(AlertLevel.fatal, AlertDescription.missingExtension);
       throw TLSHandshakeFailure('Missing KeyShare extension');
     }
 
@@ -1816,7 +1887,7 @@ class TlsConnection extends MessageSocket {
     }
 
     if (serverShare == null) {
-      await _sendAlert(AlertLevel.fatal, AlertDescription.handshake_failure);
+      await _sendAlert(AlertLevel.fatal, AlertDescription.handshakeFailure);
       throw TLSHandshakeFailure('No supported key share');
     }
 
@@ -1846,7 +1917,7 @@ class TlsConnection extends MessageSocket {
     final salt = Uint8List(hashLen); // 0-filled
     final earlySecret = secureHMAC(salt, Uint8List(hashLen), hashName);
 
-    final derivedSecret = derive_secret(
+    final derivedSecret = deriveSecret(
         earlySecret, Uint8List.fromList('derived'.codeUnits), null, hashName);
 
     final handshakeSecret = secureHMAC(derivedSecret, sharedSecret!, hashName);
@@ -1854,14 +1925,14 @@ class TlsConnection extends MessageSocket {
 
     final helloHash = handshakeHashes.digest(hashName);
 
-    final clientHandshakeTrafficSecret = HKDF_expand_label(
+    final clientHandshakeTrafficSecret = hkdfExpandLabel(
         handshakeSecret,
         Uint8List.fromList('c hs traffic'.codeUnits),
         helloHash,
         hashLen,
         hashName);
 
-    final serverHandshakeTrafficSecret = HKDF_expand_label(
+    final serverHandshakeTrafficSecret = hkdfExpandLabel(
         handshakeSecret,
         Uint8List.fromList('s hs traffic'.codeUnits),
         helloHash,
@@ -1901,10 +1972,10 @@ class TlsConnection extends MessageSocket {
     if (reqCert) {
       final certReqExtensions = <TlsExtension>[];
       certReqExtensions.add(TlsSignatureAlgorithmsExtension(signatureSchemes: [
-        SignatureScheme.rsa_pss_rsae_sha256.value,
-        SignatureScheme.rsa_pkcs1_sha256.value,
-        SignatureScheme.ecdsa_secp256r1_sha256.value,
-        SignatureScheme.ecdsa_secp384r1_sha384.value,
+        SignatureScheme.rsaPssRsaeSha256.value,
+        SignatureScheme.rsaPkcs1Sha256.value,
+        SignatureScheme.ecdsaSecp256r1Sha256.value,
+        SignatureScheme.ecdsaSecp384r1Sha384.value,
       ]));
 
       await sendHandshakeMessage(TlsCertificateRequest(
@@ -1925,7 +1996,7 @@ class TlsConnection extends MessageSocket {
 
     // 7. Send CertificateVerify
     final sigAlgsExt =
-        clientHello.extensions?.byType(ExtensionType.signature_algorithms);
+        clientHello.extensions?.byType(ExtensionType.signatureAlgorithms);
     int? selectedScheme;
     String keyType = 'rsa';
 
@@ -1940,22 +2011,22 @@ class TlsConnection extends MessageSocket {
     if (sigAlgsExt is TlsSignatureAlgorithmsExtension) {
       if (privateKey is RSAKey) {
         if (sigAlgsExt.signatureSchemes
-            .contains(SignatureScheme.rsa_pss_rsae_sha256.value)) {
-          selectedScheme = SignatureScheme.rsa_pss_rsae_sha256.value;
+            .contains(SignatureScheme.rsaPssRsaeSha256.value)) {
+          selectedScheme = SignatureScheme.rsaPssRsaeSha256.value;
         } else if (sigAlgsExt.signatureSchemes
-            .contains(SignatureScheme.rsa_pss_rsae_sha384.value)) {
-          selectedScheme = SignatureScheme.rsa_pss_rsae_sha384.value;
+            .contains(SignatureScheme.rsaPssRsaeSha384.value)) {
+          selectedScheme = SignatureScheme.rsaPssRsaeSha384.value;
         } else if (sigAlgsExt.signatureSchemes
-            .contains(SignatureScheme.rsa_pkcs1_sha256.value)) {
-          selectedScheme = SignatureScheme.rsa_pkcs1_sha256.value;
+            .contains(SignatureScheme.rsaPkcs1Sha256.value)) {
+          selectedScheme = SignatureScheme.rsaPkcs1Sha256.value;
         }
       } else if (privateKey is ECDSAKey) {
         if (sigAlgsExt.signatureSchemes
-            .contains(SignatureScheme.ecdsa_secp256r1_sha256.value)) {
-          selectedScheme = SignatureScheme.ecdsa_secp256r1_sha256.value;
+            .contains(SignatureScheme.ecdsaSecp256r1Sha256.value)) {
+          selectedScheme = SignatureScheme.ecdsaSecp256r1Sha256.value;
         } else if (sigAlgsExt.signatureSchemes
-            .contains(SignatureScheme.ecdsa_secp384r1_sha384.value)) {
-          selectedScheme = SignatureScheme.ecdsa_secp384r1_sha384.value;
+            .contains(SignatureScheme.ecdsaSecp384r1Sha384.value)) {
+          selectedScheme = SignatureScheme.ecdsaSecp384r1Sha384.value;
         }
       } else if (privateKey is Ed448PrivateKey) {
         if (sigAlgsExt.signatureSchemes.contains(SignatureScheme.ed448.value)) {
@@ -1971,9 +2042,9 @@ class TlsConnection extends MessageSocket {
 
     if (selectedScheme == null) {
       if (privateKey is RSAKey) {
-        selectedScheme = SignatureScheme.rsa_pss_rsae_sha256.value;
+        selectedScheme = SignatureScheme.rsaPssRsaeSha256.value;
       } else if (privateKey is ECDSAKey) {
-        selectedScheme = SignatureScheme.ecdsa_secp256r1_sha256.value;
+        selectedScheme = SignatureScheme.ecdsaSecp256r1Sha256.value;
       } else if (privateKey is Ed448PrivateKey) {
         selectedScheme = SignatureScheme.ed448.value;
       } else if (privateKey is EdDSAKey && privateKey.bitLength == 256) {
@@ -2051,20 +2122,20 @@ class TlsConnection extends MessageSocket {
     // After emitting the server's Finished we must be ready to encrypt
     // application data immediately (clients may allow "short packets").
     final trafficHandshakeHash = handshakeHashes.digest(hashName);
-    final derivedSecret2 = derive_secret(handshakeSecret,
+    final derivedSecret2 = deriveSecret(handshakeSecret,
         Uint8List.fromList('derived'.codeUnits), null, hashName);
 
     masterSecret = secureHMAC(derivedSecret2, Uint8List(hashLen), hashName);
     session.masterSecret = masterSecret;
 
-    final clientAppTrafficSecret = HKDF_expand_label(
+    final clientAppTrafficSecret = hkdfExpandLabel(
         masterSecret,
         Uint8List.fromList('c ap traffic'.codeUnits),
         trafficHandshakeHash,
         hashLen,
         hashName);
 
-    final serverAppTrafficSecret = HKDF_expand_label(
+    final serverAppTrafficSecret = hkdfExpandLabel(
         masterSecret,
         Uint8List.fromList('s ap traffic'.codeUnits),
         trafficHandshakeHash,
@@ -2083,7 +2154,7 @@ class TlsConnection extends MessageSocket {
       final certMsg = await recvHandshakeMessage(
           allowedTypes: [TlsHandshakeType.certificate]);
       if (certMsg is! TlsCertificate) {
-        await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+        await _sendAlert(AlertLevel.fatal, AlertDescription.unexpectedMessage);
         throw TLSUnexpectedMessage('Expected Certificate');
       }
 
@@ -2105,7 +2176,7 @@ class TlsConnection extends MessageSocket {
             allowedTypes: [TlsHandshakeType.certificateVerify]);
         if (cvMsg is! TlsCertificateVerify) {
           await _sendAlert(
-              AlertLevel.fatal, AlertDescription.unexpected_message);
+              AlertLevel.fatal, AlertDescription.unexpectedMessage);
           throw TLSUnexpectedMessage('Expected CertificateVerify');
         }
 
@@ -2164,7 +2235,7 @@ class TlsConnection extends MessageSocket {
         }
 
         if (!valid) {
-          await _sendAlert(AlertLevel.fatal, AlertDescription.decrypt_error);
+          await _sendAlert(AlertLevel.fatal, AlertDescription.decryptError);
           throw TLSHandshakeFailure('CertificateVerify signature invalid');
         }
       }
@@ -2174,7 +2245,7 @@ class TlsConnection extends MessageSocket {
     final finishedMsg =
         await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.finished]);
     if (finishedMsg is! TlsFinished) {
-      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpectedMessage);
       throw TLSUnexpectedMessage('Expected Finished');
     }
 
@@ -2183,14 +2254,14 @@ class TlsConnection extends MessageSocket {
       handshakeSnapshot: finishedTranscript,
     );
     if (!_bytesEqual(finishedMsg.verifyData, expectedVerifyData)) {
-      await _sendAlert(AlertLevel.fatal, AlertDescription.decrypt_error);
+      await _sendAlert(AlertLevel.fatal, AlertDescription.decryptError);
       throw TLSHandshakeFailure('Finished verification failed');
     }
 
     // Calculate Resumption Master Secret using the complete transcript
     // (which now also includes the client's Finished).
     final fullHandshakeHash = handshakeHashes.digest(hashName);
-    final resumptionMasterSecret = derive_secret(
+    final resumptionMasterSecret = deriveSecret(
         masterSecret,
         Uint8List.fromList('res master'.codeUnits),
         fullHandshakeHash,
@@ -2239,7 +2310,7 @@ class TlsConnection extends MessageSocket {
     }
 
     if (selectedSuite == null) {
-      await _sendAlert(AlertLevel.fatal, AlertDescription.handshake_failure);
+      await _sendAlert(AlertLevel.fatal, AlertDescription.handshakeFailure);
       throw TLSHandshakeFailure('No shared cipher suites');
     }
 
@@ -2250,26 +2321,26 @@ class TlsConnection extends MessageSocket {
     // Set last 8 bytes for downgrade protection if needed (not strictly required for basic 1.2)
 
     final extensions = <TlsExtension>[];
-    if (clientHello.extensions?.byType(ExtensionType.renegotiation_info) !=
+    if (clientHello.extensions?.byType(ExtensionType.renegotiationInfo) !=
         null) {
       extensions.add(TlsRawExtension(
-          type: ExtensionType.renegotiation_info, body: Uint8List(1)..[0] = 0));
+          type: ExtensionType.renegotiationInfo, body: Uint8List(1)..[0] = 0));
     }
     final clientOfferedEms =
-        clientHello.extensions?.byType(ExtensionType.extended_master_secret) !=
+        clientHello.extensions?.byType(ExtensionType.extendedMasterSecret) !=
             null;
     if (handshakeSettings.useExtendedMasterSecret && clientOfferedEms) {
       extensions.add(const TlsExtendedMasterSecretExtension());
       session.extendedMasterSecret = true;
     } else if (handshakeSettings.requireExtendedMasterSecret &&
         !clientOfferedEms) {
-      await _sendAlert(AlertLevel.fatal, AlertDescription.handshake_failure);
+      await _sendAlert(AlertLevel.fatal, AlertDescription.handshakeFailure);
       throw TLSHandshakeFailure('Client did not offer Extended Master Secret');
     }
 
     if (handshakeSettings.requireExtendedMasterSecret &&
         !session.extendedMasterSecret) {
-      await _sendAlert(AlertLevel.fatal, AlertDescription.handshake_failure);
+      await _sendAlert(AlertLevel.fatal, AlertDescription.handshakeFailure);
       throw TLSHandshakeFailure(
         'Server did not negotiate Extended Master Secret as required',
       );
@@ -2328,7 +2399,7 @@ class TlsConnection extends MessageSocket {
 
     if (isECDHE) {
       final acceptedCurves = _curveNamesToList(handshakeSettings);
-      keyExchange = ECDHE_RSAKeyExchange(
+      keyExchange = EcdheRsaKeyExchange(
         selectedSuite,
         clientHello,
         serverHello,
@@ -2336,7 +2407,7 @@ class TlsConnection extends MessageSocket {
         acceptedCurves: acceptedCurves.isNotEmpty ? acceptedCurves : null,
       );
     } else if (isDHE) {
-      keyExchange = DHE_RSAKeyExchange(
+      keyExchange = DheRsaKeyExchange(
           selectedSuite, clientHello, serverHello, privateKey);
     } else if (suiteName.contains('_RSA_')) {
       keyExchange =
@@ -2346,7 +2417,7 @@ class TlsConnection extends MessageSocket {
     if (keyExchange != null && (isDHE || isECDHE)) {
       String? sigHash;
       final sigAlgsExt =
-          clientHello.extensions?.byType(ExtensionType.signature_algorithms);
+          clientHello.extensions?.byType(ExtensionType.signatureAlgorithms);
       if (sigAlgsExt is TlsSignatureAlgorithmsExtension) {
         bool supportsSha256 = false;
         for (final scheme in sigAlgsExt.signatureSchemes) {
@@ -2386,9 +2457,9 @@ class TlsConnection extends MessageSocket {
     // 5. Send CertificateRequest (if requested)
     if (reqCert) {
       final certTypes = [
-        ClientCertificateType.rsa_sign,
-        ClientCertificateType.dss_sign,
-        ClientCertificateType.ecdsa_sign,
+        ClientCertificateType.rsaSign,
+        ClientCertificateType.dssSign,
+        ClientCertificateType.ecdsaSign,
       ];
       final includeSigAlgs = version >= const TlsProtocolVersion(3, 3);
       final sigAlgs = includeSigAlgs
@@ -2425,7 +2496,7 @@ class TlsConnection extends MessageSocket {
       final certMsg = await recvHandshakeMessage(
           allowedTypes: [TlsHandshakeType.certificate]);
       if (certMsg is! TlsCertificate) {
-        await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+        await _sendAlert(AlertLevel.fatal, AlertDescription.unexpectedMessage);
         throw TLSUnexpectedMessage('Expected Certificate');
       }
       if (certMsg.certificateChain.isNotEmpty) {
@@ -2452,7 +2523,7 @@ class TlsConnection extends MessageSocket {
       );
     }
     if (ckeMsg is! TlsClientKeyExchange) {
-      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpectedMessage);
       throw TLSUnexpectedMessage('Expected ClientKeyExchange');
     }
 
@@ -2468,7 +2539,7 @@ class TlsConnection extends MessageSocket {
         allowedTypes: [TlsHandshakeType.certificateVerify],
       );
       if (cvMsg is! TlsCertificateVerify) {
-        await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+        await _sendAlert(AlertLevel.fatal, AlertDescription.unexpectedMessage);
         throw TLSUnexpectedMessage('Expected CertificateVerify');
       }
 
@@ -2482,7 +2553,7 @@ class TlsConnection extends MessageSocket {
       final signatureScheme = cvMsg.signatureScheme;
 
       if (isTls12 && signatureScheme == null) {
-        await _sendAlert(AlertLevel.fatal, AlertDescription.decode_error);
+        await _sendAlert(AlertLevel.fatal, AlertDescription.decodeError);
         throw TLSDecodeError('Missing signature scheme in CertificateVerify');
       }
 
@@ -2541,7 +2612,7 @@ class TlsConnection extends MessageSocket {
       }
 
       if (!valid) {
-        await _sendAlert(AlertLevel.fatal, AlertDescription.decrypt_error);
+        await _sendAlert(AlertLevel.fatal, AlertDescription.decryptError);
         throw TLSHandshakeFailure('CertificateVerify signature invalid');
       }
     }
@@ -2577,8 +2648,8 @@ class TlsConnection extends MessageSocket {
 
     // 10. Receive ChangeCipherSpec
     final (header, _) = await recvMessage();
-    if (header.type != ContentType.change_cipher_spec) {
-      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+    if (header.type != ContentType.changeCipherSpec) {
+      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpectedMessage);
       throw TLSUnexpectedMessage('Expected ChangeCipherSpec');
     }
 
@@ -2588,7 +2659,7 @@ class TlsConnection extends MessageSocket {
     final finishedMsg =
         await recvHandshakeMessage(allowedTypes: [TlsHandshakeType.finished]);
     if (finishedMsg is! TlsFinished) {
-      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpectedMessage);
       throw TLSUnexpectedMessage('Expected Finished');
     }
 
@@ -2600,13 +2671,13 @@ class TlsConnection extends MessageSocket {
       true,
     );
     if (!_bytesEqual(finishedMsg.verifyData, expectedVerifyData)) {
-      await _sendAlert(AlertLevel.fatal, AlertDescription.decrypt_error);
+      await _sendAlert(AlertLevel.fatal, AlertDescription.decryptError);
       throw TLSHandshakeFailure('Finished verification failed');
     }
 
     // 12. Send ChangeCipherSpec
     await sendRecord(
-        Message(ContentType.change_cipher_spec, Uint8List.fromList([1])));
+        Message(ContentType.changeCipherSpec, Uint8List.fromList([1])));
     changeWriteState(); // Switch to encrypted write
 
     // 13. Send Finished
@@ -2632,7 +2703,7 @@ class TlsConnection extends MessageSocket {
     int? retryGroup,
   }) async {
     // Initialize acceptable cipher suites
-    var cipherSuites = <int>[CipherSuite.TLS_EMPTY_RENEGOTIATION_INFO_SCSV];
+    var cipherSuites = <int>[CipherSuite.tlsEmptyRenegotiationInfoScsv];
     final wantsSrp = srpParams != null;
     final wantsAnon = anonParams != null;
 
@@ -2666,7 +2737,7 @@ class TlsConnection extends MessageSocket {
     }
 
     if (settings.sendFallbackSCSV) {
-      cipherSuites.add(CipherSuite.TLS_FALLBACK_SCSV);
+      cipherSuites.add(CipherSuite.tlsFallbackScsv);
     }
 
     final extensions = <TlsExtension>[];
@@ -2751,9 +2822,9 @@ class TlsConnection extends MessageSocket {
       final pskModes = <int>[];
       for (final mode in settings.pskModes) {
         if (mode == 'psk_ke') {
-          pskModes.add(PskKeyExchangeMode.psk_ke);
+          pskModes.add(PskKeyExchangeMode.pskKe);
         } else if (mode == 'psk_dhe_ke') {
-          pskModes.add(PskKeyExchangeMode.psk_dhe_ke);
+          pskModes.add(PskKeyExchangeMode.pskDheKe);
         }
       }
       extensions.add(TlsPskKeyExchangeModesExtension(modes: pskModes));
@@ -2788,15 +2859,15 @@ class TlsConnection extends MessageSocket {
       }
     }
 
-    if (settings.use_heartbeat_extension) {
+    if (settings.useHeartbeatExtension) {
       extensions
-          .add(TlsHeartbeatExtension(mode: HeartbeatMode.PEER_ALLOWED_TO_SEND));
+          .add(TlsHeartbeatExtension(mode: HeartbeatMode.peerAllowedToSend));
       heartbeatCanReceive = true;
     }
 
-    if (settings.record_size_limit > 0) {
+    if (settings.recordSizeLimit > 0) {
       extensions.add(TlsRecordSizeLimitExtension(
-          recordSizeLimit: settings.record_size_limit));
+          recordSizeLimit: settings.recordSizeLimit));
     }
 
     // Session Ticket (TLS 1.2)
@@ -2876,11 +2947,11 @@ class TlsConnection extends MessageSocket {
       for (final hashName in settings.ecdsaSigHashes) {
         if (hashName == 'sha1' || hashName == 'sha224') continue;
         if (hashName == 'sha256') {
-          schemes.add(SignatureScheme.ecdsa_secp256r1_sha256.value);
+          schemes.add(SignatureScheme.ecdsaSecp256r1Sha256.value);
         } else if (hashName == 'sha384') {
-          schemes.add(SignatureScheme.ecdsa_secp384r1_sha384.value);
+          schemes.add(SignatureScheme.ecdsaSecp384r1Sha384.value);
         } else if (hashName == 'sha512') {
-          schemes.add(SignatureScheme.ecdsa_secp521r1_sha512.value);
+          schemes.add(SignatureScheme.ecdsaSecp521r1Sha512.value);
         }
       }
       for (final hashName in settings.rsaSigHashes) {
@@ -3112,7 +3183,7 @@ class TlsConnection extends MessageSocket {
     }
     final hashName = _prfHashName();
     final digestLength = hashName == 'sha384' ? 48 : 32;
-    final finishedKey = HKDF_expand_label(
+    final finishedKey = hkdfExpandLabel(
       secret,
       Uint8List.fromList('finished'.codeUnits),
       Uint8List(0),
@@ -3243,7 +3314,7 @@ class TlsConnection extends MessageSocket {
           hashName: config.hash,
         );
       } on TLSIllegalParameterException {
-        await _sendAlert(AlertLevel.fatal, AlertDescription.illegal_parameter);
+        await _sendAlert(AlertLevel.fatal, AlertDescription.illegalParameter);
         rethrow;
       }
       _negotiatedClientHelloPskIndex = i;
@@ -3262,7 +3333,7 @@ class TlsConnection extends MessageSocket {
       return false;
     }
     if (!handshakeEstablished) {
-      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpectedMessage);
       throw TLSUnexpectedMessage(
           '${message.handshakeType.name} received before handshake completion');
     }
@@ -3276,14 +3347,14 @@ class TlsConnection extends MessageSocket {
 
   Future<void> _processKeyUpdate(TlsKeyUpdate keyUpdate) async {
     if (!_isTls13Plus()) {
-      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpectedMessage);
       throw TLSUnexpectedMessage('KeyUpdate requires TLS 1.3');
     }
     final activeSession = session;
     if (activeSession.cipherSuite == 0 ||
         activeSession.clAppSecret.isEmpty ||
         activeSession.srAppSecret.isEmpty) {
-      await _sendAlert(AlertLevel.fatal, AlertDescription.internal_error);
+      await _sendAlert(AlertLevel.fatal, AlertDescription.internalError);
       throw TLSUnexpectedMessage(
           'KeyUpdate received before traffic secrets were established');
     }
@@ -3337,7 +3408,7 @@ class TlsConnection extends MessageSocket {
     if (renegotiationAllowed) {
       return false;
     }
-    await _sendAlert(AlertLevel.warning, AlertDescription.no_renegotiation);
+    await _sendAlert(AlertLevel.warning, AlertDescription.noRenegotiation);
     return true;
   }
 
@@ -3353,7 +3424,7 @@ class TlsConnection extends MessageSocket {
     try {
       machine.processIncoming(<TlsHandshakeMessage>[message]);
     } on StateError catch (error) {
-      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpected_message);
+      await _sendAlert(AlertLevel.fatal, AlertDescription.unexpectedMessage);
       throw TLSUnexpectedMessage(
           'Handshake sequencing error: ${error.message}');
     }
@@ -3411,16 +3482,16 @@ class TlsConnection extends MessageSocket {
     }
 
     // Check PSK key exchange modes
-    final pskModesExt = extensions.byType(ExtensionType.psk_key_exchange_modes);
+    final pskModesExt = extensions.byType(ExtensionType.pskKeyExchangeModes);
     if (pskModesExt == null) {
       return null;
     }
 
     final supportedModes = _extractPskModes(pskModesExt);
     final serverModes = handshakeSettings.pskModes;
-    final hasDheKe = supportedModes.contains(PskKeyExchangeMode.psk_dhe_ke) &&
+    final hasDheKe = supportedModes.contains(PskKeyExchangeMode.pskDheKe) &&
         serverModes.contains('psk_dhe_ke');
-    final hasKe = supportedModes.contains(PskKeyExchangeMode.psk_ke) &&
+    final hasKe = supportedModes.contains(PskKeyExchangeMode.pskKe) &&
         serverModes.contains('psk_ke');
 
     if (!hasDheKe && !hasKe) {
@@ -3456,7 +3527,7 @@ class TlsConnection extends MessageSocket {
           );
         } on TLSIllegalParameterException {
           await _sendAlert(
-              AlertLevel.fatal, AlertDescription.illegal_parameter);
+              AlertLevel.fatal, AlertDescription.illegalParameter);
           rethrow;
         }
 
@@ -3493,7 +3564,7 @@ class TlsConnection extends MessageSocket {
           );
         } on TLSIllegalParameterException {
           await _sendAlert(
-              AlertLevel.fatal, AlertDescription.illegal_parameter);
+              AlertLevel.fatal, AlertDescription.illegalParameter);
           rethrow;
         }
 
@@ -3578,7 +3649,7 @@ class TlsConnection extends MessageSocket {
         }
 
         final ticketHash = resSecret.length == 32 ? 'sha256' : 'sha384';
-        final psk = HKDF_expand_label(
+        final psk = hkdfExpandLabel(
           resSecret,
           Uint8List.fromList('resumption'.codeUnits),
           ticket.ticketNonce,
@@ -3594,17 +3665,20 @@ class TlsConnection extends MessageSocket {
   }
 
   void _validateCertificateChain(X509CertChain chain) {
+    // Only the end-entity certificate is checked here: servers commonly send
+    // extra (possibly expired) cross-signed certificates that are not part of
+    // the path a validator ends up using. Full path validation (signatures,
+    // trust anchors, constraints, host name) is done by an `X509Validator`
+    // passed as `handshakeClient(checker: validator.checker(...))`.
+    if (chain.x509List.isEmpty) return;
     final now = DateTime.now().toUtc();
-    for (final cert in chain.x509List) {
-      if (cert.notBefore != null && now.isBefore(cert.notBefore!)) {
-        throw TLSHandshakeFailure('Certificate not yet valid');
-      }
-      if (cert.notAfter != null && now.isAfter(cert.notAfter!)) {
-        throw TLSHandshakeFailure('Certificate expired');
-      }
+    final cert = chain.x509List.first;
+    if (cert.notBefore != null && now.isBefore(cert.notBefore!)) {
+      throw TLSHandshakeFailure('Certificate not yet valid');
     }
-    // FUTURE: Full certificate path validation (signature verification up to trust anchor)
-    // Currently validates expiration dates; full chain verification requires trust store integration
+    if (cert.notAfter != null && now.isAfter(cert.notAfter!)) {
+      throw TLSHandshakeFailure('Certificate expired');
+    }
   }
 }
 

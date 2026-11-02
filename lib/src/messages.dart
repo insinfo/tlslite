@@ -1,3 +1,7 @@
+// Ported to Dart from tlslite-ng tlslite/messages.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 import 'dart:typed_data';
 
 import 'constants.dart' as tls_constants;
@@ -10,10 +14,10 @@ import 'tls_protocol.dart';
 
 /// Content types alinhados com TLS 1.2/1.3.
 enum TlsContentType {
-  changeCipherSpec(tls_constants.ContentType.change_cipher_spec),
+  changeCipherSpec(tls_constants.ContentType.changeCipherSpec),
   alert(tls_constants.ContentType.alert),
   handshake(tls_constants.ContentType.handshake),
-  applicationData(tls_constants.ContentType.application_data),
+  applicationData(tls_constants.ContentType.applicationData),
   heartbeat(tls_constants.ContentType.heartbeat),
   unknown(-1);
 
@@ -57,14 +61,14 @@ enum TlsAlertLevel {
 }
 
 enum TlsAlertDescription {
-  closeNotify(tls_constants.AlertDescription.close_notify),
-  unexpectedMessage(tls_constants.AlertDescription.unexpected_message),
-  handshakeFailure(tls_constants.AlertDescription.handshake_failure),
-  decodeError(tls_constants.AlertDescription.decode_error),
-  protocolVersion(tls_constants.AlertDescription.protocol_version),
-  insufficientSecurity(tls_constants.AlertDescription.insufficient_security),
-  internalError(tls_constants.AlertDescription.internal_error),
-  noApplicationProtocol(tls_constants.AlertDescription.no_application_protocol),
+  closeNotify(tls_constants.AlertDescription.closeNotify),
+  unexpectedMessage(tls_constants.AlertDescription.unexpectedMessage),
+  handshakeFailure(tls_constants.AlertDescription.handshakeFailure),
+  decodeError(tls_constants.AlertDescription.decodeError),
+  protocolVersion(tls_constants.AlertDescription.protocolVersion),
+  insufficientSecurity(tls_constants.AlertDescription.insufficientSecurity),
+  internalError(tls_constants.AlertDescription.internalError),
+  noApplicationProtocol(tls_constants.AlertDescription.noApplicationProtocol),
   unknown(-1);
 
   const TlsAlertDescription(this.code);
@@ -85,22 +89,22 @@ enum TlsAlertDescription {
 }
 
 enum TlsHandshakeType {
-  helloRequest(tls_constants.HandshakeType.hello_request),
-  clientHello(tls_constants.HandshakeType.client_hello),
-  serverHello(tls_constants.HandshakeType.server_hello),
-  newSessionTicket(tls_constants.HandshakeType.new_session_ticket),
-  helloRetryRequest(tls_constants.HandshakeType.hello_retry_request),
-  encryptedExtensions(tls_constants.HandshakeType.encrypted_extensions),
+  helloRequest(tls_constants.HandshakeType.helloRequest),
+  clientHello(tls_constants.HandshakeType.clientHello),
+  serverHello(tls_constants.HandshakeType.serverHello),
+  newSessionTicket(tls_constants.HandshakeType.newSessionTicket),
+  helloRetryRequest(tls_constants.HandshakeType.helloRetryRequest),
+  encryptedExtensions(tls_constants.HandshakeType.encryptedExtensions),
   certificate(tls_constants.HandshakeType.certificate),
-  serverKeyExchange(tls_constants.HandshakeType.server_key_exchange),
-  certificateRequest(tls_constants.HandshakeType.certificate_request),
-  serverHelloDone(tls_constants.HandshakeType.server_hello_done),
-  certificateVerify(tls_constants.HandshakeType.certificate_verify),
-  clientKeyExchange(tls_constants.HandshakeType.client_key_exchange),
+  serverKeyExchange(tls_constants.HandshakeType.serverKeyExchange),
+  certificateRequest(tls_constants.HandshakeType.certificateRequest),
+  serverHelloDone(tls_constants.HandshakeType.serverHelloDone),
+  certificateVerify(tls_constants.HandshakeType.certificateVerify),
+  clientKeyExchange(tls_constants.HandshakeType.clientKeyExchange),
   finished(tls_constants.HandshakeType.finished),
-  certificateStatus(tls_constants.HandshakeType.certificate_status),
-  keyUpdate(tls_constants.HandshakeType.key_update),
-  nextProtocol(tls_constants.HandshakeType.next_protocol),
+  certificateStatus(tls_constants.HandshakeType.certificateStatus),
+  keyUpdate(tls_constants.HandshakeType.keyUpdate),
+  nextProtocol(tls_constants.HandshakeType.nextProtocol),
   unknown(-1);
 
   const TlsHandshakeType(this.code);
@@ -309,7 +313,7 @@ abstract class TlsHandshakeMessage extends TlsMessage {
   /// Check if the random field indicates this is a HelloRetryRequest.
   /// HRR uses a special constant random value defined in RFC 8446.
   static bool _isHelloRetryRequest(Uint8List random) {
-    final hrr = tls_constants.TLS_1_3_HRR;
+    final hrr = tls_constants.tls13Hrr;
     if (random.length != hrr.length) return false;
     for (int i = 0; i < random.length; i++) {
       if (random[i] != hrr[i]) return false;
@@ -485,8 +489,6 @@ class TlsClientHello extends TlsHandshakeMessage {
     }
     return Uint8List.fromList(full.sublist(0, truncatedLength));
   }
-
-  Uint8List psk_truncate() => pskTruncate();
 
   static TlsClientHello parseBody(Uint8List body) {
     final parser = Parser(body);
@@ -1111,7 +1113,7 @@ class TlsKeyUpdate extends TlsHandshakeMessage {
     }
     final value = body[0];
     final requested =
-        value == tls_constants.KeyUpdateMessageType.update_requested;
+        value == tls_constants.KeyUpdateMessageType.updateRequested;
     return TlsKeyUpdate(updateRequested: requested);
   }
 
@@ -1119,8 +1121,8 @@ class TlsKeyUpdate extends TlsHandshakeMessage {
   Uint8List serializeBody() {
     return Uint8List.fromList(<int>[
       updateRequested
-          ? tls_constants.KeyUpdateMessageType.update_requested
-          : tls_constants.KeyUpdateMessageType.update_not_requested,
+          ? tls_constants.KeyUpdateMessageType.updateRequested
+          : tls_constants.KeyUpdateMessageType.updateNotRequested,
     ]);
   }
 }
@@ -1451,8 +1453,8 @@ class TlsServerKeyExchange extends TlsHandshakeMessage {
       writer.add(dhYsBytes.length, 2);
       writer.addBytes(dhYsBytes);
     } else if (tls_constants.CipherSuite.ecdhAllSuites.contains(cipherSuite)) {
-      writer.add(curveType ?? tls_constants.ECCurveType.named_curve, 1);
-      if (curveType == tls_constants.ECCurveType.named_curve) {
+      writer.add(curveType ?? tls_constants.ECCurveType.namedCurve, 1);
+      if (curveType == tls_constants.ECCurveType.namedCurve) {
         writer.add(namedCurve ?? 0, 2);
       }
       writer.addVarBytes(Uint8List.fromList(ecdhYs), 1);
@@ -1476,11 +1478,11 @@ class TlsServerKeyExchange extends TlsHandshakeMessage {
           tls_constants.CipherSuite.ecdheEcdsaSuites.contains(cipherSuite) ||
               tls_constants.CipherSuite.dheDsaSuites.contains(cipherSuite);
       if (sha1Only) {
-        return SHA1(payload);
+        return sha1(payload);
       }
       final legacy = BytesBuilder()
-        ..add(MD5(payload))
-        ..add(SHA1(payload));
+        ..add(md5(payload))
+        ..add(sha1(payload));
       return legacy.toBytes();
     }
 
@@ -1538,7 +1540,7 @@ class TlsServerKeyExchange extends TlsHandshakeMessage {
       dhYs = bytesToNumber(Uint8List.fromList(parser.getFixBytes(dhYsLen)));
     } else if (tls_constants.CipherSuite.ecdhAllSuites.contains(cipherSuite)) {
       curveType = parser.get(1);
-      if (curveType == tls_constants.ECCurveType.named_curve) {
+      if (curveType == tls_constants.ECCurveType.namedCurve) {
         namedCurve = parser.get(2);
       }
       ecdhYs = parser.getVarBytes(1);

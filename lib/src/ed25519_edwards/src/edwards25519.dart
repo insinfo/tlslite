@@ -38,16 +38,16 @@ void fieldElementFullCopy(FieldElement src, FieldElement dest) {
 
 var zero = FieldElement();
 
-void FeZero(FieldElement fe) {
+void feZero(FieldElement fe) {
   fieldElementFullCopy(zero, fe);
 }
 
-void FeOne(FieldElement fe) {
-  FeZero(fe);
+void feOne(FieldElement fe) {
+  feZero(fe);
   fe[0] = Number.one;
 }
 
-void FeAdd(FieldElement dst, FieldElement a, FieldElement b) {
+void feAdd(FieldElement dst, FieldElement a, FieldElement b) {
   dst[0] = a[0] + b[0];
   dst[1] = a[1] + b[1];
   dst[2] = a[2] + b[2];
@@ -60,7 +60,7 @@ void FeAdd(FieldElement dst, FieldElement a, FieldElement b) {
   dst[9] = a[9] + b[9];
 }
 
-void FeSub(FieldElement dst, FieldElement a, FieldElement b) {
+void feSub(FieldElement dst, FieldElement a, FieldElement b) {
   dst[0] = a[0] - b[0];
   dst[1] = a[1] - b[1];
   dst[2] = a[2] - b[2];
@@ -73,7 +73,7 @@ void FeSub(FieldElement dst, FieldElement a, FieldElement b) {
   dst[9] = a[9] - b[9];
 }
 
-void FeCopy(FieldElement dst, FieldElement src) {
+void feCopy(FieldElement dst, FieldElement src) {
   fieldElementFullCopy(src, dst);
 }
 
@@ -81,7 +81,7 @@ void FeCopy(FieldElement dst, FieldElement src) {
 /// replace (f,g) with (f,g) if b == 0.
 ///
 /// Preconditions: b in {0,1}.
-void FeCMove(FieldElement f, FieldElement g, Number b) {
+void feCMove(FieldElement f, FieldElement g, Number b) {
   b = -b;
   f[0] ^= b & (f[0] ^ g[0]);
   f[1] ^= b & (f[1] ^ g[1]);
@@ -112,7 +112,7 @@ Number load4(Uint8List input) {
   return Number(r);
 }
 
-void FeFromBytes(FieldElement dst, Uint8List src) {
+void feFromBytes(FieldElement dst, Uint8List src) {
   var h0 = load4(src.sublist(0, src.length));
   var h1 = load3(src.sublist(4, src.length)) << 6;
   var h2 = load3(src.sublist(7, src.length)) << 5;
@@ -124,7 +124,7 @@ void FeFromBytes(FieldElement dst, Uint8List src) {
   var h8 = load3(src.sublist(26, src.length)) << 4;
   var h9 = (load3(src.sublist(29, src.length)) & Number(8388607)) << 2;
 
-  FeCombine(dst, h0, h1, h2, h3, h4, h5, h6, h7, h8, h9);
+  feCombine(dst, h0, h1, h2, h3, h4, h5, h6, h7, h8, h9);
 }
 
 /// FeToBytes marshals h to s.
@@ -150,7 +150,7 @@ void FeFromBytes(FieldElement dst, Uint8List src) {
 ///
 ///   Have q+2^(-255)x = 2^(-255)(h + 19 2^(-25) h9 + 2^(-1))
 ///   so floor(2^(-255)(h + 19 2^(-25) h9 + 2^(-1))) = q.
-void FeToBytes(Uint8List s, FieldElement h) {
+void feToBytes(Uint8List s, FieldElement h) {
   var carry = List<Number>.filled(10, Number.zero);
 
   var q = (Numbers.v19 * h[9] + (Number.one << 24)) >> 25;
@@ -239,15 +239,15 @@ void FeToBytes(Uint8List s, FieldElement h) {
   s[31] = (h[9] >> 18).intValue;
 }
 
-int FeIsNegative(FieldElement f) {
+int feIsNegative(FieldElement f) {
   var s = Uint8List(32);
-  FeToBytes(s, f);
+  feToBytes(s, f);
   return s[0] & 1;
 }
 
-int FeIsNonZero(FieldElement f) {
+int feIsNonZero(FieldElement f) {
   var s = Uint8List(32);
-  FeToBytes(s, f);
+  feToBytes(s, f);
   var x = 0;
   for (var i = 0; i < s.length; i++) {
     x |= s[i];
@@ -265,7 +265,7 @@ int FeIsNonZero(FieldElement f) {
 ///
 /// Postconditions:
 ///    |h| bounded by 1.1*2^25,1.1*2^24,1.1*2^25,1.1*2^24,etc.
-void FeNeg(FieldElement h, FieldElement f) {
+void feNeg(FieldElement h, FieldElement f) {
   h[0] = -f[0];
   h[1] = -f[1];
   h[2] = -f[2];
@@ -278,7 +278,7 @@ void FeNeg(FieldElement h, FieldElement f) {
   h[9] = -f[9];
 }
 
-void FeCombine(FieldElement h, Number h0, Number h1, Number h2, Number h3,
+void feCombine(FieldElement h, Number h0, Number h1, Number h2, Number h3,
     Number h4, Number h5, Number h6, Number h7, Number h8, Number h9) {
   var c0 = Number.zero;
   var c1 = Number.zero;
@@ -404,7 +404,7 @@ void FeCombine(FieldElement h, Number h0, Number h1, Number h2, Number h3,
 /// Can get away with 11 carries, but then data flow is much deeper.
 ///
 /// With tighter constraints on inputs, can squeeze carries into int32.
-void FeMul(FieldElement h, FieldElement f, FieldElement g) {
+void feMul(FieldElement h, FieldElement f, FieldElement g) {
   var f0 = f[0];
   var f1 = f[1];
   var f2 = f[2];
@@ -544,10 +544,10 @@ void FeMul(FieldElement h, FieldElement f, FieldElement g) {
       f8 * g1 +
       f9 * g0;
 
-  FeCombine(h, h0, h1, h2, h3, h4, h5, h6, h7, h8, h9);
+  feCombine(h, h0, h1, h2, h3, h4, h5, h6, h7, h8, h9);
 }
 
-List<Number> feSquare(FieldElement f) {
+List<Number> feSquareLimbs(FieldElement f) {
   var f0 = f[0];
   var f1 = f[1];
   var f2 = f[2];
@@ -614,8 +614,8 @@ List<Number> feSquare(FieldElement f) {
 ///
 /// Postconditions:
 ///    |h| bounded by 1.1*2^25,1.1*2^24,1.1*2^25,1.1*2^24,etc.
-void FeSquare(FieldElement h, FieldElement f) {
-  var fs = feSquare(f);
+void feSquare(FieldElement h, FieldElement f) {
+  var fs = feSquareLimbs(f);
   var h0 = fs[0];
   var h1 = fs[1];
   var h2 = fs[2];
@@ -626,7 +626,7 @@ void FeSquare(FieldElement h, FieldElement f) {
   var h7 = fs[7];
   var h8 = fs[8];
   var h9 = fs[9];
-  FeCombine(h, h0, h1, h2, h3, h4, h5, h6, h7, h8, h9);
+  feCombine(h, h0, h1, h2, h3, h4, h5, h6, h7, h8, h9);
 }
 
 /// FeSquare2 sets h = 2 * f * f
@@ -639,8 +639,8 @@ void FeSquare(FieldElement h, FieldElement f) {
 /// Postconditions:
 ///    |h| bounded by 1.01*2^25,1.01*2^24,1.01*2^25,1.01*2^24,etc.
 /// See fe_mul.c for discussion of implementation strategy.
-void FeSquare2(FieldElement h, FieldElement f) {
-  var fs = feSquare(f);
+void feSquare2(FieldElement h, FieldElement f) {
+  var fs = feSquareLimbs(f);
   var h0 = fs[0];
   var h1 = fs[1];
   var h2 = fs[2];
@@ -663,74 +663,74 @@ void FeSquare2(FieldElement h, FieldElement f) {
   h8 += h8;
   h9 += h9;
 
-  FeCombine(h, h0, h1, h2, h3, h4, h5, h6, h7, h8, h9);
+  feCombine(h, h0, h1, h2, h3, h4, h5, h6, h7, h8, h9);
 }
 
-void FeInvert(FieldElement out, FieldElement z) {
+void feInvert(FieldElement out, FieldElement z) {
   var t0 = FieldElement();
   var t1 = FieldElement();
   var t2 = FieldElement();
   var t3 = FieldElement();
   var i = 0;
 
-  FeSquare(t0, z); // 2^1
-  FeSquare(t1, t0); // 2^2
+  feSquare(t0, z); // 2^1
+  feSquare(t1, t0); // 2^2
   for (i = 1; i < 2; i++) {
     // 2^3
-    FeSquare(t1, t1);
+    feSquare(t1, t1);
   }
-  FeMul(t1, z, t1); // 2^3 + 2^0
-  FeMul(t0, t0, t1); // 2^3 + 2^1 + 2^0
-  FeSquare(t2, t0); // 2^4 + 2^2 + 2^1
-  FeMul(t1, t1, t2); // 2^4 + 2^3 + 2^2 + 2^1 + 2^0
-  FeSquare(t2, t1); // 5,4,3,2,1
+  feMul(t1, z, t1); // 2^3 + 2^0
+  feMul(t0, t0, t1); // 2^3 + 2^1 + 2^0
+  feSquare(t2, t0); // 2^4 + 2^2 + 2^1
+  feMul(t1, t1, t2); // 2^4 + 2^3 + 2^2 + 2^1 + 2^0
+  feSquare(t2, t1); // 5,4,3,2,1
   for (i = 1; i < 5; i++) {
     // 9,8,7,6,5
-    FeSquare(t2, t2);
+    feSquare(t2, t2);
   }
-  FeMul(t1, t2, t1); // 9,8,7,6,5,4,3,2,1,0
-  FeSquare(t2, t1); // 10..1
+  feMul(t1, t2, t1); // 9,8,7,6,5,4,3,2,1,0
+  feSquare(t2, t1); // 10..1
   for (i = 1; i < 10; i++) {
     // 19..10
-    FeSquare(t2, t2);
+    feSquare(t2, t2);
   }
-  FeMul(t2, t2, t1); // 19..0
-  FeSquare(t3, t2); // 20..1
+  feMul(t2, t2, t1); // 19..0
+  feSquare(t3, t2); // 20..1
   for (i = 1; i < 20; i++) {
     // 39..20
-    FeSquare(t3, t3);
+    feSquare(t3, t3);
   }
-  FeMul(t2, t3, t2); // 39..0
-  FeSquare(t2, t2); // 40..1
+  feMul(t2, t3, t2); // 39..0
+  feSquare(t2, t2); // 40..1
   for (i = 1; i < 10; i++) {
     // 49..10
-    FeSquare(t2, t2);
+    feSquare(t2, t2);
   }
-  FeMul(t1, t2, t1); // 49..0
-  FeSquare(t2, t1); // 50..1
+  feMul(t1, t2, t1); // 49..0
+  feSquare(t2, t1); // 50..1
   for (i = 1; i < 50; i++) {
     // 99..50
-    FeSquare(t2, t2);
+    feSquare(t2, t2);
   }
-  FeMul(t2, t2, t1); // 99..0
-  FeSquare(t3, t2); // 100..1
+  feMul(t2, t2, t1); // 99..0
+  feSquare(t3, t2); // 100..1
   for (i = 1; i < 100; i++) {
     // 199..100
-    FeSquare(t3, t3);
+    feSquare(t3, t3);
   }
-  FeMul(t2, t3, t2); // 199..0
-  FeSquare(t2, t2); // 200..1
+  feMul(t2, t3, t2); // 199..0
+  feSquare(t2, t2); // 200..1
   for (i = 1; i < 50; i++) {
     // 249..50
-    FeSquare(t2, t2);
+    feSquare(t2, t2);
   }
-  FeMul(t1, t2, t1); // 249..0
-  FeSquare(t1, t1); // 250..1
+  feMul(t1, t2, t1); // 249..0
+  feSquare(t1, t1); // 250..1
   for (i = 1; i < 5; i++) {
     // 254..5
-    FeSquare(t1, t1);
+    feSquare(t1, t1);
   }
-  FeMul(out, t1, t0); // 254..5,3,1,0
+  feMul(out, t1, t0); // 254..5,3,1,0
 }
 
 void fePow22523(FieldElement out, FieldElement z) {
@@ -739,61 +739,61 @@ void fePow22523(FieldElement out, FieldElement z) {
   var t2 = FieldElement();
   var i = 0;
 
-  FeSquare(t0, z);
+  feSquare(t0, z);
   for (i = 1; i < 1; i++) {
-    FeSquare(t0, t0);
+    feSquare(t0, t0);
   }
-  FeSquare(t1, t0);
+  feSquare(t1, t0);
   for (i = 1; i < 2; i++) {
-    FeSquare(t1, t1);
+    feSquare(t1, t1);
   }
-  FeMul(t1, z, t1);
-  FeMul(t0, t0, t1);
-  FeSquare(t0, t0);
+  feMul(t1, z, t1);
+  feMul(t0, t0, t1);
+  feSquare(t0, t0);
   for (i = 1; i < 1; i++) {
-    FeSquare(t0, t0);
+    feSquare(t0, t0);
   }
-  FeMul(t0, t1, t0);
-  FeSquare(t1, t0);
+  feMul(t0, t1, t0);
+  feSquare(t1, t0);
   for (i = 1; i < 5; i++) {
-    FeSquare(t1, t1);
+    feSquare(t1, t1);
   }
-  FeMul(t0, t1, t0);
-  FeSquare(t1, t0);
+  feMul(t0, t1, t0);
+  feSquare(t1, t0);
   for (i = 1; i < 10; i++) {
-    FeSquare(t1, t1);
+    feSquare(t1, t1);
   }
-  FeMul(t1, t1, t0);
-  FeSquare(t2, t1);
+  feMul(t1, t1, t0);
+  feSquare(t2, t1);
   for (i = 1; i < 20; i++) {
-    FeSquare(t2, t2);
+    feSquare(t2, t2);
   }
-  FeMul(t1, t2, t1);
-  FeSquare(t1, t1);
+  feMul(t1, t2, t1);
+  feSquare(t1, t1);
   for (i = 1; i < 10; i++) {
-    FeSquare(t1, t1);
+    feSquare(t1, t1);
   }
-  FeMul(t0, t1, t0);
-  FeSquare(t1, t0);
+  feMul(t0, t1, t0);
+  feSquare(t1, t0);
   for (i = 1; i < 50; i++) {
-    FeSquare(t1, t1);
+    feSquare(t1, t1);
   }
-  FeMul(t1, t1, t0);
-  FeSquare(t2, t1);
+  feMul(t1, t1, t0);
+  feSquare(t2, t1);
   for (i = 1; i < 100; i++) {
-    FeSquare(t2, t2);
+    feSquare(t2, t2);
   }
-  FeMul(t1, t2, t1);
-  FeSquare(t1, t1);
+  feMul(t1, t2, t1);
+  feSquare(t1, t1);
   for (i = 1; i < 50; i++) {
-    FeSquare(t1, t1);
+    feSquare(t1, t1);
   }
-  FeMul(t0, t1, t0);
-  FeSquare(t0, t0);
+  feMul(t0, t1, t0);
+  feSquare(t0, t0);
   for (i = 1; i < 2; i++) {
-    FeSquare(t0, t0);
+    feSquare(t0, t0);
   }
-  FeMul(out, t0, z);
+  feMul(out, t0, z);
 }
 
 /// Group elements are members of the elliptic curve -x^2 + y^2 = 1 + d * x^2 *
@@ -809,36 +809,36 @@ class ProjectiveGroupElement {
   FieldElement Y = FieldElement();
   FieldElement Z = FieldElement();
 
-  void Zero() {
-    FeZero(X);
-    FeOne(Y);
-    FeOne(Z);
+  void zero() {
+    feZero(X);
+    feOne(Y);
+    feOne(Z);
   }
 
-  void Double(CompletedGroupElement r) {
+  void doubleInto(CompletedGroupElement r) {
     var t0 = FieldElement();
 
-    FeSquare(r.X, X);
-    FeSquare(r.Z, Y);
-    FeSquare2(r.T, Z);
-    FeAdd(r.Y, X, Y);
-    FeSquare(t0, r.Y);
-    FeAdd(r.Y, r.Z, r.X);
-    FeSub(r.Z, r.Z, r.X);
-    FeSub(r.X, t0, r.Y);
-    FeSub(r.T, r.T, r.Z);
+    feSquare(r.X, X);
+    feSquare(r.Z, Y);
+    feSquare2(r.T, Z);
+    feAdd(r.Y, X, Y);
+    feSquare(t0, r.Y);
+    feAdd(r.Y, r.Z, r.X);
+    feSub(r.Z, r.Z, r.X);
+    feSub(r.X, t0, r.Y);
+    feSub(r.T, r.T, r.Z);
   }
 
-  void ToBytes(Uint8List s) {
+  void toBytes(Uint8List s) {
     var recip = FieldElement();
     var x = FieldElement();
     var y = FieldElement();
 
-    FeInvert(recip, Z);
-    FeMul(x, X, recip);
-    FeMul(y, Y, recip);
-    FeToBytes(s, y);
-    s[31] ^= FeIsNegative(x) << 7;
+    feInvert(recip, Z);
+    feMul(x, X, recip);
+    feMul(y, Y, recip);
+    feToBytes(s, y);
+    s[31] ^= feIsNegative(x) << 7;
   }
 }
 
@@ -848,92 +848,92 @@ class ExtendedGroupElement {
   FieldElement Z = FieldElement();
   FieldElement T = FieldElement();
 
-  void Zero() {
-    FeZero(X);
-    FeOne(Y);
-    FeOne(Z);
-    FeZero(T);
+  void zero() {
+    feZero(X);
+    feOne(Y);
+    feOne(Z);
+    feZero(T);
   }
 
-  void Double(CompletedGroupElement r) {
+  void doubleInto(CompletedGroupElement r) {
     var q = ProjectiveGroupElement();
-    ToProjective(q);
-    q.Double(r);
+    toProjective(q);
+    q.doubleInto(r);
   }
 
-  void ToCached(CachedGroupElement r) {
-    FeAdd(r.yPlusX, Y, X);
-    FeSub(r.yMinusX, Y, X);
-    FeCopy(r.Z, Z);
-    FeMul(r.T2d, T, d2);
+  void toCached(CachedGroupElement r) {
+    feAdd(r.yPlusX, Y, X);
+    feSub(r.yMinusX, Y, X);
+    feCopy(r.Z, Z);
+    feMul(r.t2d, T, d2);
   }
 
-  void ToProjective(ProjectiveGroupElement r) {
-    FeCopy(r.X, X);
-    FeCopy(r.Y, Y);
-    FeCopy(r.Z, Z);
+  void toProjective(ProjectiveGroupElement r) {
+    feCopy(r.X, X);
+    feCopy(r.Y, Y);
+    feCopy(r.Z, Z);
   }
 
-  void ToBytes(Uint8List s) {
+  void toBytes(Uint8List s) {
     var recip = FieldElement();
     var x = FieldElement();
     var y = FieldElement();
 
-    FeInvert(recip, Z);
-    FeMul(x, X, recip);
-    FeMul(y, Y, recip);
-    FeToBytes(s, y);
-    s[31] ^= FeIsNegative(x) << 7;
+    feInvert(recip, Z);
+    feMul(x, X, recip);
+    feMul(y, Y, recip);
+    feToBytes(s, y);
+    s[31] ^= feIsNegative(x) << 7;
   }
 
-  bool FromBytes(Uint8List s) {
+  bool fromBytes(Uint8List s) {
     var u = FieldElement();
     var v = FieldElement();
     var v3 = FieldElement();
     var vxx = FieldElement();
     var check = FieldElement();
 
-    FeFromBytes(Y, s);
-    FeOne(Z);
-    FeSquare(u, Y);
-    FeMul(v, u, d);
-    FeSub(u, u, Z); // y = y^2-1
-    FeAdd(v, v, Z); // v = dy^2+1
+    feFromBytes(Y, s);
+    feOne(Z);
+    feSquare(u, Y);
+    feMul(v, u, d);
+    feSub(u, u, Z); // y = y^2-1
+    feAdd(v, v, Z); // v = dy^2+1
 
-    FeSquare(v3, v);
-    FeMul(v3, v3, v); // v3 = v^3
-    FeSquare(X, v3);
-    FeMul(X, X, v);
-    FeMul(X, X, u); // x = uv^7
+    feSquare(v3, v);
+    feMul(v3, v3, v); // v3 = v^3
+    feSquare(X, v3);
+    feMul(X, X, v);
+    feMul(X, X, u); // x = uv^7
 
     fePow22523(X, X); // x = (uv^7)^((q-5)/8)
-    FeMul(X, X, v3);
-    FeMul(X, X, u); // x = uv^3(uv^7)^((q-5)/8)
+    feMul(X, X, v3);
+    feMul(X, X, u); // x = uv^3(uv^7)^((q-5)/8)
 
     var tmpX = Uint8List(32);
     var tmp2 = Uint8List(32);
 
-    FeSquare(vxx, X);
-    FeMul(vxx, vxx, v);
-    FeSub(check, vxx, u); // vx^2-u
-    if (FeIsNonZero(check) == 1) {
-      FeAdd(check, vxx, u); // vx^2+u
-      if (FeIsNonZero(check) == 1) {
+    feSquare(vxx, X);
+    feMul(vxx, vxx, v);
+    feSub(check, vxx, u); // vx^2-u
+    if (feIsNonZero(check) == 1) {
+      feAdd(check, vxx, u); // vx^2+u
+      if (feIsNonZero(check) == 1) {
         return false;
       }
-      FeMul(X, X, SqrtM1);
+      feMul(X, X, sqrtM1);
 
-      FeToBytes(tmpX, X);
+      feToBytes(tmpX, X);
       for (var i = 0; i < tmp2.length; i++) {
         tmp2[31 - i] = tmp2[i];
       }
     }
 
-    if (FeIsNegative(X) != (s[31] >> 7)) {
-      FeNeg(X, X);
+    if (feIsNegative(X) != (s[31] >> 7)) {
+      feNeg(X, X);
     }
 
-    FeMul(T, X, Y);
+    feMul(T, X, Y);
     return true;
   }
 }
@@ -944,17 +944,17 @@ class CompletedGroupElement {
   FieldElement Z = FieldElement();
   FieldElement T = FieldElement();
 
-  void ToProjective(ProjectiveGroupElement r) {
-    FeMul(r.X, X, T);
-    FeMul(r.Y, Y, Z);
-    FeMul(r.Z, Z, T);
+  void toProjective(ProjectiveGroupElement r) {
+    feMul(r.X, X, T);
+    feMul(r.Y, Y, Z);
+    feMul(r.Z, Z, T);
   }
 
-  void ToExtended(ExtendedGroupElement r) {
-    FeMul(r.X, X, T);
-    FeMul(r.Y, Y, Z);
-    FeMul(r.Z, Z, T);
-    FeMul(r.T, X, Y);
+  void toExtended(ExtendedGroupElement r) {
+    feMul(r.X, X, T);
+    feMul(r.Y, Y, Z);
+    feMul(r.Z, Z, T);
+    feMul(r.T, X, Y);
   }
 }
 
@@ -972,10 +972,10 @@ class PreComputedGroupElement {
     this.xy2d = xy2d;
   }
 
-  void Zero() {
-    FeOne(yPlusX);
-    FeOne(yMinusX);
-    FeZero(xy2d);
+  void zero() {
+    feOne(yPlusX);
+    feOne(yMinusX);
+    feZero(xy2d);
   }
 }
 
@@ -983,73 +983,73 @@ class CachedGroupElement {
   FieldElement yPlusX = FieldElement();
   FieldElement yMinusX = FieldElement();
   FieldElement Z = FieldElement();
-  FieldElement T2d = FieldElement();
+  FieldElement t2d = FieldElement();
 }
 
 void geAdd(
     CompletedGroupElement r, ExtendedGroupElement p, CachedGroupElement q) {
   var t0 = FieldElement();
 
-  FeAdd(r.X, p.Y, p.X);
-  FeSub(r.Y, p.Y, p.X);
-  FeMul(r.Z, r.X, q.yPlusX);
-  FeMul(r.Y, r.Y, q.yMinusX);
-  FeMul(r.T, q.T2d, p.T);
-  FeMul(r.X, p.Z, q.Z);
-  FeAdd(t0, r.X, r.X);
-  FeSub(r.X, r.Z, r.Y);
-  FeAdd(r.Y, r.Z, r.Y);
-  FeAdd(r.Z, t0, r.T);
-  FeSub(r.T, t0, r.T);
+  feAdd(r.X, p.Y, p.X);
+  feSub(r.Y, p.Y, p.X);
+  feMul(r.Z, r.X, q.yPlusX);
+  feMul(r.Y, r.Y, q.yMinusX);
+  feMul(r.T, q.t2d, p.T);
+  feMul(r.X, p.Z, q.Z);
+  feAdd(t0, r.X, r.X);
+  feSub(r.X, r.Z, r.Y);
+  feAdd(r.Y, r.Z, r.Y);
+  feAdd(r.Z, t0, r.T);
+  feSub(r.T, t0, r.T);
 }
 
 void geSub(
     CompletedGroupElement r, ExtendedGroupElement p, CachedGroupElement q) {
   var t0 = FieldElement();
 
-  FeAdd(r.X, p.Y, p.X);
-  FeSub(r.Y, p.Y, p.X);
-  FeMul(r.Z, r.X, q.yMinusX);
-  FeMul(r.Y, r.Y, q.yPlusX);
-  FeMul(r.T, q.T2d, p.T);
-  FeMul(r.X, p.Z, q.Z);
-  FeAdd(t0, r.X, r.X);
-  FeSub(r.X, r.Z, r.Y);
-  FeAdd(r.Y, r.Z, r.Y);
-  FeSub(r.Z, t0, r.T);
-  FeAdd(r.T, t0, r.T);
+  feAdd(r.X, p.Y, p.X);
+  feSub(r.Y, p.Y, p.X);
+  feMul(r.Z, r.X, q.yMinusX);
+  feMul(r.Y, r.Y, q.yPlusX);
+  feMul(r.T, q.t2d, p.T);
+  feMul(r.X, p.Z, q.Z);
+  feAdd(t0, r.X, r.X);
+  feSub(r.X, r.Z, r.Y);
+  feAdd(r.Y, r.Z, r.Y);
+  feSub(r.Z, t0, r.T);
+  feAdd(r.T, t0, r.T);
 }
 
 void geMixedAdd(CompletedGroupElement r, ExtendedGroupElement p,
     PreComputedGroupElement q) {
   var t0 = FieldElement();
 
-  FeAdd(r.X, p.Y, p.X);
-  FeSub(r.Y, p.Y, p.X);
-  FeMul(r.Z, r.X, q.yPlusX);
-  FeMul(r.Y, r.Y, q.yMinusX);
-  FeMul(r.T, q.xy2d, p.T);
-  FeAdd(t0, p.Z, p.Z);
-  FeSub(r.X, r.Z, r.Y);
-  FeAdd(r.Y, r.Z, r.Y);
-  FeAdd(r.Z, t0, r.T);
-  FeSub(r.T, t0, r.T);
+  feAdd(r.X, p.Y, p.X);
+  feSub(r.Y, p.Y, p.X);
+  feMul(r.Z, r.X, q.yPlusX);
+  feMul(r.Y, r.Y, q.yMinusX);
+  feMul(r.T, q.xy2d, p.T);
+  feAdd(t0, p.Z, p.Z);
+  feSub(r.X, r.Z, r.Y);
+  feAdd(r.Y, r.Z, r.Y);
+  feAdd(r.Z, t0, r.T);
+  feSub(r.T, t0, r.T);
 }
 
 void geMixedSub(CompletedGroupElement r, ExtendedGroupElement p,
     PreComputedGroupElement q) {
   var t0 = FieldElement();
 
-  FeAdd(r.X, p.Y, p.X);
-  FeSub(r.Y, p.Y, p.X);
-  FeMul(r.Z, r.X, q.yMinusX);
-  FeMul(r.Y, r.Y, q.yPlusX);
-  FeMul(r.T, q.xy2d, p.T);
-  FeAdd(t0, p.Z, p.Z);
-  FeSub(r.X, r.Z, r.Y);
-  FeAdd(r.Y, r.Z, r.Y);
-  FeSub(r.Z, t0, r.T);
-  FeAdd(r.T, t0, r.T);
+  feAdd(r.X, p.Y, p.X);
+  feSub(r.Y, p.Y, p.X);
+  feMul(r.Z, r.X, q.yMinusX);
+  feMul(r.Y, r.Y, q.yPlusX);
+  feMul(r.T, q.xy2d, p.T);
+  feAdd(t0, p.Z, p.Z);
+  feSub(r.X, r.Z, r.Y);
+  feAdd(r.Y, r.Z, r.Y);
+  feSub(r.Z, t0, r.T);
+  feAdd(r.T, t0, r.T);
 }
 
 void slide(Int8List r, Uint8List a) {
@@ -1086,31 +1086,31 @@ void slide(Int8List r, Uint8List a) {
 /// where a = a[0]+256*a[1]+...+256^31 a[31].
 /// and b = b[0]+256*b[1]+...+256^31 b[31].
 /// B is the Ed25519 base point (x,4/5) with x positive.
-void GeDoubleScalarMultVartime(ProjectiveGroupElement r, Uint8List a,
+void geDoubleScalarMultVartime(ProjectiveGroupElement r, Uint8List a,
     ExtendedGroupElement A, Uint8List b) {
   var aSlide = Int8List(256);
   var bSlide = Int8List(256);
-  var Ai = List.generate(
+  var ai = List.generate(
       8, (index) => CachedGroupElement()); // A,3A,5A,7A,9A,11A,13A,15A
   var t = CompletedGroupElement();
   var u = ExtendedGroupElement();
-  var A2 = ExtendedGroupElement();
+  var a2 = ExtendedGroupElement();
   int i;
 
   slide(aSlide, a);
   slide(bSlide, b);
 
-  A.ToCached(Ai[0]);
-  A.Double(t);
-  t.ToExtended(A2);
+  A.toCached(ai[0]);
+  A.doubleInto(t);
+  t.toExtended(a2);
 
   for (i = 0; i < 7; i++) {
-    geAdd(t, A2, Ai[i]);
-    t.ToExtended(u);
-    u.ToCached(Ai[i + 1]);
+    geAdd(t, a2, ai[i]);
+    t.toExtended(u);
+    u.toCached(ai[i + 1]);
   }
 
-  r.Zero();
+  r.zero();
 
   for (i = 255; i >= 0; i--) {
     if (aSlide[i] != 0 || bSlide[i] != 0) {
@@ -1119,25 +1119,25 @@ void GeDoubleScalarMultVartime(ProjectiveGroupElement r, Uint8List a,
   }
 
   for (; i >= 0; i--) {
-    r.Double(t);
+    r.doubleInto(t);
 
     if (aSlide[i] > 0) {
-      t.ToExtended(u);
-      geAdd(t, u, Ai[aSlide[i] ~/ 2]);
+      t.toExtended(u);
+      geAdd(t, u, ai[aSlide[i] ~/ 2]);
     } else if (aSlide[i] < 0) {
-      t.ToExtended(u);
-      geSub(t, u, Ai[(-aSlide[i]) ~/ 2]);
+      t.toExtended(u);
+      geSub(t, u, ai[(-aSlide[i]) ~/ 2]);
     }
 
     if (bSlide[i] > 0) {
-      t.ToExtended(u);
+      t.toExtended(u);
       geMixedAdd(t, u, bi[bSlide[i] ~/ 2]);
     } else if (bSlide[i] < 0) {
-      t.ToExtended(u);
+      t.toExtended(u);
       geMixedSub(t, u, bi[(-bSlide[i]) ~/ 2]);
     }
 
-    t.ToProjective(r);
+    t.toProjective(r);
   }
 }
 
@@ -1164,11 +1164,11 @@ Number negative(Number b) {
 //  return (b >> 31) & 1;
 }
 
-void PreComputedGroupElementCMove(
+void preComputedGroupElementCMove(
     PreComputedGroupElement t, PreComputedGroupElement u, Number b) {
-  FeCMove(t.yPlusX, u.yPlusX, b);
-  FeCMove(t.yMinusX, u.yMinusX, b);
-  FeCMove(t.xy2d, u.xy2d, b);
+  feCMove(t.yPlusX, u.yPlusX, b);
+  feCMove(t.yMinusX, u.yMinusX, b);
+  feCMove(t.xy2d, u.xy2d, b);
 }
 
 void selectPoint(PreComputedGroupElement t, int pos, Number b) {
@@ -1176,14 +1176,14 @@ void selectPoint(PreComputedGroupElement t, int pos, Number b) {
   var bNegative = negative(b);
   var bAbs = b - (((-bNegative) & b) << 1);
 
-  t.Zero();
+  t.zero();
   for (var i = 0; i < 8; i++) {
-    PreComputedGroupElementCMove(t, base[pos][i], equal(bAbs, Number(i + 1)));
+    preComputedGroupElementCMove(t, base[pos][i], equal(bAbs, Number(i + 1)));
   }
-  FeCopy(minusT.yPlusX, t.yMinusX);
-  FeCopy(minusT.yMinusX, t.yPlusX);
-  FeNeg(minusT.xy2d, t.xy2d);
-  PreComputedGroupElementCMove(t, minusT, bNegative);
+  feCopy(minusT.yPlusX, t.yMinusX);
+  feCopy(minusT.yMinusX, t.yPlusX);
+  feNeg(minusT.xy2d, t.xy2d);
+  preComputedGroupElementCMove(t, minusT, bNegative);
 }
 
 /// GeScalarMultBase computes h = a*B, where
@@ -1192,7 +1192,7 @@ void selectPoint(PreComputedGroupElement t, int pos, Number b) {
 ///
 /// Preconditions:
 ///   a[31] <= 127
-void GeScalarMultBase(ExtendedGroupElement h, Uint8List a) {
+void geScalarMultBase(ExtendedGroupElement h, Uint8List a) {
   var e = List<Number>.filled(64, Number.zero);
 
   for (var i = 0; i < a.length; i++) {
@@ -1212,30 +1212,30 @@ void GeScalarMultBase(ExtendedGroupElement h, Uint8List a) {
   e[63] += carry;
   // each e[i] is between -8 and 8.
 
-  h.Zero();
+  h.zero();
   var t = PreComputedGroupElement();
   var r = CompletedGroupElement();
   for (var i = 1; i < 64; i += 2) {
     selectPoint(t, i ~/ 2, e[i]);
     geMixedAdd(r, h, t);
-    r.ToExtended(h);
+    r.toExtended(h);
   }
 
   var s = ProjectiveGroupElement();
 
-  h.Double(r);
-  r.ToProjective(s);
-  s.Double(r);
-  r.ToProjective(s);
-  s.Double(r);
-  r.ToProjective(s);
-  s.Double(r);
-  r.ToExtended(h);
+  h.doubleInto(r);
+  r.toProjective(s);
+  s.doubleInto(r);
+  r.toProjective(s);
+  s.doubleInto(r);
+  r.toProjective(s);
+  s.doubleInto(r);
+  r.toExtended(h);
 
   for (var i = 0; i < 64; i += 2) {
     selectPoint(t, i ~/ 2, e[i]);
     geMixedAdd(r, h, t);
-    r.ToExtended(h);
+    r.toExtended(h);
   }
 }
 
@@ -1249,7 +1249,7 @@ void GeScalarMultBase(ExtendedGroupElement h, Uint8List a) {
 /// Output:
 ///   s[0]+256*s[1]+...+256^31*s[31] = (ab+c) mod l
 ///   where l = 2^252 + 27742317777372353535851937790883648493.
-void ScMulAdd(Uint8List s, Uint8List a, Uint8List b, Uint8List c) {
+void scMulAdd(Uint8List s, Uint8List a, Uint8List b, Uint8List c) {
   var a0 = Numbers.v2097151 & load3(a.sublist(0, a.length));
   var a1 = Numbers.v2097151 & (load4(a.sublist(2, a.length)) >> 5);
   var a2 = Numbers.v2097151 & (load3(a.sublist(5, a.length)) >> 2);
@@ -1769,7 +1769,7 @@ void ScMulAdd(Uint8List s, Uint8List a, Uint8List b, Uint8List c) {
 /// Output:
 ///   s[0]+256*s[1]+...+256^31*s[31] = s mod l
 ///   where l = 2^252 + 27742317777372353535851937790883648493.
-void ScReduce(Uint8List out, Uint8List s) {
+void scReduce(Uint8List out, Uint8List s) {
   var s0 = Numbers.v2097151 & load3(s.sublist(0, s.length));
   var s1 = Numbers.v2097151 & (load4(s.sublist(2, s.length)) >> 5);
   var s2 = Numbers.v2097151 & (load3(s.sublist(5, s.length)) >> 2);
@@ -2099,10 +2099,10 @@ var order = List<BigInt>.from(
 
 /// ScMinimal returns true if the given scalar is less than the order of the
 /// curve.
-bool ScMinimal(Uint8List scalar) {
+bool scMinimal(Uint8List scalar) {
   for (var i = 3;; i--) {
     // var v = binary.LittleEndian.Uint64(scalar[i*8:]);
-    var v = Uint64(scalar.sublist(i * 8, scalar.length));
+    var v = uint64(scalar.sublist(i * 8, scalar.length));
     if (v > order[i].toInt()) {
       return false;
     } else if (v < order[i].toInt()) {
@@ -2115,7 +2115,7 @@ bool ScMinimal(Uint8List scalar) {
   return true;
 }
 
-int Uint64(Uint8List b) {
+int uint64(Uint8List b) {
   return b[0] |
       b[1] << 8 |
       b[2] << 16 |

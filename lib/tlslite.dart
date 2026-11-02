@@ -9,7 +9,7 @@ export 'src/dh.dart';
 export 'src/checker.dart';
 export 'src/verifierdb.dart';
 export 'src/constants.dart'
-    show AlertLevel, AlertDescription, Fault, ContentType;
+    show AlertLevel, AlertDescription, CipherSuite, Fault, ContentType;
 export 'src/errors.dart';
 export 'src/handshake_settings.dart';
 export 'src/session.dart';
@@ -17,4 +17,6 @@ export 'src/sessioncache.dart';
 export 'src/tls_connection.dart';
 export 'src/x509.dart';
 export 'src/x509certchain.dart';
+export 'src/x509_validator.dart';
+export 'src/x509_trust_store.dart';
 export 'src/utils/binary_io.dart';

@@ -14,7 +14,7 @@
 import 'dart:ffi' as ffi;
 import 'dart:io' show Platform;
 import 'dart:typed_data';
-import 'package:ffi/ffi.dart' as pkgffi;
+import 'package:tlslite/src/ffi/native_memory.dart' as pkgffi;
 
 /// Verifica se a plataforma suporta AES-NI
 class AesNiSupport {
@@ -137,12 +137,12 @@ class AesNiSupport {
         ffi.Pointer<ffi.Void> Function(
             ffi.Pointer<ffi.Void>, int, int, int)>('VirtualAlloc');
 
-    const int MEM_COMMIT = 0x1000;
-    const int MEM_RESERVE = 0x2000;
-    const int PAGE_EXECUTE_READWRITE = 0x40;
+    const int memCommit = 0x1000;
+    const int memReserve = 0x2000;
+    const int pageExecuteReadWrite = 0x40;
 
     return virtualAlloc(
-        ffi.nullptr, size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+        ffi.nullptr, size, memCommit | memReserve, pageExecuteReadWrite);
   }
 
   static void _windowsFreeExecutable(ffi.Pointer<ffi.Void> ptr) {
@@ -152,8 +152,8 @@ class AesNiSupport {
         ffi.Int32 Function(ffi.Pointer<ffi.Void>, ffi.IntPtr, ffi.Uint32),
         int Function(ffi.Pointer<ffi.Void>, int, int)>('VirtualFree');
 
-    const int MEM_RELEASE = 0x8000;
-    virtualFree(ptr, 0, MEM_RELEASE);
+    const int memRelease = 0x8000;
+    virtualFree(ptr, 0, memRelease);
   }
 
   // Linux: mmap / munmap
@@ -167,14 +167,14 @@ class AesNiSupport {
         ffi.Pointer<ffi.Void> Function(
             ffi.Pointer<ffi.Void>, int, int, int, int, int)>('mmap');
 
-    const int PROT_READ = 0x1;
-    const int PROT_WRITE = 0x2;
-    const int PROT_EXEC = 0x4;
-    const int MAP_PRIVATE = 0x02;
-    const int MAP_ANONYMOUS = 0x20;
+    const int protRead = 0x1;
+    const int protWrite = 0x2;
+    const int protExec = 0x4;
+    const int mapPrivate = 0x02;
+    const int mapAnonymous = 0x20;
 
-    return mmap(ffi.nullptr, size, PROT_READ | PROT_WRITE | PROT_EXEC,
-        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    return mmap(ffi.nullptr, size, protRead | protWrite | protExec,
+        mapPrivate | mapAnonymous, -1, 0);
   }
 
   static void _linuxFreeExecutable(ffi.Pointer<ffi.Void> ptr, int size) {

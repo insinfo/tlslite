@@ -1,14 +1,14 @@
 import 'dart:ffi';
-import 'package:ffi/ffi.dart';
+import 'package:tlslite/src/ffi/native_memory.dart';
 
 import 'generated/ffi.dart';
 import 'openssl_loader.dart';
 
 /// Constantes – os valores abaixo devem corresponder aos valores definidos na sua binding.
-const int OSSL_PARAM_UNSIGNED_INTEGER = 1;
-const int EVP_PKEY_KEYPAIR = 1; // Seleção para criação de par de chaves
-const int BIO_CTRL_INFO = 3;
-const int EVP_PKEY_RSA = 6;
+const int osslParamUnsignedInteger = 1;
+const int evpPkeyKeypair = 1; // Seleção para criação de par de chaves
+const int bioCtrlInfo = 3;
+const int evpPkeyRsa = 6;
 
 /// Funções auxiliares para construir os parâmetros OSSL_PARAM para chave RSA.
 Pointer<OSSL_PARAM> constructParams(int bits, int pubexp) {
@@ -19,7 +19,7 @@ Pointer<OSSL_PARAM> constructParams(int bits, int pubexp) {
   // Primeiro parâmetro: "rsa_bits"
   final keyBits = "rsa_bits".toNativeUtf8();
   params[0].key = keyBits.cast<Char>();
-  params[0].data_type = OSSL_PARAM_UNSIGNED_INTEGER;
+  params[0].data_type = osslParamUnsignedInteger;
   // Aloca memória para armazenar o valor dos bits (uint32)
   final bitsPtr = calloc<Uint32>();
   bitsPtr.value = bits;
@@ -29,7 +29,7 @@ Pointer<OSSL_PARAM> constructParams(int bits, int pubexp) {
   // Segundo parâmetro: "rsa_pubexp"
   final keyPubexp = "rsa_pubexp".toNativeUtf8();
   params[1].key = keyPubexp.cast<Char>();
-  params[1].data_type = OSSL_PARAM_UNSIGNED_INTEGER;
+  params[1].data_type = osslParamUnsignedInteger;
   final pubexpPtr = calloc<Uint32>();
   pubexpPtr.value = pubexp;
   params[1].data = pubexpPtr.cast<Void>();
@@ -97,7 +97,7 @@ class X509CertificateBuilder {
 
     if (ctx == nullptr) {
       ctx = libcrypt.EVP_PKEY_CTX_new_id(
-        EVP_PKEY_RSA,
+        evpPkeyRsa,
         nullptr.cast<ENGINE>(),
       );
     }
@@ -114,7 +114,7 @@ class X509CertificateBuilder {
     final params = constructParams(2048, 65537);
     final pkeyPtr = calloc<Pointer<EVP_PKEY>>();
     final ret =
-        libcrypt.EVP_PKEY_fromdata(ctx, pkeyPtr, EVP_PKEY_KEYPAIR, params);
+        libcrypt.EVP_PKEY_fromdata(ctx, pkeyPtr, evpPkeyKeypair, params);
     freeParams(params);
     libcrypt.EVP_PKEY_CTX_free(ctx);
 
@@ -196,11 +196,11 @@ class X509CertificateBuilder {
     if (name == nullptr) {
       throw Exception('Falha ao criar X509_NAME');
     }
-    const int MBSTRING_ASC = 0x1001; // Valor oficial para ASCII.
+    const int mbstringAsc = 0x1001; // Valor oficial para ASCII.
     final cnKey = 'CN'.toNativeUtf8();
     final cnValue = 'SelfSignedCert'.toNativeUtf8();
     final ret = libcrypt.X509_NAME_add_entry_by_txt(
-        name, cnKey.cast(), MBSTRING_ASC, cnValue.cast(), -1, -1, 0);
+        name, cnKey.cast(), mbstringAsc, cnValue.cast(), -1, -1, 0);
     calloc.free(cnKey);
     calloc.free(cnValue);
     if (ret != 1) {
@@ -259,7 +259,7 @@ class X509CertificateBuilder {
   String _readBio(Pointer<BIO> bio) {
     final outPtr = calloc<Pointer<Int8>>();
     try {
-      final length = libcrypt.BIO_ctrl(bio, BIO_CTRL_INFO, 0, outPtr.cast());
+      final length = libcrypt.BIO_ctrl(bio, bioCtrlInfo, 0, outPtr.cast());
       if (length <= 0 || outPtr.value == nullptr) {
         throw Exception('BIO_get_mem_data falhou');
       }

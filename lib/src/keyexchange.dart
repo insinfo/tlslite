@@ -1,8 +1,10 @@
+// Ported to Dart from tlslite-ng tlslite/keyexchange.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 /// Handling of cryptographic operations for key exchange
 
 import 'dart:typed_data';
-
-import 'package:pointycastle/ecc/api.dart' show ECDomainParameters, ECPoint;
 
 import 'constants.dart';
 import 'errors.dart';
@@ -442,10 +444,6 @@ abstract class KeyExchange {
     final hello = clientHello;
     if (hello == null) return null;
     try {
-      final value = hello.client_version;
-      if (value != null) return value;
-    } catch (_) {}
-    try {
       final value = hello.clientVersion;
       if (value != null) return value;
     } catch (_) {}
@@ -455,10 +453,6 @@ abstract class KeyExchange {
   dynamic _tryGetServerVersion() {
     final hello = serverHello;
     if (hello == null) return null;
-    try {
-      final value = hello.server_version;
-      if (value != null) return value;
-    } catch (_) {}
     try {
       final value = hello.serverVersion;
       if (value != null) return value;
@@ -1056,7 +1050,7 @@ class ADHKeyExchange extends KeyExchange {
       // Ignore property lookup errors and fall back to extension parsing.
     }
     try {
-      final ext = clientHello.getExtension(ExtensionType.supported_groups);
+      final ext = clientHello.getExtension(ExtensionType.supportedGroups);
       if (ext == null) {
         return null;
       }
@@ -1075,8 +1069,8 @@ class ADHKeyExchange extends KeyExchange {
 }
 
 /// Helper class for conducting DHE_RSA key exchange
-class DHE_RSAKeyExchange extends ADHKeyExchange {
-  DHE_RSAKeyExchange(
+class DheRsaKeyExchange extends ADHKeyExchange {
+  DheRsaKeyExchange(
     super.cipherSuite,
     super.clientHello,
     super.serverHello,
@@ -1162,7 +1156,7 @@ class AECDHKeyExchange extends KeyExchange {
     return tlsmsg.TlsServerKeyExchange(
       cipherSuite: cipherSuite,
       version: _serverVersion,
-      curveType: ECCurveType.named_curve,
+      curveType: ECCurveType.namedCurve,
       namedCurve: groupId,
       ecdhYs: ecdhYs,
     );
@@ -1193,7 +1187,7 @@ class AECDHKeyExchange extends KeyExchange {
   ) {
     final curveType = serverKeyExchange.curveType;
     final namedCurve = serverKeyExchange.namedCurve;
-    if (curveType != ECCurveType.named_curve) {
+    if (curveType != ECCurveType.namedCurve) {
       throw TLSIllegalParameterException("Server did not use named_curve type");
     }
     // If acceptedCurves is set, verify server picked an advertised curve
@@ -1285,7 +1279,7 @@ class AECDHKeyExchange extends KeyExchange {
       }
     } catch (_) {}
     try {
-      final ext = hello.getExtension(ExtensionType.ec_point_formats);
+      final ext = hello.getExtension(ExtensionType.ecPointFormats);
       if (ext == null) {
         return null;
       }
@@ -1312,7 +1306,7 @@ class AECDHKeyExchange extends KeyExchange {
       }
     } catch (_) {}
     try {
-      final ext = hello.getExtension(ExtensionType.supported_groups);
+      final ext = hello.getExtension(ExtensionType.supportedGroups);
       if (ext == null) {
         return null;
       }
@@ -1333,8 +1327,8 @@ class AECDHKeyExchange extends KeyExchange {
 }
 
 /// Helper class for conducting ECDHE_RSA key exchange
-class ECDHE_RSAKeyExchange extends AECDHKeyExchange {
-  ECDHE_RSAKeyExchange(
+class EcdheRsaKeyExchange extends AECDHKeyExchange {
+  EcdheRsaKeyExchange(
     super.cipherSuite,
     super.clientHello,
     super.serverHello,
@@ -1670,8 +1664,8 @@ class ECDHKeyExchange extends RawDHKeyExchange {
   dynamic getRandomPrivateKey() {
     if (_xGroups.contains(groupName)) {
       final size = groupName == GroupName.x25519
-          ? X25519_ORDER_SIZE
-          : X448_ORDER_SIZE;
+          ? x25519OrderSize
+          : x448OrderSize;
       return getRandomBytes(size);
     }
 
@@ -1691,23 +1685,23 @@ class ECDHKeyExchange extends RawDHKeyExchange {
     if (_xGroups.contains(groupName)) {
       final scalar = _coerceMontgomeryScalar(privateKey);
       if (groupName == GroupName.x25519) {
-        return x25519(scalar, X25519_G);
+        return x25519(scalar, x25519G);
       }
-      return x448(scalar, X448_G);
+      return x448(scalar, x448G);
     }
 
     final params = _domainParameters();
     final scalar = _coerceClassicScalar(privateKey, params);
     final format = pointFormat ?? 'uncompressed';
-    if (format != 'uncompressed') {
+    if (format != 'uncompressed' && format != 'compressed') {
       throw TLSIllegalParameterException(
           'Unsupported EC point format: $format');
     }
-    final point = params.G * scalar;
-    if (point == null || point.isInfinity) {
+    final point = params.mulBaseSecret(scalar);
+    if (point.isInfinity) {
       throw TLSIllegalParameterException('Invalid EC scalar');
     }
-    return _encodeClassicPoint(point, params);
+    return point.encode(compressed: format == 'compressed');
   }
 
   @override
@@ -1718,8 +1712,8 @@ class ECDHKeyExchange extends RawDHKeyExchange {
   ]) {
     if (_xGroups.contains(groupName)) {
       final expectedLen = groupName == GroupName.x25519
-          ? X25519_ORDER_SIZE
-          : X448_ORDER_SIZE;
+          ? x25519OrderSize
+          : x448OrderSize;
       if (peerShare.length != expectedLen) {
         throw TLSIllegalParameterException('Invalid key share');
       }
@@ -1741,16 +1735,18 @@ class ECDHKeyExchange extends RawDHKeyExchange {
       throw TLSIllegalParameterException('Unsupported EC point encoding');
     }
 
-    ECPoint point;
-    try {
-      final decoded = params.curve.decodePoint(peerShare);
-      if (decoded == null) {
-        throw TLSIllegalParameterException('Invalid EC point');
-      }
-      point = decoded;
-    } on ArgumentError {
+    // Only encodings allowed by the negotiated ec_point_formats are accepted;
+    // decodePoint() rejects malformed encodings and points not on the curve.
+    if (peerShare.isEmpty ||
+        (peerShare[0] != 0x04 &&
+            !((peerShare[0] == 0x02 || peerShare[0] == 0x03) &&
+                acceptedFormats.contains('compressed')))) {
       throw TLSIllegalParameterException('Invalid EC point');
-    } on StateError {
+    }
+    EcPoint point;
+    try {
+      point = params.decodePoint(peerShare);
+    } on FormatException {
       throw TLSIllegalParameterException('Invalid EC point');
     }
     if (point.isInfinity) {
@@ -1758,22 +1754,18 @@ class ECDHKeyExchange extends RawDHKeyExchange {
     }
 
     final scalar = _coerceClassicScalar(privateKey, params);
-    final shared = point * scalar;
-    if (shared == null || shared.isInfinity) {
+    final shared = params.mulSecret(point, scalar);
+    if (shared.isInfinity) {
       throw TLSIllegalParameterException('Invalid peer key share');
     }
-    final xCoord = shared.x?.toBigInteger();
-    if (xCoord == null) {
-      throw TLSIllegalParameterException('Invalid shared secret point');
-    }
     final coordSize = getPointByteSize(params);
-    return numberToByteArray(xCoord, howManyBytes: coordSize);
+    return numberToByteArray(shared.x!, howManyBytes: coordSize);
   }
 
   Uint8List _coerceMontgomeryScalar(dynamic value) {
     final expectedLen = groupName == GroupName.x25519
-        ? X25519_ORDER_SIZE
-        : X448_ORDER_SIZE;
+        ? x25519OrderSize
+        : x448OrderSize;
 
     if (value is Uint8List) {
       if (value.length != expectedLen) {
@@ -1791,7 +1783,7 @@ class ECDHKeyExchange extends RawDHKeyExchange {
     throw TLSInternalError('Unsupported private key representation');
   }
 
-  BigInt _coerceClassicScalar(dynamic value, ECDomainParameters params) {
+  BigInt _coerceClassicScalar(dynamic value, EcCurve params) {
     if (value is BigInt) {
       final reduced = value % params.n;
       if (reduced == BigInt.zero) {
@@ -1811,28 +1803,12 @@ class ECDHKeyExchange extends RawDHKeyExchange {
     throw TLSInternalError('Unsupported EC private key representation');
   }
 
-  ECDomainParameters _domainParameters() {
+  EcCurve _domainParameters() {
     final curveName = GroupName.toStr(groupName);
     if (curveName.isEmpty) {
       throw TLSInternalError('Unknown ECDH group: $groupName');
     }
     return getCurveByName(curveName);
-  }
-
-  Uint8List _encodeClassicPoint(ECPoint point, ECDomainParameters params) {
-    final coordSize = getPointByteSize(params);
-    final x = point.x?.toBigInteger();
-    final y = point.y?.toBigInteger();
-    if (x == null || y == null) {
-      throw TLSInternalError('Failed to encode EC point');
-    }
-    final xBytes = numberToByteArray(x, howManyBytes: coordSize);
-    final yBytes = numberToByteArray(y, howManyBytes: coordSize);
-    final encoded = Uint8List(1 + xBytes.length + yBytes.length);
-    encoded[0] = 0x04;
-    encoded.setRange(1, 1 + xBytes.length, xBytes);
-    encoded.setRange(1 + xBytes.length, encoded.length, yBytes);
-    return encoded;
   }
 }
 

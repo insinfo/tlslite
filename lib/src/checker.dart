@@ -1,3 +1,7 @@
+// Ported to Dart from tlslite-ng tlslite/checker.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 import 'errors.dart';
 import 'x509certchain.dart';
 // import 'tlsconnection.dart'; // Avoid cycle if possible, or use it.

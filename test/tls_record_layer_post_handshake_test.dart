@@ -70,7 +70,7 @@ void main() {
       final requestPayload = Uint8List.fromList(<int>[0x10, 0x20]);
       final requestPadding = Uint8List.fromList(List<int>.generate(18, (i) => i));
       final request = TlsHeartbeat(
-        messageType: tls_constants.HeartbeatMessageType.heartbeat_request,
+        messageType: tls_constants.HeartbeatMessageType.heartbeatRequest,
         payload: requestPayload,
         padding: requestPadding,
       );
@@ -89,7 +89,7 @@ void main() {
       final response = TlsHeartbeat.parse(responseRecord.sublist(5));
       expect(
         response.messageType,
-        equals(tls_constants.HeartbeatMessageType.heartbeat_response),
+        equals(tls_constants.HeartbeatMessageType.heartbeatResponse),
       );
       expect(response.payload, equals(requestPayload));
       expect(response.padding.length, equals(requestPadding.length));
@@ -104,7 +104,7 @@ void main() {
         ..heartbeatCanReceive = false;
 
       final request = TlsHeartbeat(
-        messageType: tls_constants.HeartbeatMessageType.heartbeat_request,
+        messageType: tls_constants.HeartbeatMessageType.heartbeatRequest,
         payload: Uint8List.fromList(<int>[0x01]),
         padding: Uint8List.fromList(List<int>.filled(16, 0xAA)),
       );
@@ -124,7 +124,7 @@ void main() {
       harness.layer.heartbeatSupported = true;
       final payload = Uint8List.fromList(<int>[9, 9]);
       final response = TlsHeartbeat(
-        messageType: tls_constants.HeartbeatMessageType.heartbeat_response,
+        messageType: tls_constants.HeartbeatMessageType.heartbeatResponse,
         payload: payload,
         padding: Uint8List.fromList(List<int>.filled(20, 0xFF)),
       );
@@ -164,7 +164,7 @@ void main() {
       final message = TlsHeartbeat.parse(recordBytes.sublist(5));
       expect(
         message.messageType,
-        equals(tls_constants.HeartbeatMessageType.heartbeat_request),
+        equals(tls_constants.HeartbeatMessageType.heartbeatRequest),
       );
       expect(message.payload, equals(payload));
       expect(message.padding.length, equals(18));
@@ -247,7 +247,7 @@ class _RecordLayerHarness {
       ..closed = false;
 
     final session = Session()
-      ..cipherSuite = tls_constants.CipherSuite.TLS_AES_128_GCM_SHA256
+      ..cipherSuite = tls_constants.CipherSuite.tlsAes128GcmSha256
       ..clAppSecret = Uint8List.fromList(List<int>.generate(32, (i) => i + 1))
       ..srAppSecret = Uint8List.fromList(List<int>.generate(32, (i) => i + 65));
     layer.session = session;
@@ -310,7 +310,7 @@ Future<void> _sendHeartbeatRecord(Socket socket, TlsHeartbeat heartbeat) {
 Future<void> _sendApplicationDataRecord(Socket socket, Uint8List data) {
   return _sendPlaintextRecord(
     socket,
-    tls_constants.ContentType.application_data,
+    tls_constants.ContentType.applicationData,
     data,
   );
 }

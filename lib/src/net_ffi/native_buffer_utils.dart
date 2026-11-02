@@ -1,7 +1,7 @@
 import 'dart:ffi' as ffi;
 import 'dart:typed_data';
 
-import 'package:ffi/ffi.dart';
+import 'package:tlslite/src/ffi/native_memory.dart';
 
 /// A native buffer that wraps a pointer to native memory.
 /// 

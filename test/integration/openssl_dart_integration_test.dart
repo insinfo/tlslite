@@ -86,7 +86,12 @@ class OpenSSLServer {
       '-key', _keyFile!,
       '-cert', _certFile!,
       _protocolFlag,
-      '-cipher', _cipher,
+      // OpenSSL 3+ recusa TLS 1.0/1.1 no nível de segurança padrão; o
+      // teste habilita essas versões só no servidor de teste.
+      '-cipher',
+      _protocolFlag == '-tls1' || _protocolFlag == '-tls1_1'
+          ? '$_cipher:@SECLEVEL=0'
+          : _cipher,
       '-no_dhe', // Disable DHE to force ECDHE
       '-keylogfile',
       _keyLogFile!,

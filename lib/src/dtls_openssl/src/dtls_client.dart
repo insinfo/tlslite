@@ -15,7 +15,7 @@ import "../../openssl/generated/ffi.dart";
 import "../../openssl/openssl_loader.dart";
 import "psk_credentials.dart";
 import "util.dart";
-import "package:ffi/ffi.dart";
+import 'package:tlslite/src/ffi/native_memory.dart';
 
 const _pskErrorCode = 0;
 

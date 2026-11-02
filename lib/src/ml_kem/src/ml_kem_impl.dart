@@ -5,8 +5,7 @@ library;
 
 import 'dart:math';
 import 'dart:typed_data';
-import 'package:pointycastle/digests/sha3.dart';
-import 'package:pointycastle/digests/shake.dart';
+import '../../utils/digest/keccak.dart' show Sha3, Shake;
 import 'parameters.dart';
 import 'polynomial.dart';
 import 'modules.dart';
@@ -37,11 +36,7 @@ class MlKem {
 
   /// H: SHA3-256 hash (FIPS 203 Section 4)
   Uint8List _hashH(Uint8List input) {
-    final digest = SHA3Digest(256);
-    final out = Uint8List(digest.digestSize);
-    digest.update(input, 0, input.length);
-    digest.doFinal(out, 0);
-    return out;
+    return (Sha3(256)..update(input)).finish();
   }
 
   /// J: SHAKE256 with 32-byte output
@@ -51,10 +46,7 @@ class MlKem {
 
   /// G: SHA3-512 split into two 32-byte values
   (Uint8List, Uint8List) _hashG(Uint8List input) {
-    final digest = SHA3Digest(512);
-    final out = Uint8List(digest.digestSize);
-    digest.update(input, 0, input.length);
-    digest.doFinal(out, 0);
+    final out = (Sha3(512)..update(input)).finish();
     return (
       Uint8List.sublistView(out, 0, 32),
       Uint8List.sublistView(out, 32, 64),
@@ -86,11 +78,7 @@ class MlKem {
   }
 
   Uint8List _shake(int strength, Uint8List input, int outputLen) {
-    final digest = SHAKEDigest(strength);
-    digest.update(input, 0, input.length);
-    final out = Uint8List(outputLen);
-    digest.doFinalRange(out, 0, out.length);
-    return out;
+    return (Shake(strength)..update(input)).read(outputLen);
   }
 
   // ===== Matrix and Vector Generation =====
@@ -187,8 +175,8 @@ class MlKem {
     
     // Generate secret vector s and error vector e
     var N = 0;
-    final (s, N1) = _generateErrorVector(sigma, params.eta1, N);
-    N = N1;
+    final (s, n1) = _generateErrorVector(sigma, params.eta1, N);
+    N = n1;
     final (e, _) = _generateErrorVector(sigma, params.eta1, N);
     
     // Compute public value t_hat = A_hat * s_hat + e_hat
@@ -220,10 +208,10 @@ class MlKem {
     
     // Generate random vectors
     var N = 0;
-    final (y, N1) = _generateErrorVector(r, params.eta1, N);
-    N = N1;
-    final (e1, N2) = _generateErrorVector(r, params.eta2, N);
-    N = N2;
+    final (y, n1) = _generateErrorVector(r, params.eta1, N);
+    N = n1;
+    final (e1, n2) = _generateErrorVector(r, params.eta2, N);
+    N = n2;
     final (e2, _) = _generatePolynomial(r, params.eta2, N);
     
     // Compute ciphertext

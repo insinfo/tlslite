@@ -1,6 +1,9 @@
+// Ported to Dart from tlslite-ng tlslite/utils/tripledes.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 import 'dart:typed_data';
 
-import 'package:meta/meta.dart';
 
 const int tripleDesModeCBC = 2;
 
@@ -36,7 +39,6 @@ abstract class TripleDES {
   final int mode;
 
   /// Current feedback value (updated by CBC processing).
-  @protected
   Uint8List iv;
 
   /// Human readable implementation label (e.g. "dart").
@@ -50,7 +52,6 @@ abstract class TripleDES {
   final bool isAEAD = false;
   final String name = '3des';
 
-  @protected
   void ensureBlockMultiple(Uint8List data) {
     if (data.length % blockSize != 0) {
       throw ArgumentError(

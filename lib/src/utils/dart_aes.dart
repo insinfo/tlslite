@@ -1,3 +1,7 @@
+// Ported to Dart from tlslite-ng tlslite/utils/python_aes.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 import 'dart:typed_data';
 import 'dart:math';
 import 'aes.dart'; // Contém a classe base AES
@@ -10,16 +14,12 @@ import 'cryptomath.dart'; // Contém bytesToNumber e numberToByteArray
 /// - [mode]: The cipher mode (2 for CBC, 6 for CTR).
 /// - [iv]: The initialization vector (CBC) or nonce (CTR).
 AES newAES(Uint8List key, int mode, Uint8List iv) {
-  // IV parameter name matches the dart interface
-  // ignore: non_constant_identifier_names
-  final Uint8List IV = iv;
-
-  if (mode == aesModeCBC) {
+  if (mode == aesModeCbc) {
     // Mode 2
-    return Dart_AES(key, mode, IV);
-  } else if (mode == aesModeCTR_OR_GCM) {
+    return DartAes(key, mode, iv);
+  } else if (mode == aesModeCtrOrGcm) {
     // Mode 6
-    return Dart_AES_CTR.Dart_AES_CTR(key, mode, IV);
+    return DartAesCtr(key, mode, iv);
   } else {
     throw UnimplementedError(
         "AES mode $mode not implemented in dart_aes.dart");
@@ -27,14 +27,14 @@ AES newAES(Uint8List key, int mode, Uint8List iv) {
 }
 
 /// Pure Dart implementation of AES in CBC mode.
-class Dart_AES extends AES {
+class DartAes extends AES {
   late final Rijndael _rijndael;
   // Assumindo que a classe base AES tem 'Uint8List iv'
   // O IV aqui representa o estado *atual* do vetor de encadeamento.
 
-  Dart_AES(Uint8List key, int mode, Uint8List iv)
+  DartAes(Uint8List key, int mode, Uint8List iv)
       // mode é sempre CBC (2) para esta classe
-      : super(key, aesModeCBC, iv, "dart") {
+      : super(key, aesModeCbc, iv, "dart") {
     // Cria uma cópia da chave para garantir imutabilidade da entrada
     final internalKey = Uint8List.fromList(key);
     _rijndael =
@@ -135,16 +135,16 @@ class Dart_AES extends AES {
 }
 
 /// Pure Dart implementation of AES in CTR mode.
-class Dart_AES_CTR extends AES {
+class DartAesCtr extends AES {
   late final Rijndael _rijndael;
   // O 'iv' da classe base armazena o nonce inicial
   late Uint8List _counter; // O bloco de contador completo (nonce + counter)
   late final int
       _counterBytesLength; // Quantidade de bytes dedicados ao contador real
 
-  Dart_AES_CTR.Dart_AES_CTR(Uint8List key, int mode, Uint8List nonce)
+  DartAesCtr(Uint8List key, int mode, Uint8List nonce)
       // mode é sempre CTR (6) para esta classe
-      : super(key, aesModeCTR_OR_GCM, nonce, "dart") {
+      : super(key, aesModeCtrOrGcm, nonce, "dart") {
     if (nonce.length > 16) {
       throw ArgumentError(
           "Nonce (IV) length must be at most 16 bytes for CTR mode");

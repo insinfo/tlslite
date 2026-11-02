@@ -320,7 +320,7 @@ class TlsConnectionBenchmark extends TlsBenchmark {
           'Accept: */*\r\n'
           '\r\n';
       await tls.sendRecord(Message(
-        ContentType.application_data,
+        ContentType.applicationData,
         Uint8List.fromList(utf8.encode(request)),
       ));
 
@@ -333,7 +333,7 @@ class TlsConnectionBenchmark extends TlsBenchmark {
       while (true) {
         try {
           final (header, parser) = await tls.recvMessage().timeout(config.timeout);
-          if (header.type != ContentType.application_data) continue;
+          if (header.type != ContentType.applicationData) continue;
           
           final data = parser.getFixBytes(parser.getRemainingLength());
           if (data.isEmpty) break;

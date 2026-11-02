@@ -1,3 +1,7 @@
+// Ported to Dart from tlslite-ng tlslite/dh.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 import 'dart:typed_data';
 import 'utils/asn1parser.dart';
 import 'utils/pem.dart';

@@ -2,8 +2,8 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:test/test.dart';
-import 'package:tlslite/src/brotli/dec/BrotliInputStream.dart';
-import 'package:tlslite/src/brotli/dec/State.dart';
+import 'package:tlslite/src/brotli/dec/brotli_input_stream.dart';
+import 'package:tlslite/src/brotli/dec/state.dart';
 
 void main() {
   group('Brotli Decompression', () {

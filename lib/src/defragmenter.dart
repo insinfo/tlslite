@@ -1,3 +1,7 @@
+// Ported to Dart from tlslite-ng tlslite/defragmenter.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 
 
 /// Helper class for handling fragmentation of messages.

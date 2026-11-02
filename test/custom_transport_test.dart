@@ -37,7 +37,7 @@ void main() {
       
       final bytes = output.toUint8List();
       expect(bytes.length, greaterThan(5));
-      expect(bytes[0], equals(ContentType.application_data)); // Type
+      expect(bytes[0], equals(ContentType.applicationData)); // Type
     });
   });
 }

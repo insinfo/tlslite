@@ -87,7 +87,7 @@ void main() {
       
       final masterSecret = calcMasterSecret(
         [3, 3], // TLS 1.2
-        CipherSuite.TLS_RSA_WITH_AES_128_CBC_SHA256, // non-SHA384 suite
+        CipherSuite.tlsRsaWithAes128CbcSha256, // non-SHA384 suite
         premasterSecret,
         clientRandom,
         serverRandom,
@@ -139,7 +139,7 @@ void main() {
       final result = calcKey(
         [3, 3],
         premasterSecret,
-        CipherSuite.TLS_RSA_WITH_AES_128_CBC_SHA,
+        CipherSuite.tlsRsaWithAes128CbcSha,
         'master secret'.codeUnits,
         clientRandom: clientRandom,
         serverRandom: serverRandom,
@@ -158,7 +158,7 @@ void main() {
       final result = calcKey(
         [3, 3],
         masterSecret,
-        CipherSuite.TLS_RSA_WITH_AES_256_CBC_SHA256,
+        CipherSuite.tlsRsaWithAes256CbcSha256,
         'key expansion'.codeUnits,
         clientRandom: clientRandom,
         serverRandom: serverRandom,
@@ -177,12 +177,12 @@ void main() {
       final result = calcKey(
         [3, 4],
         baseSecret,
-        CipherSuite.TLS_AES_128_GCM_SHA256,
+        CipherSuite.tlsAes128GcmSha256,
         'c hs traffic'.codeUnits,
         handshakeHashes: handshakeHashes,
       );
 
-      final expected = derive_secret(
+      final expected = deriveSecret(
         baseSecret,
         Uint8List.fromList('c hs traffic'.codeUnits),
         handshakeHashes,
@@ -199,7 +199,7 @@ void main() {
         () => calcKey(
           [3, 4],
           baseSecret,
-          CipherSuite.TLS_AES_128_GCM_SHA256,
+          CipherSuite.tlsAes128GcmSha256,
           'c hs traffic'.codeUnits,
         ),
         throwsArgumentError,
@@ -212,11 +212,11 @@ void main() {
       final result = calcKey(
         [3, 4],
         baseSecret,
-        CipherSuite.TLS_AES_128_GCM_SHA256,
+        CipherSuite.tlsAes128GcmSha256,
         'derived'.codeUnits,
       );
 
-      final expected = derive_secret(
+      final expected = deriveSecret(
         baseSecret,
         Uint8List.fromList('derived'.codeUnits),
         null,
@@ -232,11 +232,11 @@ void main() {
       final finishedKey = calcKey(
         [3, 4],
         baseSecret,
-        CipherSuite.TLS_AES_128_GCM_SHA256,
+        CipherSuite.tlsAes128GcmSha256,
         'finished'.codeUnits,
       );
 
-      final expectedFinished = HKDF_expand_label(
+      final expectedFinished = hkdfExpandLabel(
         baseSecret,
         Uint8List.fromList('finished'.codeUnits),
         Uint8List(0),
@@ -250,7 +250,7 @@ void main() {
         () => calcKey(
           [3, 4],
           baseSecret,
-          CipherSuite.TLS_AES_128_GCM_SHA256,
+          CipherSuite.tlsAes128GcmSha256,
           'key'.codeUnits,
         ),
         throwsArgumentError,
@@ -259,12 +259,12 @@ void main() {
       final trafficKey = calcKey(
         [3, 4],
         baseSecret,
-        CipherSuite.TLS_AES_128_GCM_SHA256,
+        CipherSuite.tlsAes128GcmSha256,
         'key'.codeUnits,
         outputLength: 16,
       );
 
-      final expectedKey = HKDF_expand_label(
+      final expectedKey = hkdfExpandLabel(
         baseSecret,
         Uint8List.fromList('key'.codeUnits),
         Uint8List(0),

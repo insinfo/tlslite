@@ -4,7 +4,7 @@ import 'dart:ffi';
 import 'dart:ffi' as ffi;
 import 'dart:io' show Platform;
 import 'dart:typed_data';
-import 'package:ffi/ffi.dart';
+import 'package:tlslite/src/ffi/native_memory.dart';
 import 'package:tlslite/src/net_ffi/socket_exceptions.dart';
 import '../raw_transport.dart';
 import '../native_buffer_utils.dart';
@@ -46,16 +46,16 @@ extension Uint8Pointer on Pointer<Uint8> {
 
 final class SockaddrIn extends Struct {
   @Int16()
-  external int sin_family;
+  external int sinFamily;
 
   @Uint16()
-  external int sin_port;
+  external int sinPort;
 
   @Uint32()
-  external int s_addr;
+  external int sAddr;
 
   @Array<Uint8>(8)
-  external Array<Uint8> sin_zero;
+  external Array<Uint8> sinZero;
 }
 
 final class WSADATA extends Struct {
@@ -65,10 +65,10 @@ final class WSADATA extends Struct {
   @Uint16()
   external int wHighVersion;
 
-  @Array<Int8>(WSADESCRIPTION_LEN + 1)
+  @Array<Int8>(wsaDescriptionLen + 1)
   external Array<Int8> szDescription;
 
-  @Array<Int8>(WSASYS_STATUS_LEN + 1)
+  @Array<Int8>(wsaSysStatusLen + 1)
   external Array<Int8> szSystemStatus;
 
   @Uint16()
@@ -82,7 +82,7 @@ final class WSADATA extends Struct {
 
 final class In6Addr extends Struct {
   @Array<Uint8>(16)
-  external Array<Uint8> s6_addr;
+  external Array<Uint8> s6Addr;
 }
 
 final class ScopeIdStruct extends Struct {
@@ -92,24 +92,24 @@ final class ScopeIdStruct extends Struct {
 
 final class ScopeIdUnion extends Union {
   @Uint32()
-  external int sin6_scope_id;
-  external ScopeIdStruct sin6_scope_struct;
+  external int sin6ScopeId;
+  external ScopeIdStruct sin6ScopeStruct;
 }
 
 final class SockAddrIn6 extends Struct {
   @Uint16()
-  external int sin6_family;
+  external int sin6Family;
 
   @Uint16()
-  external int sin6_port;
+  external int sin6Port;
 
   @Uint32()
-  external int sin6_flowinfo;
+  external int sin6Flowinfo;
 
-  external In6Addr sin6_addr;
+  external In6Addr sin6Addr;
 
   @Uint32()
-  external int sin6_scope_id;
+  external int sin6ScopeId;
 }
 
 final class PollFd extends Struct {
@@ -123,38 +123,38 @@ final class PollFd extends Struct {
   external int revents;
 }
 
-const int WSADESCRIPTION_LEN = 256;
-const int WSASYS_STATUS_LEN = 128;
-const int AF_INET = 2;
-const int SOCK_STREAM = 1;
-const int IPPROTO_TCP = 6;
-const int AF_INET6 = 23;
-const int SOCK_DGRAM = 2;
-const int INET6_ADDRSTRLEN = 46;
-const int POLLIN = 0x0001;
-const int POLLOUT = 0x0004;
-const int POLLERR = 0x0008;
-const int POLLHUP = 0x0010;
-const int POLLNVAL = 0x0020;
-const int _FIONBIO = 0x8004667E;
-const int _WSAEWOULDBLOCK = 10035;
-const int _WSAEINTR = 10004;
-const int _POSIX_EINTR = 4;
-const int _POSIX_EAGAIN_LINUX = 11;
-const int _POSIX_EAGAIN_MAC = 35;
-const int _WSAECONNABORTED = 10053;
-const int _WSAECONNRESET = 10054;
-const int _POSIX_ECONNRESET = 104;
-const int _POSIX_ECONNRESET_MAC = 54;
-const int _O_NONBLOCK_LINUX = 0x00000800;
-const int _O_NONBLOCK_MAC = 0x00000004;
-const int _SOL_SOCKET_POSIX = 1;
-const int _SOL_SOCKET_WINDOWS = 0xFFFF;
-const int _SO_REUSEADDR_POSIX = 2;
-const int _SO_REUSEADDR_WINDOWS = 0x0004;
-const int _SO_REUSEPORT_POSIX = 15;
-const int _SO_REUSEPORT_WINDOWS = 0x0200;
-const int _TCP_NODELAY_OPT = 1;
+const int wsaDescriptionLen = 256;
+const int wsaSysStatusLen = 128;
+const int afInet = 2;
+const int sockStream = 1;
+const int ipprotoTcp = 6;
+const int afInet6 = 23;
+const int sockDgram = 2;
+const int inet6AddrStrLen = 46;
+const int pollIn = 0x0001;
+const int pollOut = 0x0004;
+const int pollErr = 0x0008;
+const int pollHup = 0x0010;
+const int pollNval = 0x0020;
+const int _fionbio = 0x8004667E;
+const int _wsaeWouldBlock = 10035;
+const int _wsaeIntr = 10004;
+const int _posixEIntr = 4;
+const int _posixEAgainLinux = 11;
+const int _posixEAgainMac = 35;
+const int _wsaeConnAborted = 10053;
+const int _wsaeConnReset = 10054;
+const int _posixEConnReset = 104;
+const int _posixEConnResetMac = 54;
+const int _oNonBlockLinux = 0x00000800;
+const int _oNonBlockMac = 0x00000004;
+const int _solSocketPosix = 1;
+const int _solSocketWindows = 0xFFFF;
+const int _soReuseAddrPosix = 2;
+const int _soReuseAddrWindows = 0x0004;
+const int _soReusePortPosix = 15;
+const int _soReusePortWindows = 0x0200;
+const int _tcpNoDelayOpt = 1;
 
 /// FUTURE: Extend test matrix with IPv6/UDP, non-blocking happy paths, and Linux/macOS CI.
 /// Consider an isolate-backed helper that builds on the new non-blocking plumbing for long-lived DB or traceroute tasks.
@@ -169,7 +169,7 @@ class SocketNative implements RawTransport {
     _winsockRefCount++;
     if (_winsockRefCount == 1) {
       final data = calloc<WSADATA>();
-      final result = _WSAStartup(0x0202, data);
+      final result = _wsaStartup(0x0202, data);
       if (result != 0) {
         calloc.free(data);
         _winsockRefCount = 0;
@@ -186,7 +186,7 @@ class SocketNative implements RawTransport {
     }
     _winsockRefCount--;
     if (_winsockRefCount == 0) {
-      _WSACleanup();
+      _wsaCleanup();
       if (_winsockData != null) {
         calloc.free(_winsockData!);
         _winsockData = null;
@@ -224,9 +224,9 @@ class SocketNative implements RawTransport {
   (String, int) getAddress() {
     String host;
     int port;
-    final buffer = calloc<Uint8>(INET6_ADDRSTRLEN);
+    final buffer = calloc<Uint8>(inet6AddrStrLen);
 
-    if (_family == AF_INET) {
+    if (_family == afInet) {
       // Para IPv4, aloca SockaddrIn.
       final addr = calloc<SockaddrIn>();
       final addrLen = calloc<Int32>()..value = sizeOf<SockaddrIn>();
@@ -240,8 +240,7 @@ class SocketNative implements RawTransport {
       }
       // O campo s_addr começa aos 4 bytes.
       final ptr = addr.cast<Uint8>() + 4;
-      final convResult =
-          _inetNtop(AF_INET, ptr, buffer.cast(), INET6_ADDRSTRLEN);
+      final convResult = _inetNtop(afInet, ptr, buffer.cast(), inet6AddrStrLen);
       if (convResult == nullptr) {
         calloc.free(addr);
         calloc.free(addrLen);
@@ -249,7 +248,7 @@ class SocketNative implements RawTransport {
         throw SocketException('Failed to convert address');
       }
       host = buffer.cast<Utf8>().toDartString();
-      port = _ntohs(addr.ref.sin_port);
+      port = _ntohs(addr.ref.sinPort);
       calloc.free(addr);
       calloc.free(addrLen);
     } else {
@@ -268,7 +267,7 @@ class SocketNative implements RawTransport {
       const sin6AddrOffset = 8;
       final ptr = addr.cast<Uint8>() + sin6AddrOffset;
       final convResult =
-          _inetNtop(AF_INET6, ptr, buffer.cast(), INET6_ADDRSTRLEN);
+          _inetNtop(afInet6, ptr, buffer.cast(), inet6AddrStrLen);
       if (convResult == nullptr) {
         calloc.free(addr);
         calloc.free(addrLen);
@@ -276,7 +275,7 @@ class SocketNative implements RawTransport {
         throw SocketException('Failed to convert address');
       }
       host = buffer.cast<Utf8>().toDartString();
-      port = _ntohs(addr.ref.sin6_port);
+      port = _ntohs(addr.ref.sin6Port);
       calloc.free(addr);
       calloc.free(addrLen);
     }
@@ -291,16 +290,16 @@ class SocketNative implements RawTransport {
       : _family = family,
         _type = type,
         _mode = blockingMode {
-    if (family != AF_INET && family != AF_INET6) {
+    if (family != afInet && family != afInet6) {
       throw SocketException('Unsupported address family');
     }
-    if (type != SOCK_STREAM && type != SOCK_DGRAM) {
+    if (type != sockStream && type != sockDgram) {
       throw SocketException('Unsupported socket type');
     }
     if (Platform.isWindows) {
       _winsockAcquire();
       _socketHandle = _socketWin(family, type, protocol);
-      if (_socketHandle == _INVALID_SOCKET) {
+      if (_socketHandle == _invalidSocket) {
         _winsockRelease();
         throw SocketException('Failed to create socket');
       }
@@ -370,15 +369,15 @@ class SocketNative implements RawTransport {
 
   // **4. Suporte a UDP (SOCK_DGRAM)**
   (Uint8List, String, int) recvfrom(int bufferSize) {
-    if (_type != SOCK_DGRAM) {
+    if (_type != sockDgram) {
       throw SocketException('recvfrom is only for UDP sockets');
     }
     final buffer = NativeUint8Buffer.allocate(bufferSize);
     final addr =
-        _family == AF_INET ? calloc<SockaddrIn>() : calloc<SockAddrIn6>();
+        _family == afInet ? calloc<SockaddrIn>() : calloc<SockAddrIn6>();
     final addrLen = calloc<Int32>()
       ..value =
-          _family == AF_INET ? sizeOf<SockaddrIn>() : sizeOf<SockAddrIn6>();
+          _family == afInet ? sizeOf<SockaddrIn>() : sizeOf<SockAddrIn6>();
     try {
       while (true) {
         _maybeWaitForEvent(TransportEvent.read);
@@ -389,30 +388,30 @@ class SocketNative implements RawTransport {
                 _fd!, buffer.pointer, bufferSize, 0, addr.cast(), addrLen);
         if (received >= 0) {
           final data = buffer.copyToDart(received);
-          final addrBuffer = calloc<Uint8>(INET6_ADDRSTRLEN);
+          final addrBuffer = calloc<Uint8>(inet6AddrStrLen);
           try {
             String host;
             int port;
-            if (_family == AF_INET) {
+            if (_family == afInet) {
               final sockAddrIn = addr.cast<SockaddrIn>().ref;
               final ptr = addr.cast<Uint8>() + 4;
               final result =
-                  _inetNtop(AF_INET, ptr, addrBuffer.cast(), INET6_ADDRSTRLEN);
+                  _inetNtop(afInet, ptr, addrBuffer.cast(), inet6AddrStrLen);
               if (result == nullptr) {
                 _throwWithOsError('inet_ntop');
               }
               host = addrBuffer.cast<Utf8>().toDartString();
-              port = _ntohs(sockAddrIn.sin_port);
+              port = _ntohs(sockAddrIn.sinPort);
             } else {
               final sockAddrIn6 = addr.cast<SockAddrIn6>().ref;
               final ptr = addr.cast<Uint8>() + 8;
               final result =
-                  _inetNtop(AF_INET6, ptr, addrBuffer.cast(), INET6_ADDRSTRLEN);
+                  _inetNtop(afInet6, ptr, addrBuffer.cast(), inet6AddrStrLen);
               if (result == nullptr) {
                 _throwWithOsError('inet_ntop');
               }
               host = addrBuffer.cast<Utf8>().toDartString();
-              port = _ntohs(sockAddrIn6.sin6_port);
+              port = _ntohs(sockAddrIn6.sin6Port);
             }
             return (data, host, port);
           } finally {
@@ -440,35 +439,35 @@ class SocketNative implements RawTransport {
   }
 
   int sendto(Uint8List data, String host, int port) {
-    if (_type != SOCK_DGRAM) {
+    if (_type != sockDgram) {
       throw SocketException('sendto is only for UDP sockets');
     }
 
     Pointer addr;
     int addrSize;
-    if (_family == AF_INET) {
+    if (_family == afInet) {
       final ipv4 = calloc<SockaddrIn>();
-      ipv4.ref.sin_family = AF_INET;
-      ipv4.ref.sin_port = _htons(port);
+      ipv4.ref.sinFamily = afInet;
+      ipv4.ref.sinPort = _htons(port);
       final hostPtr = host.toNativeUtf8();
       final ipBuffer = calloc<Uint32>();
-      final ip = _inetPton(AF_INET, hostPtr, ipBuffer.cast());
+      final ip = _inetPton(afInet, hostPtr, ipBuffer.cast());
       calloc.free(hostPtr);
       if (ip != 1) {
         calloc.free(ipBuffer);
         calloc.free(ipv4);
         throw SocketException('Invalid address');
       }
-      ipv4.ref.s_addr = ipBuffer.value;
+      ipv4.ref.sAddr = ipBuffer.value;
       calloc.free(ipBuffer);
       addr = ipv4.cast();
       addrSize = sizeOf<SockaddrIn>();
     } else {
       final ipv6 = calloc<SockAddrIn6>();
-      ipv6.ref.sin6_family = AF_INET6;
-      ipv6.ref.sin6_port = _htons(port);
+      ipv6.ref.sin6Family = afInet6;
+      ipv6.ref.sin6Port = _htons(port);
       final hostPtr = host.toNativeUtf8();
-      final ip = _inetPton(AF_INET6, hostPtr, ipv6.cast<Uint8>().elementAt(8));
+      final ip = _inetPton(afInet6, hostPtr, ipv6.cast<Uint8>().elementAt(8));
       calloc.free(hostPtr);
       if (ip != 1) {
         calloc.free(ipv6);
@@ -508,15 +507,15 @@ class SocketNative implements RawTransport {
   }
 
   void bind(String host, int port) {
-    if (_family == AF_INET) {
+    if (_family == afInet) {
       // IPv4
       final addr = calloc<SockaddrIn>();
-      addr.ref.sin_family = AF_INET;
-      addr.ref.sin_port = _htons(port);
+      addr.ref.sinFamily = afInet;
+      addr.ref.sinPort = _htons(port);
 
       final hostPtr = host.toNativeUtf8();
       final ipBuffer = calloc<Uint32>();
-      final ip = _inetPton(AF_INET, hostPtr, ipBuffer.cast());
+      final ip = _inetPton(afInet, hostPtr, ipBuffer.cast());
       calloc.free(hostPtr);
       if (ip != 1) {
         calloc.free(ipBuffer);
@@ -524,7 +523,7 @@ class SocketNative implements RawTransport {
         throw SocketException('Invalid address');
       }
       // Atribui o endereço binário ao campo s_addr
-      addr.ref.s_addr = ipBuffer.value;
+      addr.ref.sAddr = ipBuffer.value;
       calloc.free(ipBuffer);
 
       int result = Platform.isWindows
@@ -535,13 +534,13 @@ class SocketNative implements RawTransport {
     } else {
       // IPv6
       final addr = calloc<SockAddrIn6>();
-      addr.ref.sin6_family = AF_INET6;
-      addr.ref.sin6_port = _htons(port);
+      addr.ref.sin6Family = afInet6;
+      addr.ref.sin6Port = _htons(port);
 
       // Aloca buffer temporário para receber os 16 bytes do endereço IPv6
       final temp = calloc<Uint8>(16);
       final hostPtr = host.toNativeUtf8();
-      final ip = _inetPton(AF_INET6, hostPtr, temp);
+      final ip = _inetPton(afInet6, hostPtr, temp);
       calloc.free(hostPtr);
       if (ip != 1) {
         calloc.free(temp);
@@ -571,15 +570,15 @@ class SocketNative implements RawTransport {
   }
 
   void connect(String host, int port) {
-    if (_family == AF_INET) {
+    if (_family == afInet) {
       final addr = calloc<SockaddrIn>();
-      addr.ref.sin_family = AF_INET;
-      addr.ref.sin_port = _htons(port);
+      addr.ref.sinFamily = afInet;
+      addr.ref.sinPort = _htons(port);
 
       // Aloca buffer temporário para receber o endereço IPv4.
       final ipBuffer = calloc<Uint32>();
       final hostPtr = host.toNativeUtf8();
-      final ip = _inetPton(AF_INET, hostPtr, ipBuffer.cast());
+      final ip = _inetPton(afInet, hostPtr, ipBuffer.cast());
       calloc.free(hostPtr);
 
       if (ip != 1) {
@@ -588,7 +587,7 @@ class SocketNative implements RawTransport {
         throw SocketException('Invalid address');
       }
       // Copia o valor convertido para o campo s_addr.
-      addr.ref.s_addr = ipBuffer.value;
+      addr.ref.sAddr = ipBuffer.value;
       calloc.free(ipBuffer);
 
       int result = Platform.isWindows
@@ -599,13 +598,13 @@ class SocketNative implements RawTransport {
       if (result != 0) throw SocketException('Connect failed');
     } else {
       final addr = calloc<SockAddrIn6>();
-      addr.ref.sin6_family = AF_INET6;
-      addr.ref.sin6_port = _htons(port);
+      addr.ref.sin6Family = afInet6;
+      addr.ref.sin6Port = _htons(port);
 
       // Aloca buffer temporário de 16 bytes para o endereço IPv6.
       final temp = calloc<Uint8>(16);
       final hostPtr = host.toNativeUtf8();
-      final ip = _inetPton(AF_INET6, hostPtr, temp);
+      final ip = _inetPton(afInet6, hostPtr, temp);
       calloc.free(hostPtr);
 
       if (ip != 1) {
@@ -634,7 +633,7 @@ class SocketNative implements RawTransport {
   }
 
   SocketNative accept() {
-    if (_family == AF_INET) {
+    if (_family == afInet) {
       final clientAddr = calloc<SockaddrIn>();
       final addrLen = calloc<Int32>()..value = sizeOf<SockaddrIn>();
       if (Platform.isWindows) {
@@ -642,11 +641,11 @@ class SocketNative implements RawTransport {
             _acceptWin(_socketHandle!, clientAddr.cast(), addrLen);
         calloc.free(clientAddr);
         calloc.free(addrLen);
-        if (clientSocket == _INVALID_SOCKET) {
+        if (clientSocket == _invalidSocket) {
           throw SocketException('Accept failed');
         }
         final child =
-            SocketNative._fromSocket(clientSocket, AF_INET, _type, mode: _mode);
+            SocketNative._fromSocket(clientSocket, afInet, _type, mode: _mode);
         child._timeout = _timeout;
         return child;
       } else {
@@ -655,7 +654,7 @@ class SocketNative implements RawTransport {
         calloc.free(addrLen);
         if (clientFd == -1) throw SocketException('Accept failed');
         final child =
-            SocketNative._fromFd(clientFd, AF_INET, _type, mode: _mode);
+            SocketNative._fromFd(clientFd, afInet, _type, mode: _mode);
         child._timeout = _timeout;
         return child;
       }
@@ -667,11 +666,11 @@ class SocketNative implements RawTransport {
             _acceptWin(_socketHandle!, clientAddr.cast(), addrLen);
         calloc.free(clientAddr);
         calloc.free(addrLen);
-        if (clientSocket == _INVALID_SOCKET) {
+        if (clientSocket == _invalidSocket) {
           throw SocketException('Accept failed');
         }
-        final child = SocketNative._fromSocket(clientSocket, AF_INET6, _type,
-            mode: _mode);
+        final child =
+            SocketNative._fromSocket(clientSocket, afInet6, _type, mode: _mode);
         child._timeout = _timeout;
         return child;
       } else {
@@ -680,7 +679,7 @@ class SocketNative implements RawTransport {
         calloc.free(addrLen);
         if (clientFd == -1) throw SocketException('Accept failed');
         final child =
-            SocketNative._fromFd(clientFd, AF_INET6, _type, mode: _mode);
+            SocketNative._fromFd(clientFd, afInet6, _type, mode: _mode);
         child._timeout = _timeout;
         return child;
       }
@@ -823,7 +822,7 @@ class SocketNative implements RawTransport {
   }
 
   void setNoDelay(bool enabled) {
-    _setSocketOptionInt(IPPROTO_TCP, _TCP_NODELAY_OPT, enabled ? 1 : 0);
+    _setSocketOptionInt(ipprotoTcp, _tcpNoDelayOpt, enabled ? 1 : 0);
   }
 
   void shutdown([SocketShutdown how = SocketShutdown.both]) {
@@ -845,7 +844,7 @@ class SocketNative implements RawTransport {
       final modePtr = calloc<Uint32>()
         ..value = mode == SocketBlockingMode.blocking ? 0 : 1;
       try {
-        final result = _ioctlsocket(_socketHandle!, _FIONBIO, modePtr);
+        final result = _ioctlsocket(_socketHandle!, _fionbio, modePtr);
         if (result != 0) {
           _throwWithOsError('ioctlsocket');
         }
@@ -872,7 +871,7 @@ class SocketNative implements RawTransport {
     final pollFd = calloc<PollFd>();
     try {
       pollFd.ref.fd = Platform.isWindows ? _socketHandle! : _fd!;
-      pollFd.ref.events = event == TransportEvent.read ? POLLIN : POLLOUT;
+      pollFd.ref.events = event == TransportEvent.read ? pollIn : pollOut;
       pollFd.ref.revents = 0;
       final duration = timeout ??
           (_timeout == null
@@ -889,7 +888,7 @@ class SocketNative implements RawTransport {
         _throwWithOsError('poll');
       }
       final revents = pollFd.ref.revents;
-      if ((revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+      if ((revents & (pollErr | pollHup | pollNval)) != 0) {
         throw SocketException(
             'Socket error during poll (events=0x${revents.toRadixString(16)})');
       }
@@ -936,16 +935,15 @@ class SocketNative implements RawTransport {
   }
 
   int get _solSocketLevel =>
-      Platform.isWindows ? _SOL_SOCKET_WINDOWS : _SOL_SOCKET_POSIX;
+      Platform.isWindows ? _solSocketWindows : _solSocketPosix;
 
   int get _soReuseAddrOption =>
-      Platform.isWindows ? _SO_REUSEADDR_WINDOWS : _SO_REUSEADDR_POSIX;
+      Platform.isWindows ? _soReuseAddrWindows : _soReuseAddrPosix;
 
   int get _soReusePortOption =>
-      Platform.isWindows ? _SO_REUSEPORT_WINDOWS : _SO_REUSEPORT_POSIX;
+      Platform.isWindows ? _soReusePortWindows : _soReusePortPosix;
 
-  int get _oNonBlockFlag =>
-      Platform.isMacOS ? _O_NONBLOCK_MAC : _O_NONBLOCK_LINUX;
+  int get _oNonBlockFlag => Platform.isMacOS ? _oNonBlockMac : _oNonBlockLinux;
 }
 
 class TransportRuntime {

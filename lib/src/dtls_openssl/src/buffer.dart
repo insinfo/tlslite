@@ -2,7 +2,7 @@
 
 import "dart:ffi";
 
-import "package:ffi/ffi.dart";
+import 'package:tlslite/src/ffi/native_memory.dart';
 
 /// Size of the global buffer used for interacting with OpenSSL.
 const bufferSize = 1 << 16;

@@ -1,47 +1,42 @@
+// Ported to Dart from tlslite-ng tlslite/utils/tlshmac.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 import 'dart:typed_data';
 
-import 'package:crypto/crypto.dart' as crypto;
-
+import 'digest/digest.dart';
 import 'tlshashlib.dart';
 
 /// Minimal HMAC helper compatible
 class TlsHmac {
   TlsHmac(List<int> key, {dynamic digestmod, List<int>? message})
-      : _algorithm = _resolveAlgorithm(digestmod),
-        _key = Uint8List.fromList(key),
-        _buffer = BytesBuilder() {
+      : this._(createHmac(_resolveAlgorithm(digestmod), key), message);
+
+  TlsHmac._(this._mac, [List<int>? message]) {
     if (message != null && message.isNotEmpty) {
       update(message);
     }
   }
 
-  final String _algorithm;
-  final Uint8List _key;
-  final BytesBuilder _buffer;
+  final Hmac _mac;
 
-  int get digestSize => _digestSizeFor(_algorithm);
+  int get digestSize => _mac.digestSize;
 
-  int get blockSize => _blockSizeFor(_algorithm);
+  int get blockSize => _mac.blockSize;
 
   /// Appends data into the HMAC stream.
   void update(List<int> data) {
-    _buffer.add(data);
+    _mac.update(data);
   }
 
   /// Returns the HMAC digest for the data seen so far.
   Uint8List digest() {
-    final mac = crypto.Hmac(_selectHash(_algorithm), _key);
-    return Uint8List.fromList(mac.convert(_buffer.toBytes()).bytes);
+    return _mac.digest();
   }
 
   /// Returns a copy of the current HMAC state.
   TlsHmac copy() {
-    final snapshot = _buffer.toBytes();
-    final clone = TlsHmac(_key, digestmod: _algorithm);
-    if (snapshot.isNotEmpty) {
-      clone.update(snapshot);
-    }
-    return clone;
+    return TlsHmac._(_mac.clone());
   }
 }
 
@@ -73,57 +68,4 @@ String _resolveAlgorithm(dynamic digestmod) {
     return digestmod.algorithm;
   }
   throw ArgumentError('Unsupported digest spec: ${digestmod.runtimeType}');
-}
-
-crypto.Hash _selectHash(String algorithm) {
-  switch (algorithm) {
-    case 'md5':
-      return crypto.md5;
-    case 'sha1':
-      return crypto.sha1;
-    case 'sha224':
-      return crypto.sha224;
-    case 'sha256':
-      return crypto.sha256;
-    case 'sha384':
-      return crypto.sha384;
-    case 'sha512':
-      return crypto.sha512;
-    default:
-      throw ArgumentError('Unsupported HMAC algorithm: $algorithm');
-  }
-}
-
-int _digestSizeFor(String algorithm) {
-  switch (algorithm) {
-    case 'md5':
-      return 16;
-    case 'sha1':
-      return 20;
-    case 'sha224':
-      return 28;
-    case 'sha256':
-      return 32;
-    case 'sha384':
-      return 48;
-    case 'sha512':
-      return 64;
-    default:
-      throw ArgumentError('Unsupported HMAC algorithm: $algorithm');
-  }
-}
-
-int _blockSizeFor(String algorithm) {
-  switch (algorithm) {
-    case 'md5':
-    case 'sha1':
-    case 'sha224':
-    case 'sha256':
-      return 64;
-    case 'sha384':
-    case 'sha512':
-      return 128;
-    default:
-      throw ArgumentError('Unsupported HMAC algorithm: $algorithm');
-  }
 }

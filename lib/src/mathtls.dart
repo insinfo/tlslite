@@ -1,6 +1,10 @@
+// Ported to Dart from tlslite-ng tlslite/mathtls.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 import 'dart:typed_data';
 import 'dart:math' as math;
-import 'package:crypto/crypto.dart';
+import 'utils/digest/digest.dart' show sha1Hash;
 
 import 'constants.dart';
 import 'utils/cryptomath.dart';
@@ -121,8 +125,8 @@ Uint8List prfSsl(List<int> secret, List<int> seed, int length) {
     final charCode = 'A'.codeUnitAt(0) + x;
     final A = Uint8List(x + 1)..fillRange(0, x + 1, charCode);
     final combined = Uint8List.fromList([...A, ...secret, ...seed]);
-    final input = Uint8List.fromList([...secret, ...SHA1(combined)]);
-    final output = MD5(input);
+    final input = Uint8List.fromList([...secret, ...sha1(combined)]);
+    final output = md5(input);
 
     for (final c in output) {
       if (index >= length) return bytes;
@@ -353,27 +357,27 @@ Uint8List calcKey(
     final labelBytes = Uint8List.fromList(label);
     final baseSecret = Uint8List.fromList(secret);
 
-    Uint8List deriveSecret({required bool requireTranscript}) {
+    Uint8List deriveLabelSecret({required bool requireTranscript}) {
       if (requireTranscript && handshakeHashes == null) {
         throw ArgumentError(
           'handshakeHashes required for TLS 1.3 label $labelString',
         );
       }
       final transcript = requireTranscript ? handshakeHashes : null;
-      return derive_secret(baseSecret, labelBytes, transcript, prfName);
+      return deriveSecret(baseSecret, labelBytes, transcript, prfName);
     }
 
     Uint8List expandLabel(int outLen, {Uint8List? context}) {
       final ctx = context ?? Uint8List(0);
-      return HKDF_expand_label(baseSecret, labelBytes, ctx, outLen, prfName);
+      return hkdfExpandLabel(baseSecret, labelBytes, ctx, outLen, prfName);
     }
 
     if (_tls13TranscriptLabels.contains(labelString)) {
-      return deriveSecret(requireTranscript: true);
+      return deriveLabelSecret(requireTranscript: true);
     }
 
     if (_tls13ContextFreeDeriveLabels.contains(labelString)) {
-      return deriveSecret(requireTranscript: false);
+      return deriveLabelSecret(requireTranscript: false);
     }
 
     if (_tls13ExpandDefaultLenLabels.contains(labelString)) {
@@ -409,10 +413,10 @@ BigInt makeX(List<int> salt, List<int> username, List<int> password) {
   }
   
   final innerHash = Uint8List.fromList(
-    sha1.convert([...username, 58, ...password]).bytes // 58 = ':'
+    sha1Hash([...username, 58, ...password]) // 58 = ':'
   );
   final outerHash = Uint8List.fromList(
-    sha1.convert([...salt, ...innerHash]).bytes
+    sha1Hash([...salt, ...innerHash])
   );
   return bytesToNumber(outerHash);
 }
@@ -458,7 +462,7 @@ BigInt makeU(BigInt N, BigInt A, BigInt B) {
   final paddedA = pad(N, A);
   final paddedB = pad(N, B);
   return bytesToNumber(
-    Uint8List.fromList(sha1.convert([...paddedA, ...paddedB]).bytes)
+    sha1Hash([...paddedA, ...paddedB])
   );
 }
 
@@ -467,7 +471,7 @@ BigInt makeK(BigInt N, BigInt g) {
   final nBytes = numberToByteArray(N);
   final paddedG = pad(N, g);
   return bytesToNumber(
-    Uint8List.fromList(sha1.convert([...nBytes, ...paddedG]).bytes)
+    sha1Hash([...nBytes, ...paddedG])
   );
 }
 
@@ -560,7 +564,7 @@ TlsHmac createHMAC(Uint8List key, String digestmod) {
 }
 
 /// Create a MAC context for SSLv3
-dynamic createMAC_SSL(Uint8List key, String digestmod) {
+dynamic createMacSsl(Uint8List key, String digestmod) {
   // SSLv3 uses a different MAC construction than TLS
   // For now, using HMAC as a placeholder - full SSLv3 MAC needs implementation
   return TlsHmac(key, digestmod: digestmod);

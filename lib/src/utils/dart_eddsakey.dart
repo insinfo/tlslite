@@ -1,3 +1,7 @@
+// Ported to Dart from tlslite-ng tlslite/utils/python_eddsakey.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 part of 'eddsakey.dart';
 
 class DartEdDSAKey extends EdDSAKey {
@@ -27,7 +31,7 @@ class DartEdDSAKey extends EdDSAKey {
       if (publicKey == null) {
         throw StateError('Unable to derive Ed25519 public key');
       }
-      if (publicKey.length != ed.PublicKeySize) {
+      if (publicKey.length != ed.publicKeySize) {
         throw ArgumentError('Ed25519 public key must be 32 bytes long');
       }
       pubObj = ed.PublicKey(publicKey.toList());
@@ -80,7 +84,7 @@ class DartEdDSAKey extends EdDSAKey {
 
   @override
   bool _hashAndVerify(Uint8List signature, Uint8List data) {
-    if (signature.length != ed.SignatureSize) {
+    if (signature.length != ed.signatureSize) {
       return false;
     }
     _ensureSupportedCurve();
@@ -98,10 +102,10 @@ class DartEdDSAKey extends EdDSAKey {
   }
 
   static Uint8List _normalizePrivateKey(Uint8List key) {
-    if (key.length == ed.PrivateKeySize) {
+    if (key.length == ed.privateKeySize) {
       return Uint8List.fromList(key);
     }
-    if (key.length == ed.SeedSize) {
+    if (key.length == ed.seedSize) {
       final priv = ed.newKeyFromSeed(Uint8List.fromList(key));
       return Uint8List.fromList(priv.bytes);
     }
@@ -118,7 +122,7 @@ class DartEdDSAKey extends EdDSAKey {
     if (priv == null) {
       throw StateError('Private key required for serialization');
     }
-    final seed = Uint8List.fromList(priv.bytes.sublist(0, ed.SeedSize));
+    final seed = Uint8List.fromList(priv.bytes.sublist(0, ed.seedSize));
     return encodePkcs8PrivateKey(
       algorithmOid: _ed25519Oid,
       privateKeyDer: seed,

@@ -1,3 +1,7 @@
+// Ported to Dart from tlslite-ng tlslite/utils/lists.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 /// Helper utilities for working with lists and iterable collections.
 
 /// Returns the first element from [values] that is also present in [matches].

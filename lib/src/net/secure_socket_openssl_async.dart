@@ -5,8 +5,7 @@ import 'dart:collection';
 import 'dart:ffi' as ffi;
 import 'dart:io' as io;
 import 'dart:typed_data';
-import 'package:ffi/ffi.dart';
-import 'package:logging/logging.dart';
+import 'package:tlslite/src/ffi/native_memory.dart';
 
 import '../net_ffi/native_buffer_utils.dart';
 import '../openssl/generated/ffi.dart';
@@ -29,13 +28,13 @@ class SecureSocketOpenSSLAsync {
     String? certFile,
     String? keyFile,
     bool eagerHandshake = false,
-    Logger? logger,
+    void Function(String message)? logger,
   })  : _socket = socket,
         _ciphertextWriter = writer,
         _ciphertextReader = reader,
         _useCallbacks = writer != null && reader != null,
         _isServer = isServer,
-        _logger = logger ?? Logger('SecureSocketOpenSSLAsync') {
+        _logger = logger {
     final socket = _socket;
     if (socket != null) {
       _subscription = socket.listen(
@@ -58,7 +57,7 @@ class SecureSocketOpenSSLAsync {
     int port, {
     Duration? timeout,
     bool eagerHandshake = true,
-    Logger? logger,
+    void Function(String message)? logger,
   }) async {
     final socket = await io.Socket.connect(host, port, timeout: timeout);
     return SecureSocketOpenSSLAsync._(
@@ -72,7 +71,7 @@ class SecureSocketOpenSSLAsync {
   factory SecureSocketOpenSSLAsync.clientFromSocket(
     io.Socket socket, {
     bool eagerHandshake = true,
-    Logger? logger,
+    void Function(String message)? logger,
   }) =>
       SecureSocketOpenSSLAsync._(
         socket: socket,
@@ -85,7 +84,7 @@ class SecureSocketOpenSSLAsync {
     required CiphertextWriterAsync writer,
     required CiphertextReaderAsync reader,
     bool eagerHandshake = true,
-    Logger? logger,
+    void Function(String message)? logger,
   }) =>
       SecureSocketOpenSSLAsync._(
         socket: null,
@@ -101,7 +100,7 @@ class SecureSocketOpenSSLAsync {
     required String certFile,
     required String keyFile,
     bool eagerHandshake = true,
-    Logger? logger,
+    void Function(String message)? logger,
   }) =>
       SecureSocketOpenSSLAsync._(
         socket: socket,
@@ -117,7 +116,8 @@ class SecureSocketOpenSSLAsync {
   final CiphertextReaderAsync? _ciphertextReader;
   final bool _useCallbacks;
   final bool _isServer;
-  final Logger _logger;
+  /// Optional debug sink (replaces the former `package:logging` Logger).
+  final void Function(String message)? _logger;
   late final OpenSsl _openSsl;
   late final OpenSsl _openSslCrypto;
   ffi.Pointer<ssl_ctx_st>? _ctx;
@@ -570,7 +570,9 @@ class SecureSocketOpenSSLAsync {
   }
 
   void _debug(String message) {
-    _logger.fine('[#${identityHashCode(this)}] $message');
+    final logger = _logger;
+    if (logger == null) return;
+    logger('[#${identityHashCode(this)}] $message');
   }
 
 }

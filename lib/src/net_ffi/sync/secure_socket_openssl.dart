@@ -1,10 +1,9 @@
-// ignore_for_file: camel_case_types, non_constant_identifier_names
-// ignore_for_file: constant_identifier_names, public_member_api_docs
+// ignore_for_file: public_member_api_docs
 // ignore_for_file: unused_field, lines_longer_than_80_chars
 
 import 'dart:ffi' as ffi;
 import 'dart:typed_data';
-import 'package:ffi/ffi.dart';
+import 'package:tlslite/src/ffi/native_memory.dart';
 import 'package:tlslite/src/net_ffi/socket_exceptions.dart';
 
 import '../../openssl/generated/ffi.dart';

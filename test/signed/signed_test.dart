@@ -13,8 +13,8 @@ void main() {
       final validated = settings.validate();
       expect(validated.minKeySize, 1023);
       expect(validated.maxKeySize, 8193);
-      expect(validated.rsaSigHashes, orderedEquals(RSA_SIGNATURE_HASHES));
-      expect(validated.rsaSchemes, orderedEquals(RSA_SCHEMES));
+      expect(validated.rsaSigHashes, orderedEquals(defaultRsaSignatureHashes));
+      expect(validated.rsaSchemes, orderedEquals(defaultRsaSchemes));
     });
 
     test('throws when min key size is too small', () {

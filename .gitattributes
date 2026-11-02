@@ -1,0 +1,15 @@
+# Fim de linha LF no repositório, qualquer que seja o sistema de quem edita.
+* text=auto eol=lf
+
+*.bin binary
+*.der binary
+*.pfx binary
+*.p12 binary
+*.br binary
+*.zst binary
+*.gz binary
+
+# Dados de teste comparados byte a byte (alguns têm CRLF original).
+test/brotli/testdata/** -text
+test/fixtures/** -text
+test/assets/** -text

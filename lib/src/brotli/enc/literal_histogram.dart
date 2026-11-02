@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import '../dec/Huffman.dart';
+import '../dec/huffman.dart';
 import 'huffman_builder.dart';
 
 const int _literalAlphabetSize = 256;
@@ -32,6 +32,6 @@ Uint8List buildLiteralCodeLengths(BrotliLiteralHistogram histogram) {
   return buildLimitedHuffmanCodeLengths(
     histogram.counts,
     _literalAlphabetSize,
-    MAX_LENGTH,
+    maxLength,
   );
 }

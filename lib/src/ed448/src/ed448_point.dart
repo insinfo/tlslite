@@ -143,10 +143,10 @@ class Ed448Point {
     final zzMinusDtt = Fp448.create();
     final zzPlusDtt = Fp448.create();
     final yyMinusXx = Fp448.create();
-    final X3 = Fp448.create();
-    final Y3 = Fp448.create();
-    final Z3 = Fp448.create();
-    final T3 = Fp448.create();
+    final x3 = Fp448.create();
+    final y3 = Fp448.create();
+    final z3 = Fp448.create();
+    final t3 = Fp448.create();
 
     Fp448.mul(X, other.Y, x1y2);
     Fp448.mul(Y, other.X, y1x2);
@@ -163,12 +163,12 @@ class Ed448Point {
     Fp448.add(zz, dtt, zzPlusDtt);
     Fp448.sub(yy, xx, yyMinusXx);
 
-    Fp448.mul(xSum, zzMinusDtt, X3);
-    Fp448.mul(yyMinusXx, zzPlusDtt, Y3);
-    Fp448.mul(yyMinusXx, xSum, T3);
-    Fp448.mul(zzMinusDtt, zzPlusDtt, Z3);
+    Fp448.mul(xSum, zzMinusDtt, x3);
+    Fp448.mul(yyMinusXx, zzPlusDtt, y3);
+    Fp448.mul(yyMinusXx, xSum, t3);
+    Fp448.mul(zzMinusDtt, zzPlusDtt, z3);
 
-    return Ed448Point._(X3, Y3, Z3, T3);
+    return Ed448Point._(x3, y3, z3, t3);
   }
 
   /// Point doubling

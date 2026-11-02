@@ -1,3 +1,7 @@
+// Ported to Dart from tlslite-ng tlslite/handshakehelpers.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 
 
 /// Class with various handshake helpers
@@ -54,14 +58,14 @@ class HandshakeHelpers {
     // HKDF-Extract(0, PSK)
     final earlySecret = secureHMAC(Uint8List(keyLen), psk, prf);
 
-    final binderKey = derive_secret(
+    final binderKey = deriveSecret(
       earlySecret,
       external ? Uint8List.fromList('ext binder'.codeUnits) : Uint8List.fromList('res binder'.codeUnits),
       null,
       prf,
     );
 
-    final finishedKey = HKDF_expand_label(
+    final finishedKey = hkdfExpandLabel(
       binderKey,
       Uint8List.fromList('finished'.codeUnits),
       Uint8List(0),
@@ -87,7 +91,7 @@ class HandshakeHelpers {
 
     final ticketHash = resMasterSecret.length == 32 ? 'sha256' : 'sha384';
 
-    final psk = HKDF_expand_label(
+    final psk = hkdfExpandLabel(
       resMasterSecret,
       Uint8List.fromList('resumption'.codeUnits),
       ticket.ticketNonce,
@@ -121,7 +125,7 @@ class HandshakeHelpers {
     }
 
     final hh = handshakeHashes.copy();
-    hh.update(clientHello.psk_truncate());
+    hh.update(clientHello.pskTruncate());
 
     final configsIter = pskConfigs.iterator;
     final hasTickets = tickets != null && tickets.isNotEmpty;
@@ -187,7 +191,7 @@ class HandshakeHelpers {
     }
 
     final hh = handshakeHashes.copy();
-    hh.update(clientHello.psk_truncate());
+    hh.update(clientHello.pskTruncate());
 
 
       final binder = calcBinder(prf, secret, hh, external: external);
@@ -246,7 +250,7 @@ class HandshakeHelpers {
 
 // Temporary stub for PaddingExtension
 class _PaddingExtension {
-  _PaddingExtension() : extType = ExtensionType.client_hello_padding;
+  _PaddingExtension() : extType = ExtensionType.clientHelloPadding;
 
   final int extType;
   Uint8List _paddingData = Uint8List(0);

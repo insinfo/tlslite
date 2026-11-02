@@ -3,10 +3,8 @@
 import "dart:convert";
 import "dart:typed_data";
 
-import "package:meta/meta.dart";
 
 /// Base class for certificates usable with OpenSSL.
-@immutable
 sealed class Certificate {
   const Certificate();
 

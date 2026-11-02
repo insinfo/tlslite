@@ -17,9 +17,7 @@ Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  tlslite:
-    git:
-      url: https://github.com/insinfo/tlslite.git
+  tlslite: ^1.0.0
 ```
 
 ## Quick Start
@@ -34,10 +32,14 @@ import 'package:tlslite/tlslite.dart';
 void main() async {
   final socket = await Socket.connect('example.com', 443);
   final tls = TlsConnection(socket);
-  
+
+  // Verify the server certificate chain and host name (see below).
+  final validator = X509Validator(loadSystemTrustAnchors() ?? const []);
+
   await tls.handshakeClient(
     serverName: 'example.com',
     alpn: ['http/1.1'],
+    checker: validator.checker(hostname: 'example.com'),
   );
   
   await tls.write(Uint8List.fromList('GET / HTTP/1.1\r\nHost: example.com\r\n\r\n'.codeUnits));
@@ -47,6 +49,39 @@ void main() async {
   await tls.close();
 }
 ```
+
+### Certificate validation
+
+`handshakeClient` does **not** authenticate the server unless you pass a
+`checker`. `X509Validator` performs path building to a set of trust anchors
+(signature, validity period, basicConstraints/pathLen, keyUsage,
+extendedKeyUsage serverAuth, name constraints) and RFC 6125 host name
+matching (subjectAltName DNS/IP, CN only when there is no SAN). Revocation
+(CRL/OCSP) is not checked.
+
+```dart
+// System CA bundle (SSL_CERT_FILE, /etc/ssl/cert.pem,
+// /etc/ssl/certs/ca-certificates.crt, ...). Returns null on Windows.
+final anchors = loadSystemTrustAnchors() ?? <X509>[];
+// Or a private CA / a pinned self-signed server certificate:
+anchors.addAll(loadPemCertificatesFromFile('my-ca.pem'));
+
+final validator = X509Validator(anchors);
+
+// Option 1: during the handshake (aborts with a fatal alert, before any
+// application data is exchanged).
+await tls.handshakeClient(
+  serverName: host,
+  checker: validator.checker(hostname: host),
+);
+
+// Option 2: after the handshake.
+validator.validate(tls.session.serverCertChain, hostname: host);
+```
+
+Failures throw `TLSCertificateVerificationError` (a `TLSAuthenticationError`)
+whose `reason` is a `CertificateVerificationFailure` (`expired`,
+`unknownIssuer`, `selfSigned`, `hostnameMismatch`, ...).
 
 ### Server Connection (Pure Dart)
 

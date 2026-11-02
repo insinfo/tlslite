@@ -157,9 +157,9 @@ void _ffiServerEntry(_FfiServerConfig config) {
   final sendPort = config.sendPort;
   try {
     final listener = SecureFFISocketOpenSSL.server(
-      AF_INET,
-      SOCK_STREAM,
-      IPPROTO_TCP,
+      afInet,
+      sockStream,
+      ipprotoTcp,
       config.certPath,
       config.keyPath,
     );

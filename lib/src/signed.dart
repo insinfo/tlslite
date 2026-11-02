@@ -1,3 +1,7 @@
+// Ported to Dart from tlslite-ng tlslite/signed.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 import 'dart:typed_data';
 
 import 'utils/cryptomath.dart';
@@ -6,7 +10,7 @@ import 'utils/ecdsakey.dart';
 import 'utils/eddsakey.dart';
 import 'utils/rsakey.dart';
 
-const List<String> RSA_SIGNATURE_HASHES = [
+const List<String> defaultRsaSignatureHashes = [
   'sha512',
   'sha384',
   'sha256',
@@ -14,12 +18,12 @@ const List<String> RSA_SIGNATURE_HASHES = [
   'sha1',
 ];
 
-const List<String> ALL_RSA_SIGNATURE_HASHES = [
-  ...RSA_SIGNATURE_HASHES,
+const List<String> allRsaSignatureHashes = [
+  ...defaultRsaSignatureHashes,
   'md5',
 ];
 
-const List<String> RSA_SCHEMES = [
+const List<String> defaultRsaSchemes = [
   'pss',
   'pkcs1',
 ];
@@ -37,11 +41,11 @@ class SignatureSettings {
   })  : minKeySize = minKeySize ?? 1023,
         maxKeySize = maxKeySize ?? 8193,
         rsaSigHashes = List.unmodifiable(
-          (rsaSigHashes ?? RSA_SIGNATURE_HASHES)
+          (rsaSigHashes ?? defaultRsaSignatureHashes)
               .map((alg) => alg.toLowerCase()),
         ),
         rsaSchemes = List.unmodifiable(
-          (rsaSchemes ?? RSA_SCHEMES).map((scheme) => scheme.toLowerCase()),
+          (rsaSchemes ?? defaultRsaSchemes).map((scheme) => scheme.toLowerCase()),
         );
 
   final int minKeySize;
@@ -76,7 +80,7 @@ class SignatureSettings {
 
   static void _sanityCheckSignatureAlgs(SignatureSettings other) {
     final invalid = other.rsaSigHashes
-        .where((alg) => !ALL_RSA_SIGNATURE_HASHES.contains(alg))
+        .where((alg) => !allRsaSignatureHashes.contains(alg))
         .toList();
     if (invalid.isNotEmpty) {
       throw ArgumentError(

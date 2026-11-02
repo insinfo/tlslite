@@ -1,3 +1,7 @@
+// Ported to Dart from tlslite-ng tlslite/recordlayer.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 /// Implementation of the TLS Record Layer protocol
 
 import 'dart:async';
@@ -183,7 +187,7 @@ class RecordLayer {
   int maxEarlyData = 0;
   int _earlyDataProcessed = 0;
   
-  dynamic padding_cb; // Function(int, int, int) -> List<int>
+  dynamic paddingCb; // Function(int, int, int) -> List<int>
 
   int get recvRecordLimit => _recordSocket.recvRecordLimit;
   set recvRecordLimit(int value) => _recordSocket.recvRecordLimit = value;
@@ -484,14 +488,14 @@ class RecordLayer {
     var data = msg.write();
     var contentType = msg.contentType;
 
-    if (_isTls13Plus() && _writeState.encContext != null && contentType != ContentType.change_cipher_spec) {
+    if (_isTls13Plus() && _writeState.encContext != null && contentType != ContentType.changeCipherSpec) {
       data = Uint8List.fromList([...data, contentType]);
-      if (padding_cb != null) {
+      if (paddingCb != null) {
         final maxPadding = sendRecordLimit - data.length - 1;
-        final padding = padding_cb(data.length, contentType, maxPadding) as List<int>;
+        final padding = paddingCb(data.length, contentType, maxPadding) as List<int>;
         data = Uint8List.fromList([...data, ...padding]);
       }
-      contentType = ContentType.application_data;
+      contentType = ContentType.applicationData;
     }
 
     int padding = 0;
@@ -499,7 +503,7 @@ class RecordLayer {
       final res = _ssl2Encrypt(data);
       data = res.$1;
       padding = res.$2;
-    } else if (version > const TlsProtocolVersion(3, 3) && contentType == ContentType.change_cipher_spec) {
+    } else if (version > const TlsProtocolVersion(3, 3) && contentType == ContentType.changeCipherSpec) {
       // TLS 1.3 does not encrypt CCS
     } else if (_writeState.encContext != null && (_writeState.encContext.isAEAD ?? false)) {
       data = _encryptThenSeal(data, contentType);
@@ -664,7 +668,7 @@ class RecordLayer {
         plaintextLen & 0xff
       ]);
     } else {
-      if (header.type != ContentType.application_data) {
+      if (header.type != ContentType.applicationData) {
         throw TLSUnexpectedMessage("Invalid ContentType for encrypted record");
       }
       if (header.version != const TlsProtocolVersion(3, 3)) {
@@ -737,12 +741,12 @@ class RecordLayer {
     if (header is RecordHeader2) {
       decryptedData = _decryptSSL2(decryptedData, header.padding);
       if (handshakeFinished) {
-        header.type = ContentType.application_data;
+        header.type = ContentType.applicationData;
       }
       return (header, decryptedData);
     }
 
-    if (_isTls13Plus() && header.type == ContentType.change_cipher_spec) {
+    if (_isTls13Plus() && header.type == ContentType.changeCipherSpec) {
       return (header, decryptedData);
     }
 
@@ -766,7 +770,7 @@ class RecordLayer {
 
     if (_isTls13Plus() &&
         _readState.encContext != null &&
-        header.type == ContentType.application_data) {
+        header.type == ContentType.applicationData) {
       if (decryptedData.length > recvRecordLimit + 1) {
         throw TLSRecordOverflow();
       }
@@ -802,7 +806,7 @@ class RecordLayer {
         if (_readState.encContext == null &&
             _readState.macContext == null &&
             earlyDataOk &&
-            updatedHeader.type == ContentType.application_data) {
+            updatedHeader.type == ContentType.applicationData) {
           throw TLSBadRecordMAC("early data received");
         }
 
@@ -885,7 +889,7 @@ class RecordLayer {
   
   static Function _getHMACMethod(TlsProtocolVersion version) {
     if (version == const TlsProtocolVersion(3, 0)) {
-      return createMAC_SSL;
+      return createMacSsl;
     } else {
       return createHMAC;
     }
@@ -960,17 +964,17 @@ class RecordLayer {
     
     clientPendingState.macContext = null;
     clientPendingState.encContext = createCipherFunc!(
-      HKDF_expand_label(clTrafficSecret, Uint8List.fromList('key'.codeUnits), Uint8List(0), keyLength, prfName),
+      hkdfExpandLabel(clTrafficSecret, Uint8List.fromList('key'.codeUnits), Uint8List(0), keyLength, prfName),
       implementations: implementations
     );
-    clientPendingState.fixedNonce = HKDF_expand_label(clTrafficSecret, Uint8List.fromList('iv'.codeUnits), Uint8List(0), 12, prfName);
+    clientPendingState.fixedNonce = hkdfExpandLabel(clTrafficSecret, Uint8List.fromList('iv'.codeUnits), Uint8List(0), 12, prfName);
     
     serverPendingState.macContext = null;
     serverPendingState.encContext = createCipherFunc(
-      HKDF_expand_label(srTrafficSecret, Uint8List.fromList('key'.codeUnits), Uint8List(0), keyLength, prfName),
+      hkdfExpandLabel(srTrafficSecret, Uint8List.fromList('key'.codeUnits), Uint8List(0), keyLength, prfName),
       implementations: implementations
     );
-    serverPendingState.fixedNonce = HKDF_expand_label(srTrafficSecret, Uint8List.fromList('iv'.codeUnits), Uint8List(0), 12, prfName);
+    serverPendingState.fixedNonce = hkdfExpandLabel(srTrafficSecret, Uint8List.fromList('iv'.codeUnits), Uint8List(0), 12, prfName);
     
     if (client) {
       _pendingWriteState = clientPendingState;
@@ -985,14 +989,14 @@ class RecordLayer {
     final (prfName, prfLength) = CipherSuite.sha384PrfSuites.contains(cipherSuite) ? ('sha384', 48) : ('sha256', 32);
     final (keyLength, ivLength, createCipherFunc) = _getCipherSettings(cipherSuite);
     
-    final newAppSecret = HKDF_expand_label(appSecret, Uint8List.fromList('traffic upd'.codeUnits), Uint8List(0), prfLength, prfName);
+    final newAppSecret = hkdfExpandLabel(appSecret, Uint8List.fromList('traffic upd'.codeUnits), Uint8List(0), prfLength, prfName);
     final newState = ConnectionState();
     newState.macContext = null;
     newState.encContext = createCipherFunc!(
-      HKDF_expand_label(newAppSecret, Uint8List.fromList('key'.codeUnits), Uint8List(0), keyLength, prfName),
+      hkdfExpandLabel(newAppSecret, Uint8List.fromList('key'.codeUnits), Uint8List(0), keyLength, prfName),
       implementations: null
     );
-    newState.fixedNonce = HKDF_expand_label(newAppSecret, Uint8List.fromList('iv'.codeUnits), Uint8List(0), 12, prfName);
+    newState.fixedNonce = hkdfExpandLabel(newAppSecret, Uint8List.fromList('iv'.codeUnits), Uint8List(0), 12, prfName);
     
     return (newAppSecret, newState);
   }

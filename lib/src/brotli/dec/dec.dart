@@ -3,16 +3,16 @@
 /// This library provides decoding functionality for the Brotli compression format.
 library;
 
-export 'BitReader.dart';
-export 'BrotliError.dart';
-export 'BrotliInputStream.dart';
-export 'BrotliRuntimeException.dart';
-export 'Context.dart';
-export 'Decode.dart';
-export 'Decoder.dart';
-export 'Dictionary.dart';
-export 'DictionaryData.dart';
-export 'Huffman.dart';
-export 'State.dart';
-export 'Transform.dart';
-export 'Utils.dart';
+export 'bit_reader.dart';
+export 'brotli_error.dart';
+export 'brotli_input_stream.dart';
+export 'brotli_runtime_exception.dart';
+export 'context.dart';
+export 'decode.dart';
+export 'decoder.dart';
+export 'dictionary.dart';
+export 'dictionary_data.dart';
+export 'huffman.dart';
+export 'state.dart';
+export 'transform.dart';
+export 'utils.dart';

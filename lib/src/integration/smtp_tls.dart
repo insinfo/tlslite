@@ -1,3 +1,7 @@
+// Ported to Dart from tlslite-ng tlslite/integration/smtp_tls.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 
 /// TLS Lite + SMTP client with STARTTLS support.
 library;

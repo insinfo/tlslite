@@ -6,7 +6,7 @@
 // buffers de trabalho são mantidos em memória nativa.
 import 'dart:ffi' as ffi;
 import 'dart:typed_data';
-import 'package:ffi/ffi.dart' as pkgffi;
+import 'package:tlslite/src/ffi/native_memory.dart' as pkgffi;
 
 /// Uma implementação pura em Dart fast do Rijndael com uma interface decente.
 ///

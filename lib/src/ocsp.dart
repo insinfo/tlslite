@@ -1,3 +1,7 @@
+// Ported to Dart from tlslite-ng tlslite/ocsp.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 import 'dart:typed_data';
 
 import 'errors.dart';
@@ -177,12 +181,12 @@ class OCSPResponse extends SignedObject {
     // 1. Identify Signer
     X509? signer;
     if (responderIdType == 2) { // KeyHash
-      final issuerKeyHash = SHA1(issuer.subjectPublicKey!);
+      final issuerKeyHash = sha1(issuer.subjectPublicKey!);
       if (_bytesEqual(issuerKeyHash, responderIdValue!)) {
         signer = issuer;
       } else {
         for (final cert in certs) {
-          final certKeyHash = SHA1(cert.subjectPublicKey!);
+          final certKeyHash = sha1(cert.subjectPublicKey!);
           if (_bytesEqual(certKeyHash, responderIdValue!)) {
             signer = cert;
             break;

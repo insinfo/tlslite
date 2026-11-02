@@ -1,3 +1,7 @@
+// Ported to Dart from tlslite-ng tlslite/handshakesettings.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 
 
 /// Class for setting handshake parameters
@@ -203,7 +207,7 @@ const ticketCiphers = [
 const _pskModes = ['psk_dhe_ke', 'psk_ke'];
 
 const _ecPointFormats = [
-  ECPointFormat.ansiX962_compressed_prime,
+  ECPointFormat.ansiX962CompressedPrime,
   ECPointFormat.uncompressed,
 ];
 
@@ -311,11 +315,11 @@ class HandshakeSettings {
     bool usePaddingExtension = true,
     List<String>? certificateCompressionSend,
     List<String>? certificateCompressionReceive,
-    this.padding_cb,
-    this.record_size_limit = 2 << 13,
-    this.use_heartbeat_extension = true,
-    this.heartbeat_response_callback,
-    this.max_early_data = 2 << 13,
+    this.paddingCb,
+    this.recordSizeLimit = 2 << 13,
+    this.useHeartbeatExtension = true,
+    this.heartbeatResponseCallback,
+    this.maxEarlyData = 2 << 13,
     this.heartbeatCiphersuites = const [],
     this.useLegacySignatureSchemeIDCombination = false,
   })  : minVersion = minVersion ?? const (3, 1),
@@ -470,19 +474,19 @@ class HandshakeSettings {
   final List<String> certificateCompressionReceive;
 
   /// Callback for padding records
-  final dynamic padding_cb;
+  final dynamic paddingCb;
 
   /// Record size limit extension value
-  final int record_size_limit;
+  final int recordSizeLimit;
 
   /// Whether to use heartbeat extension
-  final bool use_heartbeat_extension;
+  final bool useHeartbeatExtension;
 
   /// Callback for heartbeat responses
-  final dynamic heartbeat_response_callback;
+  final dynamic heartbeatResponseCallback;
 
   /// Maximum early data size for 0-RTT
-  final int max_early_data;
+  final int maxEarlyData;
 
   /// Ciphersuites that support heartbeat
   final List<int> heartbeatCiphersuites;
@@ -533,11 +537,11 @@ class HandshakeSettings {
     bool? usePaddingExtension,
     List<String>? certificateCompressionSend,
     List<String>? certificateCompressionReceive,
-    dynamic padding_cb,
-    int? record_size_limit,
-    bool? use_heartbeat_extension,
-    dynamic heartbeat_response_callback,
-    int? max_early_data,
+    dynamic paddingCb,
+    int? recordSizeLimit,
+    bool? useHeartbeatExtension,
+    dynamic heartbeatResponseCallback,
+    int? maxEarlyData,
     List<int>? heartbeatCiphersuites,
     bool? useLegacySignatureSchemeIDCombination,
   }) {
@@ -584,13 +588,13 @@ class HandshakeSettings {
           certificateCompressionSend ?? this.certificateCompressionSend,
         certificateCompressionReceive:
           certificateCompressionReceive ?? this.certificateCompressionReceive,
-      padding_cb: padding_cb ?? this.padding_cb,
-      record_size_limit: record_size_limit ?? this.record_size_limit,
-      use_heartbeat_extension:
-          use_heartbeat_extension ?? this.use_heartbeat_extension,
-      heartbeat_response_callback:
-          heartbeat_response_callback ?? this.heartbeat_response_callback,
-      max_early_data: max_early_data ?? this.max_early_data,
+      paddingCb: paddingCb ?? this.paddingCb,
+      recordSizeLimit: recordSizeLimit ?? this.recordSizeLimit,
+      useHeartbeatExtension:
+          useHeartbeatExtension ?? this.useHeartbeatExtension,
+      heartbeatResponseCallback:
+          heartbeatResponseCallback ?? this.heartbeatResponseCallback,
+      maxEarlyData: maxEarlyData ?? this.maxEarlyData,
       heartbeatCiphersuites:
           heartbeatCiphersuites ?? this.heartbeatCiphersuites,
       useLegacySignatureSchemeIDCombination:

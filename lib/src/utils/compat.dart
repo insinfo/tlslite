@@ -1,7 +1,10 @@
+// Ported to Dart from tlslite-ng tlslite/utils/compat.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 import 'dart:convert'; // For ascii, utf8, base64
 import 'dart:io'; // For stdin, Platform
 import 'dart:typed_data'; // For Uint8List, ByteData
-import 'package:convert/convert.dart' show hex;
 
 /// Converts an ASCII string to bytes (Uint8List).
 /// Replaces dart's compatAscii2Bytes for dart 3.
@@ -35,19 +38,41 @@ String bytesToAscii(Uint8List val) {
 /// Replaces dart's a2b_hex.
 /// Throws [FormatException] if the input string is not valid hex.
 Uint8List hexDecode(String hexString) {
-  try {
-    // package:convert handles potential whitespace and case insensitivity
-    return Uint8List.fromList(hex.decode(hexString));
-  } catch (e) {
-    // Wrap exception for consistency or let FormatException propagate
-    throw FormatException('Invalid hexadecimal string: $e');
+  if (hexString.length.isOdd) {
+    throw FormatException(
+        'Invalid hexadecimal string: odd length ${hexString.length}');
   }
+  final out = Uint8List(hexString.length ~/ 2);
+  for (var i = 0; i < out.length; i++) {
+    final hi = _hexDigit(hexString.codeUnitAt(2 * i));
+    final lo = _hexDigit(hexString.codeUnitAt(2 * i + 1));
+    if (hi < 0 || lo < 0) {
+      throw FormatException(
+          'Invalid hexadecimal string: bad digit near offset ${2 * i}');
+    }
+    out[i] = (hi << 4) | lo;
+  }
+  return out;
 }
 
 /// Encodes bytes (Uint8List) into a hexadecimal string (lowercase ASCII).
 /// Replaces dart's b2a_hex.
 String hexEncode(Uint8List bytes) {
-  return hex.encode(bytes);
+  const digits = '0123456789abcdef';
+  final buffer = StringBuffer();
+  for (final b in bytes) {
+    buffer
+      ..writeCharCode(digits.codeUnitAt((b >> 4) & 0xf))
+      ..writeCharCode(digits.codeUnitAt(b & 0xf));
+  }
+  return buffer.toString();
+}
+
+int _hexDigit(int c) {
+  if (c >= 0x30 && c <= 0x39) return c - 0x30; // 0-9
+  if (c >= 0x61 && c <= 0x66) return c - 0x61 + 10; // a-f
+  if (c >= 0x41 && c <= 0x46) return c - 0x41 + 10; // A-F
+  return -1;
 }
 
 /// Decodes a base64 string (ASCII) into bytes (Uint8List).

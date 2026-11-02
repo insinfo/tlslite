@@ -10,7 +10,7 @@ class SocketRuntimeHelper {
 
   static int lastErrorCode() {
     if (Platform.isWindows) {
-      return _WSAGetLastError();
+      return _wsaGetLastError();
     }
     final getter = _posixErrnoPointer;
     if (getter != null) {
@@ -20,20 +20,24 @@ class SocketRuntimeHelper {
   }
 
   static bool isRetryable(int code) =>
-      Platform.isWindows ? code == _WSAEINTR : code == _POSIX_EINTR;
+      Platform.isWindows ? code == _wsaeIntr : code == _posixEIntr;
 
   static bool isWouldBlock(int code) {
     if (Platform.isWindows) {
-      return code == _WSAEWOULDBLOCK;
+      return code == _wsaeWouldBlock;
     }
-    return Platform.isMacOS ? code == _POSIX_EAGAIN_MAC : code == _POSIX_EAGAIN_LINUX;
+    return Platform.isMacOS
+        ? code == _posixEAgainMac
+        : code == _posixEAgainLinux;
   }
 
   static bool isConnectionClosed(int code) {
     if (Platform.isWindows) {
-      return code == _WSAECONNABORTED || code == _WSAECONNRESET;
+      return code == _wsaeConnAborted || code == _wsaeConnReset;
     }
-    return Platform.isMacOS ? code == _POSIX_ECONNRESET_MAC : code == _POSIX_ECONNRESET;
+    return Platform.isMacOS
+        ? code == _posixEConnResetMac
+        : code == _posixEConnReset;
   }
 
   static Never throwWithOsError(String operation, {int? code}) {

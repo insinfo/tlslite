@@ -13,7 +13,7 @@ import 'dart:ffi' as ffi;
 import 'dart:io' show File, Platform;
 import 'dart:typed_data';
 
-import 'package:ffi/ffi.dart' as pkg_ffi;
+import 'package:tlslite/src/ffi/native_memory.dart' as pkg_ffi;
 
 import 'rijndael_fast_asm_x86_64.dart' show ExecutableMemory;
 

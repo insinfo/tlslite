@@ -263,7 +263,7 @@ void main() {
     test('x25519 share A', () {
       final aRandom = _hex(
           '77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a');
-      final aPublic = x25519(aRandom, Uint8List.fromList(X25519_G));
+      final aPublic = x25519(aRandom, Uint8List.fromList(x25519G));
       expect(
         _hexStr(aPublic),
         '8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a',
@@ -273,7 +273,7 @@ void main() {
     test('x25519 share B', () {
       final bRandom = _hex(
           '5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb');
-      final bPublic = x25519(bRandom, Uint8List.fromList(X25519_G));
+      final bPublic = x25519(bRandom, Uint8List.fromList(x25519G));
       expect(
         _hexStr(bPublic),
         'de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f',
@@ -283,10 +283,10 @@ void main() {
     test('x25519 shared secret', () {
       final aRandom = _hex(
           '77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a');
-      final aPublic = x25519(aRandom, Uint8List.fromList(X25519_G));
+      final aPublic = x25519(aRandom, Uint8List.fromList(x25519G));
       final bRandom = _hex(
           '5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb');
-      final bPublic = x25519(bRandom, Uint8List.fromList(X25519_G));
+      final bPublic = x25519(bRandom, Uint8List.fromList(x25519G));
       final aShared = x25519(aRandom, bPublic);
       final bShared = x25519(bRandom, aPublic);
       expect(_hexStr(aShared), _hexStr(bShared));
@@ -300,7 +300,7 @@ void main() {
       final aRandom = _hex(
           '9a8f4925d1519f5775cf46b04b5800d4ee9ee8bae8bc5565d498c28dd9c9baf5'
           '74a9419744897391006382a6f127ab1d9ac2d8c0a598726b');
-      final aPublic = x448(aRandom, Uint8List.fromList(X448_G));
+      final aPublic = x448(aRandom, Uint8List.fromList(x448G));
       expect(
         _hexStr(aPublic),
         '9b08f7cc31b7e3e67d22d5aea121074a273bd2b83de09c63faa73d2c22c5d9bb'
@@ -312,7 +312,7 @@ void main() {
       final bRandom = _hex(
           '1c306a7ac2a0e2e0990b294470cba339e6453772b075811d8fad0d1d6927c120'
           'bb5ee8972b0d3e21374c9c921b09d1b0366f10b65173992d');
-      final bPublic = x448(bRandom, Uint8List.fromList(X448_G));
+      final bPublic = x448(bRandom, Uint8List.fromList(x448G));
       expect(
         _hexStr(bPublic),
         '3eb7a829b0cd20f5bcfc0b599b6feccf6da4627107bdb0d4f345b43027d8b972'
@@ -324,11 +324,11 @@ void main() {
       final aRandom = _hex(
           '9a8f4925d1519f5775cf46b04b5800d4ee9ee8bae8bc5565d498c28dd9c9baf5'
           '74a9419744897391006382a6f127ab1d9ac2d8c0a598726b');
-      final aPublic = x448(aRandom, Uint8List.fromList(X448_G));
+      final aPublic = x448(aRandom, Uint8List.fromList(x448G));
       final bRandom = _hex(
           '1c306a7ac2a0e2e0990b294470cba339e6453772b075811d8fad0d1d6927c120'
           'bb5ee8972b0d3e21374c9c921b09d1b0366f10b65173992d');
-      final bPublic = x448(bRandom, Uint8List.fromList(X448_G));
+      final bPublic = x448(bRandom, Uint8List.fromList(x448G));
       final aShared = x448(aRandom, bPublic);
       final bShared = x448(bRandom, aPublic);
       expect(_hexStr(aShared), _hexStr(bShared));

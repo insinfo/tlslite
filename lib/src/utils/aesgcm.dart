@@ -1,3 +1,7 @@
+// Ported to Dart from tlslite-ng tlslite/utils/aesgcm.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 import 'dart:typed_data';
 
 import 'aes.dart';
@@ -17,9 +21,9 @@ class AESGCM {
     } else {
       throw ArgumentError('AES-GCM key must be 16 or 32 bytes long');
     }
-    _ctr = dart_aes.Dart_AES_CTR.Dart_AES_CTR(
+    _ctr = dart_aes.DartAesCtr(
       Uint8List.fromList(this.key),
-      aesModeCTR_OR_GCM,
+      aesModeCtrOrGcm,
       Uint8List(16),
     );
     _productTable = List<BigInt>.filled(16, BigInt.zero);
@@ -42,7 +46,7 @@ class AESGCM {
   final Uint8List key;
 
   final RawAesEncrypt _rawAesEncrypt;
-  late final dart_aes.Dart_AES_CTR _ctr;
+  late final dart_aes.DartAesCtr _ctr;
   late final List<BigInt> _productTable;
 
   Uint8List seal(Uint8List nonce, Uint8List plaintext, Uint8List data) {

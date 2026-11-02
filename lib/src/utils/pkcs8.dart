@@ -6,9 +6,7 @@ import 'cryptomath.dart';
 import 'curve_oids.dart' show decodeOid;
 import 'der.dart';
 import 'pem.dart';
-import 'package:pointycastle/api.dart' show BlockCipher, KeyParameter, ParametersWithIV;
-import 'package:pointycastle/block/aes.dart';
-import 'package:pointycastle/block/modes/cbc.dart';
+import 'rijndael_slow.dart' show Rijndael;
 
 const _oidPbes2 = [1, 2, 840, 113549, 1, 5, 13];
 const _oidPbkdf2 = [1, 2, 840, 113549, 1, 5, 12];
@@ -183,29 +181,51 @@ bool _encodedOidEquals(Uint8List encoded, List<int> oid) {
   return true;
 }
 
+Rijndael _aesForCbc(Uint8List key, Uint8List iv) {
+  if (key.length != 16 && key.length != 24 && key.length != 32) {
+    throw ArgumentError('Invalid AES key length: ${key.length}');
+  }
+  if (iv.length != _aesBlockSize) {
+    throw ArgumentError('Invalid AES-CBC IV length: ${iv.length}');
+  }
+  return Rijndael(Uint8List.fromList(key), blockSize: _aesBlockSize);
+}
+
+/// AES-CBC encryption (no padding) over tlslite's pure-Dart AES.
 Uint8List _aesCbcEncrypt(Uint8List key, Uint8List iv, Uint8List plaintext) {
   if (plaintext.length % _aesBlockSize != 0) {
     throw ArgumentError('Plaintext must be block aligned');
   }
-  final cipher = CBCBlockCipher(AESEngine())
-    ..init(true, ParametersWithIV(KeyParameter(key), iv));
-  return _processBlocks(cipher, plaintext);
+  final aes = _aesForCbc(key, iv);
+  final out = Uint8List(plaintext.length);
+  final block = Uint8List(_aesBlockSize);
+  var chain = Uint8List.fromList(iv);
+  for (var offset = 0; offset < plaintext.length; offset += _aesBlockSize) {
+    for (var j = 0; j < _aesBlockSize; j++) {
+      block[j] = plaintext[offset + j] ^ chain[j];
+    }
+    chain = aes.encrypt(block);
+    out.setRange(offset, offset + _aesBlockSize, chain);
+  }
+  return out;
 }
 
+/// AES-CBC decryption (no padding) over tlslite's pure-Dart AES.
 Uint8List _aesCbcDecrypt(Uint8List key, Uint8List iv, Uint8List ciphertext) {
   if (ciphertext.length % _aesBlockSize != 0) {
     throw ArgumentError('Ciphertext must be block aligned');
   }
-  final cipher = CBCBlockCipher(AESEngine())
-    ..init(false, ParametersWithIV(KeyParameter(key), iv));
-  return _processBlocks(cipher, ciphertext);
-}
-
-Uint8List _processBlocks(BlockCipher cipher, Uint8List input) {
-  final out = Uint8List(input.length);
-  final blockSize = cipher.blockSize;
-  for (var offset = 0; offset < input.length; offset += blockSize) {
-    cipher.processBlock(input, offset, out, offset);
+  final aes = _aesForCbc(key, iv);
+  final out = Uint8List(ciphertext.length);
+  var previous = Uint8List.fromList(iv);
+  for (var offset = 0; offset < ciphertext.length; offset += _aesBlockSize) {
+    final cipherBlock =
+        Uint8List.fromList(ciphertext.sublist(offset, offset + _aesBlockSize));
+    final plain = aes.decrypt(cipherBlock);
+    for (var j = 0; j < _aesBlockSize; j++) {
+      out[offset + j] = plain[j] ^ previous[j];
+    }
+    previous = cipherBlock;
   }
   return out;
 }

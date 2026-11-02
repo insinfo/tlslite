@@ -1,4 +1,7 @@
-// ignore_for_file: constant_identifier_names, non_constant_identifier_names
+// Ported to Dart from tlslite-ng tlslite/constants.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 import 'dart:typed_data';
 
 
@@ -22,21 +25,21 @@ Uint8List _hexToBytes(String hexString) {
 /// Número da versão do protocolo usado para negociar TLS 1.3 entre implementações
 /// da especificação de rascunho
 /// DEPRECIADO!
-const List<int> TLS_1_3_DRAFT = [3, 4];
+const List<int> tls13Draft = [3, 4];
 
 /// Valor ServerHello.random significando que a mensagem é um HelloRetryRequest
-final Uint8List TLS_1_3_HRR = _hexToBytes(
+final Uint8List tls13Hrr = _hexToBytes(
     "CF21AD74E59A6111BE1D8C021E65B891C2A211167ABB8C5E079E09E2C8A8339C");
 
 /// Últimos bytes de ServerHello.random a serem usados ao negociar TLS 1.1 ou
 /// anterior enquanto suporta TLS 1.2 ou superior
-final Uint8List TLS_1_1_DOWNGRADE_SENTINEL = _hexToBytes("444F574E47524400");
+final Uint8List tls11DowngradeSentinel = _hexToBytes("444F574E47524400");
 
 /// Últimos bytes de ServerHello.random a serem usados ao negociar TLS 1.2
 /// enquanto suporta TLS 1.3 ou superior
-final Uint8List TLS_1_2_DOWNGRADE_SENTINEL = _hexToBytes("444F574E47524401");
+final Uint8List tls12DowngradeSentinel = _hexToBytes("444F574E47524401");
 
-final Uint8List RSA_PSS_OID = _hexToBytes('06092a864886f70d01010a');
+final Uint8List rsaPssOid = _hexToBytes('06092a864886f70d01010a');
 
 /// Classe base (conceitual) para diferentes enums de IDs TLS
 /// Em Dart, usamos classes com constantes estáticas e mapas para lookup reverso.
@@ -69,22 +72,22 @@ class CertificateType {
 }
 
 class ClientCertificateType {
-  static const int rsa_sign = 1;
-  static const int dss_sign = 2;
-  static const int rsa_fixed_dh = 3;
-  static const int dss_fixed_dh = 4;
-  static const int ecdsa_sign = 64; // RFC 8422
-  static const int rsa_fixed_ecdh = 65; // RFC 8422
-  static const int ecdsa_fixed_ecdh = 66; // RFC 8422
+  static const int rsaSign = 1;
+  static const int dssSign = 2;
+  static const int rsaFixedDh = 3;
+  static const int dssFixedDh = 4;
+  static const int ecdsaSign = 64; // RFC 8422
+  static const int rsaFixedEcdh = 65; // RFC 8422
+  static const int ecdsaFixedEcdh = 66; // RFC 8422
 
   static const Map<int, String> _intToNameMap = {
-    rsa_sign: 'rsa_sign',
-    dss_sign: 'dss_sign',
-    rsa_fixed_dh: 'rsa_fixed_dh',
-    dss_fixed_dh: 'dss_fixed_dh',
-    ecdsa_sign: 'ecdsa_sign',
-    rsa_fixed_ecdh: 'rsa_fixed_ecdh',
-    ecdsa_fixed_ecdh: 'ecdsa_fixed_ecdh',
+    rsaSign: 'rsa_sign',
+    dssSign: 'dss_sign',
+    rsaFixedDh: 'rsa_fixed_dh',
+    dssFixedDh: 'dss_fixed_dh',
+    ecdsaSign: 'ecdsa_sign',
+    rsaFixedEcdh: 'rsa_fixed_ecdh',
+    ecdsaFixedEcdh: 'ecdsa_fixed_ecdh',
   };
 
   static String? toRepr(int value) =>
@@ -96,25 +99,25 @@ class ClientCertificateType {
 class SSL2HandshakeType {
   /// Tipos de mensagem do Protocolo SSL2 Handshake.
   static const int error = 0;
-  static const int client_hello = 1;
-  static const int client_master_key = 2;
-  static const int client_finished = 3;
-  static const int server_hello = 4;
-  static const int server_verify = 5;
-  static const int server_finished = 6;
-  static const int request_certificate = 7;
-  static const int client_certificate = 8;
+  static const int clientHello = 1;
+  static const int clientMasterKey = 2;
+  static const int clientFinished = 3;
+  static const int serverHello = 4;
+  static const int serverVerify = 5;
+  static const int serverFinished = 6;
+  static const int requestCertificate = 7;
+  static const int clientCertificate = 8;
 
   static const Map<int, String> _intToNameMap = {
     error: 'error',
-    client_hello: 'client_hello',
-    client_master_key: 'client_master_key',
-    client_finished: 'client_finished',
-    server_hello: 'server_hello',
-    server_verify: 'server_verify',
-    server_finished: 'server_finished',
-    request_certificate: 'request_certificate',
-    client_certificate: 'client_certificate',
+    clientHello: 'client_hello',
+    clientMasterKey: 'client_master_key',
+    clientFinished: 'client_finished',
+    serverHello: 'server_hello',
+    serverVerify: 'server_verify',
+    serverFinished: 'server_finished',
+    requestCertificate: 'request_certificate',
+    clientCertificate: 'client_certificate',
   };
 
   static String? toRepr(int value) =>
@@ -125,16 +128,16 @@ class SSL2HandshakeType {
 
 class SSL2ErrorDescription {
   /// Descrições de mensagens de erro do protocolo SSL2 Handshake
-  static const int no_cipher = 0x0001;
-  static const int no_certificate = 0x0002;
-  static const int bad_certificate = 0x0004;
-  static const int unsupported_certificate_type = 0x0006;
+  static const int noCipher = 0x0001;
+  static const int noCertificate = 0x0002;
+  static const int badCertificate = 0x0004;
+  static const int unsupportedCertificateType = 0x0006;
 
   static const Map<int, String> _intToNameMap = {
-    no_cipher: 'no_cipher',
-    no_certificate: 'no_certificate',
-    bad_certificate: 'bad_certificate',
-    unsupported_certificate_type: 'unsupported_certificate_type',
+    noCipher: 'no_cipher',
+    noCertificate: 'no_certificate',
+    badCertificate: 'bad_certificate',
+    unsupportedCertificateType: 'unsupported_certificate_type',
   };
 
   static String? toRepr(int value) =>
@@ -145,46 +148,46 @@ class SSL2ErrorDescription {
 
 class HandshakeType {
   /// Tipos de mensagem no protocolo TLS Handshake
-  static const int hello_request = 0;
-  static const int client_hello = 1;
-  static const int server_hello = 2;
-  static const int new_session_ticket = 4;
-  static const int end_of_early_data = 5; // TLS 1.3
-  static const int hello_retry_request = 6; // TLS 1.3
-  static const int encrypted_extensions = 8; // TLS 1.3
+  static const int helloRequest = 0;
+  static const int clientHello = 1;
+  static const int serverHello = 2;
+  static const int newSessionTicket = 4;
+  static const int endOfEarlyData = 5; // TLS 1.3
+  static const int helloRetryRequest = 6; // TLS 1.3
+  static const int encryptedExtensions = 8; // TLS 1.3
   static const int certificate = 11;
-  static const int server_key_exchange = 12;
-  static const int certificate_request = 13;
-  static const int server_hello_done = 14;
-  static const int certificate_verify = 15;
-  static const int client_key_exchange = 16;
+  static const int serverKeyExchange = 12;
+  static const int certificateRequest = 13;
+  static const int serverHelloDone = 14;
+  static const int certificateVerify = 15;
+  static const int clientKeyExchange = 16;
   static const int finished = 20;
-  static const int certificate_status = 22;
-  static const int key_update = 24; // TLS 1.3
-  static const int compressed_certificate = 25; // TLS 1.3 - RFC 8879
-  static const int next_protocol = 67; // Deprecated by ALPN
-  static const int message_hash = 254; // TLS 1.3
+  static const int certificateStatus = 22;
+  static const int keyUpdate = 24; // TLS 1.3
+  static const int compressedCertificate = 25; // TLS 1.3 - RFC 8879
+  static const int nextProtocol = 67; // Deprecated by ALPN
+  static const int messageHash = 254; // TLS 1.3
 
   static const Map<int, String> _intToNameMap = {
-    hello_request: 'hello_request',
-    client_hello: 'client_hello',
-    server_hello: 'server_hello',
-    new_session_ticket: 'new_session_ticket',
-    end_of_early_data: 'end_of_early_data',
-    hello_retry_request: 'hello_retry_request',
-    encrypted_extensions: 'encrypted_extensions',
+    helloRequest: 'hello_request',
+    clientHello: 'client_hello',
+    serverHello: 'server_hello',
+    newSessionTicket: 'new_session_ticket',
+    endOfEarlyData: 'end_of_early_data',
+    helloRetryRequest: 'hello_retry_request',
+    encryptedExtensions: 'encrypted_extensions',
     certificate: 'certificate',
-    server_key_exchange: 'server_key_exchange',
-    certificate_request: 'certificate_request',
-    server_hello_done: 'server_hello_done',
-    certificate_verify: 'certificate_verify',
-    client_key_exchange: 'client_key_exchange',
+    serverKeyExchange: 'server_key_exchange',
+    certificateRequest: 'certificate_request',
+    serverHelloDone: 'server_hello_done',
+    certificateVerify: 'certificate_verify',
+    clientKeyExchange: 'client_key_exchange',
     finished: 'finished',
-    certificate_status: 'certificate_status',
-    key_update: 'key_update',
-    compressed_certificate: 'compressed_certificate',
-    next_protocol: 'next_protocol',
-    message_hash: 'message_hash',
+    certificateStatus: 'certificate_status',
+    keyUpdate: 'key_update',
+    compressedCertificate: 'compressed_certificate',
+    nextProtocol: 'next_protocol',
+    messageHash: 'message_hash',
   };
 
   static String? toRepr(int value) =>
@@ -195,18 +198,18 @@ class HandshakeType {
 
 class ContentType {
   /// Tipos de conteúdo da camada de registro TLS para payloads
-  static const int change_cipher_spec = 20;
+  static const int changeCipherSpec = 20;
   static const int alert = 21;
   static const int handshake = 22;
-  static const int application_data = 23;
+  static const int applicationData = 23;
   static const int heartbeat = 24; // RFC 6520
   static const List<int> all = [20, 21, 22, 23, 24];
 
   static const Map<int, String> _intToNameMap = {
-    change_cipher_spec: 'change_cipher_spec',
+    changeCipherSpec: 'change_cipher_spec',
     alert: 'alert',
     handshake: 'handshake',
-    application_data: 'application_data',
+    applicationData: 'application_data',
     heartbeat: 'heartbeat',
   };
 
@@ -221,70 +224,70 @@ class ContentType {
 
 class ExtensionType {
   /// Valores do registro de Tipo de Extensão TLS
-  static const int server_name = 0; // RFC 6066 / 4366
-  static const int max_fragment_length = 1; // RFC 6066 / 4366
-  static const int status_request = 5; // RFC 6066 / 4366
-  static const int cert_type = 9; // RFC 6091
-  static const int supported_groups =
+  static const int serverName = 0; // RFC 6066 / 4366
+  static const int maxFragmentLength = 1; // RFC 6066 / 4366
+  static const int statusRequest = 5; // RFC 6066 / 4366
+  static const int certType = 9; // RFC 6091
+  static const int supportedGroups =
       10; // RFC 4492, RFC-ietf-tls-negotiated-ff-dhe-10
-  static const int ec_point_formats = 11; // RFC 4492
+  static const int ecPointFormats = 11; // RFC 4492
   static const int srp = 12; // RFC 5054
-  static const int signature_algorithms = 13; // RFC 5246
+  static const int signatureAlgorithms = 13; // RFC 5246
   static const int heartbeat = 15; // RFC 6520
   static const int alpn = 16; // RFC 7301
-  static const int signed_certificate_timestamp = 18; // RFC 6962
-  static const int client_hello_padding = 21; // RFC 7685
-  static const int encrypt_then_mac = 22; // RFC 7366
-  static const int extended_master_secret = 23; // RFC 7627
-  static const int compress_certificate = 27; // RFC 8879
-  static const int record_size_limit = 28; // RFC 8449
-  static const int session_ticket = 35; // RFC 5077
-  static const int extended_random =
+  static const int signedCertificateTimestamp = 18; // RFC 6962
+  static const int clientHelloPadding = 21; // RFC 7685
+  static const int encryptThenMac = 22; // RFC 7366
+  static const int extendedMasterSecret = 23; // RFC 7627
+  static const int compressCertificate = 27; // RFC 8879
+  static const int recordSizeLimit = 28; // RFC 8449
+  static const int sessionTicket = 35; // RFC 5077
+  static const int extendedRandom =
       40; // draft-rescorla-tls-extended-random-02
-  static const int pre_shared_key = 41; // TLS 1.3
-  static const int early_data = 42; // TLS 1.3
-  static const int supported_versions = 43; // TLS 1.3
+  static const int preSharedKey = 41; // TLS 1.3
+  static const int earlyData = 42; // TLS 1.3
+  static const int supportedVersions = 43; // TLS 1.3
   static const int cookie = 44; // TLS 1.3
-  static const int psk_key_exchange_modes = 45; // TLS 1.3
-  static const int post_handshake_auth = 49; // TLS 1.3
-  static const int signature_algorithms_cert = 50; // TLS 1.3
-  static const int key_share = 51; // TLS 1.3
-  static const int status_request_v2 = 65; // RFC 6961
-  static const int supports_npn = 13172;
+  static const int pskKeyExchangeModes = 45; // TLS 1.3
+  static const int postHandshakeAuth = 49; // TLS 1.3
+  static const int signatureAlgorithmsCert = 50; // TLS 1.3
+  static const int keyShare = 51; // TLS 1.3
+  static const int statusRequestV2 = 65; // RFC 6961
+  static const int supportsNpn = 13172;
   static const int tack = 0xF300;
-  static const int renegotiation_info = 0xff01; // RFC 5746
+  static const int renegotiationInfo = 0xff01; // RFC 5746
 
   static const Map<int, String> _intToNameMap = {
-    server_name: 'server_name',
-    max_fragment_length: 'max_fragment_length',
-    status_request: 'status_request',
-    cert_type: 'cert_type',
-    supported_groups: 'supported_groups',
-    ec_point_formats: 'ec_point_formats',
+    serverName: 'server_name',
+    maxFragmentLength: 'max_fragment_length',
+    statusRequest: 'status_request',
+    certType: 'cert_type',
+    supportedGroups: 'supported_groups',
+    ecPointFormats: 'ec_point_formats',
     srp: 'srp',
-    signature_algorithms: 'signature_algorithms',
+    signatureAlgorithms: 'signature_algorithms',
     heartbeat: 'heartbeat',
     alpn: 'alpn',
-    signed_certificate_timestamp: 'signed_certificate_timestamp',
-    client_hello_padding: 'client_hello_padding',
-    encrypt_then_mac: 'encrypt_then_mac',
-    extended_master_secret: 'extended_master_secret',
-    compress_certificate: 'compress_certificate',
-    record_size_limit: 'record_size_limit',
-    session_ticket: 'session_ticket',
-    extended_random: 'extended_random',
-    pre_shared_key: 'pre_shared_key',
-    early_data: 'early_data',
-    supported_versions: 'supported_versions',
+    signedCertificateTimestamp: 'signed_certificate_timestamp',
+    clientHelloPadding: 'client_hello_padding',
+    encryptThenMac: 'encrypt_then_mac',
+    extendedMasterSecret: 'extended_master_secret',
+    compressCertificate: 'compress_certificate',
+    recordSizeLimit: 'record_size_limit',
+    sessionTicket: 'session_ticket',
+    extendedRandom: 'extended_random',
+    preSharedKey: 'pre_shared_key',
+    earlyData: 'early_data',
+    supportedVersions: 'supported_versions',
     cookie: 'cookie',
-    psk_key_exchange_modes: 'psk_key_exchange_modes',
-    post_handshake_auth: 'post_handshake_auth',
-    signature_algorithms_cert: 'signature_algorithms_cert',
-    key_share: 'key_share',
-    status_request_v2: 'status_request_v2',
-    supports_npn: 'supports_npn',
+    pskKeyExchangeModes: 'psk_key_exchange_modes',
+    postHandshakeAuth: 'post_handshake_auth',
+    signatureAlgorithmsCert: 'signature_algorithms_cert',
+    keyShare: 'key_share',
+    statusRequestV2: 'status_request_v2',
+    supportsNpn: 'supports_npn',
     tack: 'tack',
-    renegotiation_info: 'renegotiation_info',
+    renegotiationInfo: 'renegotiation_info',
   };
 
   static String? toRepr(int value) =>
@@ -383,72 +386,72 @@ class SignatureScheme {
   /// Este é o substituto para as listas HashAlgorithm e SignatureAlgorithm.
   /// Introduzido com TLSv1.3.
 
-  static const _SignatureSchemeValue rsa_pkcs1_sha1 = _SignatureSchemeValue(
+  static const _SignatureSchemeValue rsaPkcs1Sha1 = _SignatureSchemeValue(
       HashAlgorithm.sha1, SignatureAlgorithm.rsa); // 0x0201
-  static const _SignatureSchemeValue rsa_pkcs1_sha224 = _SignatureSchemeValue(
+  static const _SignatureSchemeValue rsaPkcs1Sha224 = _SignatureSchemeValue(
       HashAlgorithm.sha224,
       SignatureAlgorithm.rsa); // 0x0301 - Non-standard? Check RFCs
-  static const _SignatureSchemeValue rsa_pkcs1_sha256 = _SignatureSchemeValue(
+  static const _SignatureSchemeValue rsaPkcs1Sha256 = _SignatureSchemeValue(
       HashAlgorithm.sha256, SignatureAlgorithm.rsa); // 0x0401
-  static const _SignatureSchemeValue rsa_pkcs1_sha384 = _SignatureSchemeValue(
+  static const _SignatureSchemeValue rsaPkcs1Sha384 = _SignatureSchemeValue(
       HashAlgorithm.sha384, SignatureAlgorithm.rsa); // 0x0501
-  static const _SignatureSchemeValue rsa_pkcs1_sha512 = _SignatureSchemeValue(
+  static const _SignatureSchemeValue rsaPkcs1Sha512 = _SignatureSchemeValue(
       HashAlgorithm.sha512, SignatureAlgorithm.rsa); // 0x0601
-  static const _SignatureSchemeValue ecdsa_sha1 = _SignatureSchemeValue(
+  static const _SignatureSchemeValue ecdsaSha1 = _SignatureSchemeValue(
       HashAlgorithm.sha1, SignatureAlgorithm.ecdsa); // 0x0203
-  static const _SignatureSchemeValue ecdsa_sha224 = _SignatureSchemeValue(
+  static const _SignatureSchemeValue ecdsaSha224 = _SignatureSchemeValue(
       HashAlgorithm.sha224,
       SignatureAlgorithm.ecdsa); // 0x0303 - Non-standard? Check RFCs
-  static const _SignatureSchemeValue ecdsa_secp256r1_sha256 =
+  static const _SignatureSchemeValue ecdsaSecp256r1Sha256 =
       _SignatureSchemeValue(
           HashAlgorithm.sha256, SignatureAlgorithm.ecdsa); // 0x0403
-  static const _SignatureSchemeValue ecdsa_secp384r1_sha384 =
+  static const _SignatureSchemeValue ecdsaSecp384r1Sha384 =
       _SignatureSchemeValue(
           HashAlgorithm.sha384, SignatureAlgorithm.ecdsa); // 0x0503
-  static const _SignatureSchemeValue ecdsa_secp521r1_sha512 =
+  static const _SignatureSchemeValue ecdsaSecp521r1Sha512 =
       _SignatureSchemeValue(
           HashAlgorithm.sha512, SignatureAlgorithm.ecdsa); // 0x0603
-  static const _SignatureSchemeValue rsa_pss_rsae_sha256 =
+  static const _SignatureSchemeValue rsaPssRsaeSha256 =
       _SignatureSchemeValue(HashAlgorithm.intrinsic,
           4); // 0x0804 - Note: Hash is intrinsic to PSS
-  static const _SignatureSchemeValue rsa_pss_rsae_sha384 =
+  static const _SignatureSchemeValue rsaPssRsaeSha384 =
       _SignatureSchemeValue(HashAlgorithm.intrinsic, 5); // 0x0805
-  static const _SignatureSchemeValue rsa_pss_rsae_sha512 =
+  static const _SignatureSchemeValue rsaPssRsaeSha512 =
       _SignatureSchemeValue(HashAlgorithm.intrinsic, 6); // 0x0806
   static const _SignatureSchemeValue ed25519 = _SignatureSchemeValue(
       HashAlgorithm.intrinsic, SignatureAlgorithm.ed25519); // 0x0807 - RFC 8422
   static const _SignatureSchemeValue ed448 = _SignatureSchemeValue(
       HashAlgorithm.intrinsic, SignatureAlgorithm.ed448); // 0x0808 - RFC 8422
-  static const _SignatureSchemeValue rsa_pss_pss_sha256 =
+  static const _SignatureSchemeValue rsaPssPssSha256 =
       _SignatureSchemeValue(HashAlgorithm.intrinsic, 9); // 0x0809
-  static const _SignatureSchemeValue rsa_pss_pss_sha384 =
+  static const _SignatureSchemeValue rsaPssPssSha384 =
       _SignatureSchemeValue(HashAlgorithm.intrinsic, 10); // 0x080a
-  static const _SignatureSchemeValue rsa_pss_pss_sha512 =
+  static const _SignatureSchemeValue rsaPssPssSha512 =
       _SignatureSchemeValue(HashAlgorithm.intrinsic, 11); // 0x080b
 
   // backwards compatibility (for TLS1.2) aliases
-  static const _SignatureSchemeValue rsa_pss_sha256 = rsa_pss_rsae_sha256;
-  static const _SignatureSchemeValue rsa_pss_sha384 = rsa_pss_rsae_sha384;
-  static const _SignatureSchemeValue rsa_pss_sha512 = rsa_pss_rsae_sha512;
+  static const _SignatureSchemeValue rsaPssSha256 = rsaPssRsaeSha256;
+  static const _SignatureSchemeValue rsaPssSha384 = rsaPssRsaeSha384;
+  static const _SignatureSchemeValue rsaPssSha512 = rsaPssRsaeSha512;
 
   // RFC 8734
-  static const _SignatureSchemeValue ecdsa_brainpoolP256r1tls13_sha256 =
+  static const _SignatureSchemeValue ecdsaBrainpoolP256r1tls13Sha256 =
       _SignatureSchemeValue(HashAlgorithm.intrinsic, 0x1A); // 0x081A
-  static const _SignatureSchemeValue ecdsa_brainpoolP384r1tls13_sha384 =
+  static const _SignatureSchemeValue ecdsaBrainpoolP384r1tls13Sha384 =
       _SignatureSchemeValue(HashAlgorithm.intrinsic, 0x1B); // 0x081B
-  static const _SignatureSchemeValue ecdsa_brainpoolP512r1tls13_sha512 =
+  static const _SignatureSchemeValue ecdsaBrainpoolP512r1tls13Sha512 =
       _SignatureSchemeValue(HashAlgorithm.intrinsic, 0x1C); // 0x081C
 
-  static const _SignatureSchemeValue dsa_sha1 = _SignatureSchemeValue(
+  static const _SignatureSchemeValue dsaSha1 = _SignatureSchemeValue(
       HashAlgorithm.sha1, SignatureAlgorithm.dsa); // 0x0202
-  static const _SignatureSchemeValue dsa_sha224 = _SignatureSchemeValue(
+  static const _SignatureSchemeValue dsaSha224 = _SignatureSchemeValue(
       HashAlgorithm.sha224,
       SignatureAlgorithm.dsa); // 0x0302 - Non-standard? Check RFCs
-  static const _SignatureSchemeValue dsa_sha256 = _SignatureSchemeValue(
+  static const _SignatureSchemeValue dsaSha256 = _SignatureSchemeValue(
       HashAlgorithm.sha256, SignatureAlgorithm.dsa); // 0x0402
-  static const _SignatureSchemeValue dsa_sha384 = _SignatureSchemeValue(
+  static const _SignatureSchemeValue dsaSha384 = _SignatureSchemeValue(
       HashAlgorithm.sha384, SignatureAlgorithm.dsa); // 0x0502
-  static const _SignatureSchemeValue dsa_sha512 = _SignatureSchemeValue(
+  static const _SignatureSchemeValue dsaSha512 = _SignatureSchemeValue(
       HashAlgorithm.sha512, SignatureAlgorithm.dsa); // 0x0602
 
   static const Map<int, String> _valueToNameMap = {
@@ -481,35 +484,35 @@ class SignatureScheme {
   };
 
   static const Map<String, _SignatureSchemeValue> _nameToValueMap = {
-    'rsa_pkcs1_sha1': rsa_pkcs1_sha1,
-    'rsa_pkcs1_sha224': rsa_pkcs1_sha224,
-    'rsa_pkcs1_sha256': rsa_pkcs1_sha256,
-    'rsa_pkcs1_sha384': rsa_pkcs1_sha384,
-    'rsa_pkcs1_sha512': rsa_pkcs1_sha512,
-    'ecdsa_sha1': ecdsa_sha1,
-    'ecdsa_sha224': ecdsa_sha224,
-    'ecdsa_secp256r1_sha256': ecdsa_secp256r1_sha256,
-    'ecdsa_secp384r1_sha384': ecdsa_secp384r1_sha384,
-    'ecdsa_secp521r1_sha512': ecdsa_secp521r1_sha512,
-    'rsa_pss_rsae_sha256': rsa_pss_rsae_sha256,
-    'rsa_pss_rsae_sha384': rsa_pss_rsae_sha384,
-    'rsa_pss_rsae_sha512': rsa_pss_rsae_sha512,
+    'rsa_pkcs1_sha1': rsaPkcs1Sha1,
+    'rsa_pkcs1_sha224': rsaPkcs1Sha224,
+    'rsa_pkcs1_sha256': rsaPkcs1Sha256,
+    'rsa_pkcs1_sha384': rsaPkcs1Sha384,
+    'rsa_pkcs1_sha512': rsaPkcs1Sha512,
+    'ecdsa_sha1': ecdsaSha1,
+    'ecdsa_sha224': ecdsaSha224,
+    'ecdsa_secp256r1_sha256': ecdsaSecp256r1Sha256,
+    'ecdsa_secp384r1_sha384': ecdsaSecp384r1Sha384,
+    'ecdsa_secp521r1_sha512': ecdsaSecp521r1Sha512,
+    'rsa_pss_rsae_sha256': rsaPssRsaeSha256,
+    'rsa_pss_rsae_sha384': rsaPssRsaeSha384,
+    'rsa_pss_rsae_sha512': rsaPssRsaeSha512,
     'ed25519': ed25519,
     'ed448': ed448,
-    'rsa_pss_pss_sha256': rsa_pss_pss_sha256,
-    'rsa_pss_pss_sha384': rsa_pss_pss_sha384,
-    'rsa_pss_pss_sha512': rsa_pss_pss_sha512,
-    'rsa_pss_sha256': rsa_pss_sha256, // alias
-    'rsa_pss_sha384': rsa_pss_sha384, // alias
-    'rsa_pss_sha512': rsa_pss_sha512, // alias
-    'ecdsa_brainpoolP256r1tls13_sha256': ecdsa_brainpoolP256r1tls13_sha256,
-    'ecdsa_brainpoolP384r1tls13_sha384': ecdsa_brainpoolP384r1tls13_sha384,
-    'ecdsa_brainpoolP512r1tls13_sha512': ecdsa_brainpoolP512r1tls13_sha512,
-    'dsa_sha1': dsa_sha1,
-    'dsa_sha224': dsa_sha224,
-    'dsa_sha256': dsa_sha256,
-    'dsa_sha384': dsa_sha384,
-    'dsa_sha512': dsa_sha512,
+    'rsa_pss_pss_sha256': rsaPssPssSha256,
+    'rsa_pss_pss_sha384': rsaPssPssSha384,
+    'rsa_pss_pss_sha512': rsaPssPssSha512,
+    'rsa_pss_sha256': rsaPssSha256, // alias
+    'rsa_pss_sha384': rsaPssSha384, // alias
+    'rsa_pss_sha512': rsaPssSha512, // alias
+    'ecdsa_brainpoolP256r1tls13_sha256': ecdsaBrainpoolP256r1tls13Sha256,
+    'ecdsa_brainpoolP384r1tls13_sha384': ecdsaBrainpoolP384r1tls13Sha384,
+    'ecdsa_brainpoolP512r1tls13_sha512': ecdsaBrainpoolP512r1tls13Sha512,
+    'dsa_sha1': dsaSha1,
+    'dsa_sha224': dsaSha224,
+    'dsa_sha256': dsaSha256,
+    'dsa_sha384': dsaSha384,
+    'dsa_sha512': dsaSha512,
   };
 
   static _SignatureSchemeValue? _lookup(String schemeName) {
@@ -615,11 +618,11 @@ class SignatureScheme {
 }
 
 /// conjunto de esquemas específicos do TLS 1.3 para curvas Brainpool
-final Set<_SignatureSchemeValue> TLS_1_3_BRAINPOOL_SIG_SCHEMES =
+final Set<_SignatureSchemeValue> tls13BrainpoolSigSchemes =
     Set.unmodifiable([
-  SignatureScheme.ecdsa_brainpoolP256r1tls13_sha256,
-  SignatureScheme.ecdsa_brainpoolP384r1tls13_sha384,
-  SignatureScheme.ecdsa_brainpoolP512r1tls13_sha512,
+  SignatureScheme.ecdsaBrainpoolP256r1tls13Sha256,
+  SignatureScheme.ecdsaBrainpoolP384r1tls13Sha384,
+  SignatureScheme.ecdsaBrainpoolP512r1tls13Sha512,
 ]);
 
 class AlgorithmOID {
@@ -642,28 +645,28 @@ class AlgorithmOID {
     // Usando um método estático para inicialização para melhor legibilidade
     final map = <Uint8List, dynamic>{};
 
-    map[_hexToBytes('06072a8648ce3d0401')] = SignatureScheme.ecdsa_sha1;
+    map[_hexToBytes('06072a8648ce3d0401')] = SignatureScheme.ecdsaSha1;
     map[_hexToBytes('06082a8648ce3d040301')] =
-        SignatureScheme.ecdsa_sha224; // Check standard
+        SignatureScheme.ecdsaSha224; // Check standard
     map[_hexToBytes('06082a8648ce3d040302')] =
-        SignatureScheme.ecdsa_secp256r1_sha256;
+        SignatureScheme.ecdsaSecp256r1Sha256;
     map[_hexToBytes('06082a8648ce3d040303')] =
-        SignatureScheme.ecdsa_secp384r1_sha384;
+        SignatureScheme.ecdsaSecp384r1Sha384;
     map[_hexToBytes('06082a8648ce3d040304')] =
-        SignatureScheme.ecdsa_secp521r1_sha512;
+        SignatureScheme.ecdsaSecp521r1Sha512;
     map[_hexToBytes('06092a864886f70d010104')] = const [
       HashAlgorithm.md5,
       SignatureAlgorithm.rsa
     ]; // Legacy tuple
-    map[_hexToBytes('06092a864886f70d010105')] = SignatureScheme.rsa_pkcs1_sha1;
+    map[_hexToBytes('06092a864886f70d010105')] = SignatureScheme.rsaPkcs1Sha1;
     map[_hexToBytes('06092a864886f70d01010e')] =
-        SignatureScheme.rsa_pkcs1_sha224; // Check standard
+        SignatureScheme.rsaPkcs1Sha224; // Check standard
     map[_hexToBytes('06092a864886f70d01010b')] =
-        SignatureScheme.rsa_pkcs1_sha256;
+        SignatureScheme.rsaPkcs1Sha256;
     map[_hexToBytes('06092a864886f70d01010c')] =
-        SignatureScheme.rsa_pkcs1_sha384;
+        SignatureScheme.rsaPkcs1Sha384;
     map[_hexToBytes('06092a864886f70d01010d')] =
-        SignatureScheme.rsa_pkcs1_sha512;
+        SignatureScheme.rsaPkcs1Sha512;
     // Note: OID for rsaEncryption (1.2.840.113549.1.1.1) might also map to RSA generically?
 
     // PSS OIDs (RFC 4055 / RFC 8017) - Note the parameters part
@@ -673,31 +676,31 @@ class AlgorithmOID {
     // Specific hash OIDs under RSASSA-PSS parameters (less common in cert sig alg field itself)
     // Example from  code structure suggests mapping specific DER encodings
     map[_hexToBytes('300b0609608648016503040201')] = SignatureScheme
-        .rsa_pss_rsae_sha256; // Check encoding, likely part of PSS params
+        .rsaPssRsaeSha256; // Check encoding, likely part of PSS params
     map[_hexToBytes('300b0609608648016503040202')] =
-        SignatureScheme.rsa_pss_rsae_sha384; // Check encoding
+        SignatureScheme.rsaPssRsaeSha384; // Check encoding
     map[_hexToBytes('300b0609608648016503040203')] =
-        SignatureScheme.rsa_pss_rsae_sha512; // Check encoding
+        SignatureScheme.rsaPssRsaeSha512; // Check encoding
     // With NULL parameters (RFC 4055 Section 2.1)
     map[_hexToBytes('300d06096086480165030402010500')] =
-        SignatureScheme.rsa_pss_rsae_sha256; // Check encoding
+        SignatureScheme.rsaPssRsaeSha256; // Check encoding
     map[_hexToBytes('300d06096086480165030402020500')] =
-        SignatureScheme.rsa_pss_rsae_sha384; // Check encoding
+        SignatureScheme.rsaPssRsaeSha384; // Check encoding
     map[_hexToBytes('300d06096086480165030402030500')] =
-        SignatureScheme.rsa_pss_rsae_sha512; // Check encoding
+        SignatureScheme.rsaPssRsaeSha512; // Check encoding
 
     // DSA OIDs (RFC 5754)
     map[_hexToBytes('06072A8648CE380403')] =
-        SignatureScheme.dsa_sha1; // id-dsa-with-sha1
+        SignatureScheme.dsaSha1; // id-dsa-with-sha1
     // OIDs for dsa-with-sha2 (RFC 5754 section 3.2)
     map[_hexToBytes('0609608648016503040301')] =
-        SignatureScheme.dsa_sha224; // id-dsa-with-sha224
+        SignatureScheme.dsaSha224; // id-dsa-with-sha224
     map[_hexToBytes('0609608648016503040302')] =
-        SignatureScheme.dsa_sha256; // id-dsa-with-sha256
+        SignatureScheme.dsaSha256; // id-dsa-with-sha256
     // RFC 5754 doesn't define DSA with SHA384/512 OIDs explicitly for certs? Check updates.
     //  code includes them, potentially from other contexts.
-    // map[_hexToBytes('0609608648016503040303')] = SignatureScheme.dsa_sha384;
-    // map[_hexToBytes('0609608648016503040304')] = SignatureScheme.dsa_sha512;
+    // map[_hexToBytes('0609608648016503040303')] = SignatureScheme.dsaSha384;
+    // map[_hexToBytes('0609608648016503040304')] = SignatureScheme.dsaSha512;
 
     // EdDSA OIDs (RFC 8410)
     map[_hexToBytes('06032b6570')] = SignatureScheme.ed25519; // id-Ed25519
@@ -894,7 +897,7 @@ class GroupName {
 
 // grupos proibidos pela RFC 8446 seção B.3.1.4
 // (Curvas arbitrárias e obsoletas/fracas nomeadas)
-final Set<int> TLS_1_3_FORBIDDEN_GROUPS = Set.unmodifiable([
+final Set<int> tls13ForbiddenGroups = Set.unmodifiable([
   ...List<int>.generate(
       0x17 - 1,
       (i) =>
@@ -914,19 +917,19 @@ final Set<int> TLS_1_3_FORBIDDEN_GROUPS = Set.unmodifiable([
 class ECPointFormat {
   /// Nomes e IDs dos formatos de ponto EC suportados.
   static const int uncompressed = 0;
-  static const int ansiX962_compressed_prime = 1;
-  static const int ansiX962_compressed_char2 = 2;
+  static const int ansiX962CompressedPrime = 1;
+  static const int ansiX962CompressedChar2 = 2;
 
   static const List<int> all = [
     uncompressed,
-    ansiX962_compressed_prime,
-    ansiX962_compressed_char2
+    ansiX962CompressedPrime,
+    ansiX962CompressedChar2
   ];
 
   static const Map<int, String> _intToNameMap = {
     uncompressed: 'uncompressed',
-    ansiX962_compressed_prime: 'ansiX962_compressed_prime',
-    ansiX962_compressed_char2: 'ansiX962_compressed_char2',
+    ansiX962CompressedPrime: 'ansiX962_compressed_prime',
+    ansiX962CompressedChar2: 'ansiX962_compressed_char2',
   };
 
   /// Converte o tipo numérico para representação de nome.
@@ -940,14 +943,14 @@ class ECPointFormat {
 
 class ECCurveType {
   /// Tipos de curvas ECC suportadas em TLS do RFC4492
-  static const int explicit_prime = 1;
-  static const int explicit_char2 = 2;
-  static const int named_curve = 3;
+  static const int explicitPrime = 1;
+  static const int explicitChar2 = 2;
+  static const int namedCurve = 3;
 
   static const Map<int, String> _intToNameMap = {
-    explicit_prime: 'explicit_prime',
-    explicit_char2: 'explicit_char2',
-    named_curve: 'named_curve',
+    explicitPrime: 'explicit_prime',
+    explicitChar2: 'explicit_char2',
+    namedCurve: 'named_curve',
   };
 
   static String? toRepr(int value) =>
@@ -958,10 +961,10 @@ class ECCurveType {
 
 class NameType {
   /// Tipo de entradas na extensão Server Name Indication.
-  static const int host_name = 0;
+  static const int hostName = 0;
 
   static const Map<int, String> _intToNameMap = {
-    host_name: 'host_name',
+    hostName: 'host_name',
   };
 
   static String? toRepr(int value) =>
@@ -986,12 +989,12 @@ class CertificateStatusType {
 
 class HeartbeatMode {
   /// Tipos de modos heartbeat do RFC 6520
-  static const int PEER_ALLOWED_TO_SEND = 1;
-  static const int PEER_NOT_ALLOWED_TO_SEND = 2;
+  static const int peerAllowedToSend = 1;
+  static const int peerNotAllowedToSend = 2;
 
   static const Map<int, String> _intToNameMap = {
-    PEER_ALLOWED_TO_SEND: 'PEER_ALLOWED_TO_SEND',
-    PEER_NOT_ALLOWED_TO_SEND: 'PEER_NOT_ALLOWED_TO_SEND',
+    peerAllowedToSend: 'PEER_ALLOWED_TO_SEND',
+    peerNotAllowedToSend: 'PEER_NOT_ALLOWED_TO_SEND',
   };
 
   static String? toRepr(int value) =>
@@ -1002,12 +1005,12 @@ class HeartbeatMode {
 
 class HeartbeatMessageType {
   /// Tipos de mensagens heartbeat do RFC 6520
-  static const int heartbeat_request = 1;
-  static const int heartbeat_response = 2;
+  static const int heartbeatRequest = 1;
+  static const int heartbeatResponse = 2;
 
   static const Map<int, String> _intToNameMap = {
-    heartbeat_request: 'heartbeat_request',
-    heartbeat_response: 'heartbeat_response',
+    heartbeatRequest: 'heartbeat_request',
+    heartbeatResponse: 'heartbeat_response',
   };
 
   static String? toRepr(int value) =>
@@ -1018,12 +1021,12 @@ class HeartbeatMessageType {
 
 class KeyUpdateMessageType {
   /// Tipos de mensagens keyupdate do RFC 8446
-  static const int update_not_requested = 0;
-  static const int update_requested = 1;
+  static const int updateNotRequested = 0;
+  static const int updateRequested = 1;
 
   static const Map<int, String> _intToNameMap = {
-    update_not_requested: 'update_not_requested',
-    update_requested: 'update_requested',
+    updateNotRequested: 'update_not_requested',
+    updateRequested: 'update_requested',
   };
 
   static String? toRepr(int value) =>
@@ -1068,77 +1071,77 @@ class AlertDescription {
   ///
   /// `user_canceled`: O handshake está sendo cancelado por algum motivo.
 
-  static const int close_notify = 0;
-  static const int unexpected_message = 10;
-  static const int bad_record_mac = 20;
-  static const int decryption_failed =
+  static const int closeNotify = 0;
+  static const int unexpectedMessage = 10;
+  static const int badRecordMac = 20;
+  static const int decryptionFailed =
       21; // TLS 1.3 replaces legacy description
-  static const int record_overflow = 22;
-  static const int decompression_failure = 30; // Legacy
-  static const int handshake_failure = 40;
-  static const int no_certificate = 41; // SSLv3, removed in TLS
-  static const int bad_certificate = 42;
-  static const int unsupported_certificate = 43;
-  static const int certificate_revoked = 44;
-  static const int certificate_expired = 45;
-  static const int certificate_unknown = 46;
-  static const int illegal_parameter = 47;
-  static const int unknown_ca = 48;
-  static const int access_denied = 49;
-  static const int decode_error = 50;
-  static const int decrypt_error = 51;
-  static const int export_restriction = 60; // Legacy
-  static const int protocol_version = 70;
-  static const int insufficient_security = 71;
-  static const int internal_error = 80;
-  static const int inappropriate_fallback = 86; // RFC 7507
-  static const int user_canceled = 90;
-  static const int no_renegotiation = 100; // RFC 5746, deprecated in TLS 1.3
-  static const int missing_extension = 109; // RFC 8446 Appendix B.3.1
-  static const int unsupported_extension = 110; // RFC 5246 / RFC 8446
-  static const int certificate_unobtainable = 111; // RFC 6066 / RFC 8446
-  static const int unrecognized_name = 112; // RFC 6066 / RFC 8446
-  static const int bad_certificate_status_response = 113; // RFC 6066 / RFC 8446
-  static const int bad_certificate_hash_value = 114; // RFC 6066 / RFC 8446
-  static const int unknown_psk_identity = 115; // RFC 8446
-  static const int certificate_required = 116; // RFC 8446
-  static const int no_application_protocol = 120; // RFC 7301
+  static const int recordOverflow = 22;
+  static const int decompressionFailure = 30; // Legacy
+  static const int handshakeFailure = 40;
+  static const int noCertificate = 41; // SSLv3, removed in TLS
+  static const int badCertificate = 42;
+  static const int unsupportedCertificate = 43;
+  static const int certificateRevoked = 44;
+  static const int certificateExpired = 45;
+  static const int certificateUnknown = 46;
+  static const int illegalParameter = 47;
+  static const int unknownCa = 48;
+  static const int accessDenied = 49;
+  static const int decodeError = 50;
+  static const int decryptError = 51;
+  static const int exportRestriction = 60; // Legacy
+  static const int protocolVersion = 70;
+  static const int insufficientSecurity = 71;
+  static const int internalError = 80;
+  static const int inappropriateFallback = 86; // RFC 7507
+  static const int userCanceled = 90;
+  static const int noRenegotiation = 100; // RFC 5746, deprecated in TLS 1.3
+  static const int missingExtension = 109; // RFC 8446 Appendix B.3.1
+  static const int unsupportedExtension = 110; // RFC 5246 / RFC 8446
+  static const int certificateUnobtainable = 111; // RFC 6066 / RFC 8446
+  static const int unrecognizedName = 112; // RFC 6066 / RFC 8446
+  static const int badCertificateStatusResponse = 113; // RFC 6066 / RFC 8446
+  static const int badCertificateHashValue = 114; // RFC 6066 / RFC 8446
+  static const int unknownPskIdentity = 115; // RFC 8446
+  static const int certificateRequired = 116; // RFC 8446
+  static const int noApplicationProtocol = 120; // RFC 7301
 
   static const Map<int, String> _intToNameMap = {
-    close_notify: 'close_notify',
-    unexpected_message: 'unexpected_message',
-    bad_record_mac: 'bad_record_mac',
-    decryption_failed: 'decryption_failed',
-    record_overflow: 'record_overflow',
-    decompression_failure: 'decompression_failure',
-    handshake_failure: 'handshake_failure',
-    no_certificate: 'no_certificate',
-    bad_certificate: 'bad_certificate',
-    unsupported_certificate: 'unsupported_certificate',
-    certificate_revoked: 'certificate_revoked',
-    certificate_expired: 'certificate_expired',
-    certificate_unknown: 'certificate_unknown',
-    illegal_parameter: 'illegal_parameter',
-    unknown_ca: 'unknown_ca',
-    access_denied: 'access_denied',
-    decode_error: 'decode_error',
-    decrypt_error: 'decrypt_error',
-    export_restriction: 'export_restriction',
-    protocol_version: 'protocol_version',
-    insufficient_security: 'insufficient_security',
-    internal_error: 'internal_error',
-    inappropriate_fallback: 'inappropriate_fallback',
-    user_canceled: 'user_canceled',
-    no_renegotiation: 'no_renegotiation',
-    missing_extension: 'missing_extension',
-    unsupported_extension: 'unsupported_extension',
-    certificate_unobtainable: 'certificate_unobtainable',
-    unrecognized_name: 'unrecognized_name',
-    bad_certificate_status_response: 'bad_certificate_status_response',
-    bad_certificate_hash_value: 'bad_certificate_hash_value',
-    unknown_psk_identity: 'unknown_psk_identity',
-    certificate_required: 'certificate_required',
-    no_application_protocol: 'no_application_protocol',
+    closeNotify: 'close_notify',
+    unexpectedMessage: 'unexpected_message',
+    badRecordMac: 'bad_record_mac',
+    decryptionFailed: 'decryption_failed',
+    recordOverflow: 'record_overflow',
+    decompressionFailure: 'decompression_failure',
+    handshakeFailure: 'handshake_failure',
+    noCertificate: 'no_certificate',
+    badCertificate: 'bad_certificate',
+    unsupportedCertificate: 'unsupported_certificate',
+    certificateRevoked: 'certificate_revoked',
+    certificateExpired: 'certificate_expired',
+    certificateUnknown: 'certificate_unknown',
+    illegalParameter: 'illegal_parameter',
+    unknownCa: 'unknown_ca',
+    accessDenied: 'access_denied',
+    decodeError: 'decode_error',
+    decryptError: 'decrypt_error',
+    exportRestriction: 'export_restriction',
+    protocolVersion: 'protocol_version',
+    insufficientSecurity: 'insufficient_security',
+    internalError: 'internal_error',
+    inappropriateFallback: 'inappropriate_fallback',
+    userCanceled: 'user_canceled',
+    noRenegotiation: 'no_renegotiation',
+    missingExtension: 'missing_extension',
+    unsupportedExtension: 'unsupported_extension',
+    certificateUnobtainable: 'certificate_unobtainable',
+    unrecognizedName: 'unrecognized_name',
+    badCertificateStatusResponse: 'bad_certificate_status_response',
+    badCertificateHashValue: 'bad_certificate_hash_value',
+    unknownPskIdentity: 'unknown_psk_identity',
+    certificateRequired: 'certificate_required',
+    noApplicationProtocol: 'no_application_protocol',
   };
 
   static String? toRepr(int value) =>
@@ -1149,12 +1152,12 @@ class AlertDescription {
 
 class PskKeyExchangeMode {
   /// Valores usados na extensão PSK Key Exchange Modes.
-  static const int psk_ke = 0; // PSK-only key establishment
-  static const int psk_dhe_ke = 1; // PSK with (EC)DHE key establishment
+  static const int pskKe = 0; // PSK-only key establishment
+  static const int pskDheKe = 1; // PSK with (EC)DHE key establishment
 
   static const Map<int, String> _intToNameMap = {
-    psk_ke: 'psk_ke',
-    psk_dhe_ke: 'psk_dhe_ke',
+    pskKe: 'psk_ke',
+    pskDheKe: 'psk_dhe_ke',
   };
 
   static String? toRepr(int value) =>
@@ -1381,445 +1384,445 @@ class CipherSuite {
   };
 
   // SSLv2 Constants
-  static const int SSL_CK_RC4_128_WITH_MD5 = 0x010080;
-  static const int SSL_CK_RC4_128_EXPORT40_WITH_MD5 = 0x020080;
-  static const int SSL_CK_RC2_128_CBC_WITH_MD5 = 0x030080;
-  static const int SSL_CK_RC2_128_CBC_EXPORT40_WITH_MD5 = 0x040080;
-  static const int SSL_CK_IDEA_128_CBC_WITH_MD5 = 0x050080;
-  static const int SSL_CK_DES_64_CBC_WITH_MD5 = 0x060040;
-  static const int SSL_CK_DES_192_EDE3_CBC_WITH_MD5 = 0x0700C0;
+  static const int sslCkRc4128WithMd5 = 0x010080;
+  static const int sslCkRc4128Export40WithMd5 = 0x020080;
+  static const int sslCkRc2128CbcWithMd5 = 0x030080;
+  static const int sslCkRc2128CbcExport40WithMd5 = 0x040080;
+  static const int sslCkIdea128CbcWithMd5 = 0x050080;
+  static const int sslCkDes64CbcWithMd5 = 0x060040;
+  static const int sslCkDes192Ede3CbcWithMd5 = 0x0700C0;
 
   /// SSL2 ciphersuites which use RC4 symmetric cipher
   static const List<int> ssl2rc4 = [
-    SSL_CK_RC4_128_WITH_MD5,
-    SSL_CK_RC4_128_EXPORT40_WITH_MD5,
+    sslCkRc4128WithMd5,
+    sslCkRc4128Export40WithMd5,
   ];
 
   /// SSL2 ciphersuites which use RC2 symmetric cipher
   static const List<int> ssl2rc2 = [
-    SSL_CK_RC2_128_CBC_WITH_MD5,
-    SSL_CK_RC2_128_CBC_EXPORT40_WITH_MD5,
+    sslCkRc2128CbcWithMd5,
+    sslCkRc2128CbcExport40WithMd5,
   ];
 
   /// SSL2 ciphersuites which use IDEA symmetric cipher
-  static const List<int> ssl2idea = [SSL_CK_IDEA_128_CBC_WITH_MD5];
+  static const List<int> ssl2idea = [sslCkIdea128CbcWithMd5];
 
   /// SSL2 ciphersuites which use (single) DES symmetric cipher
-  static const List<int> ssl2des = [SSL_CK_DES_64_CBC_WITH_MD5];
+  static const List<int> ssl2des = [sslCkDes64CbcWithMd5];
 
   /// SSL2 ciphersuites which use 3DES symmetric cipher
-  static const List<int> ssl2_3des = [SSL_CK_DES_192_EDE3_CBC_WITH_MD5];
+  static const List<int> ssl2_3des = [sslCkDes192Ede3CbcWithMd5];
 
   /// SSL2 ciphersuites which encrypt only part (40 bits) of the key
   static const List<int> ssl2export = [
-    SSL_CK_RC4_128_EXPORT40_WITH_MD5,
-    SSL_CK_RC2_128_CBC_EXPORT40_WITH_MD5,
+    sslCkRc4128Export40WithMd5,
+    sslCkRc2128CbcExport40WithMd5,
   ];
 
   /// SSL2 ciphersuties which use 128 bit key
   static const List<int> ssl2_128Key = [
-    SSL_CK_RC4_128_WITH_MD5,
-    SSL_CK_RC4_128_EXPORT40_WITH_MD5,
-    SSL_CK_RC2_128_CBC_WITH_MD5,
-    SSL_CK_RC2_128_CBC_EXPORT40_WITH_MD5,
-    SSL_CK_IDEA_128_CBC_WITH_MD5,
+    sslCkRc4128WithMd5,
+    sslCkRc4128Export40WithMd5,
+    sslCkRc2128CbcWithMd5,
+    sslCkRc2128CbcExport40WithMd5,
+    sslCkIdea128CbcWithMd5,
   ];
 
   /// SSL2 ciphersuites which use 64 bit key
-  static const List<int> ssl2_64Key = [SSL_CK_DES_64_CBC_WITH_MD5];
+  static const List<int> ssl2_64Key = [sslCkDes64CbcWithMd5];
 
   /// SSL2 ciphersuites which use 192 bit key
-  static const List<int> ssl2_192Key = [SSL_CK_DES_192_EDE3_CBC_WITH_MD5];
+  static const List<int> ssl2_192Key = [sslCkDes192Ede3CbcWithMd5];
 
   // SSLv3 and TLS cipher suite definitions
 
   // RFC 5246 - TLS v1.2 Protocol
-  static const int TLS_RSA_WITH_NULL_MD5 = 0x0001;
-  static const int TLS_RSA_WITH_NULL_SHA = 0x0002;
-  static const int TLS_RSA_WITH_RC4_128_MD5 = 0x0004;
-  static const int TLS_RSA_WITH_RC4_128_SHA = 0x0005;
-  static const int TLS_RSA_WITH_3DES_EDE_CBC_SHA = 0x000A;
-  static const int TLS_DH_DSS_WITH_3DES_EDE_CBC_SHA = 0x000D;
-  static const int TLS_DHE_DSS_WITH_3DES_EDE_CBC_SHA = 0x0013;
-  static const int TLS_DHE_RSA_WITH_3DES_EDE_CBC_SHA = 0x0016;
-  static const int TLS_DH_ANON_WITH_RC4_128_MD5 = 0x0018;
-  static const int TLS_DH_ANON_WITH_3DES_EDE_CBC_SHA = 0x001B;
-  static const int TLS_RSA_WITH_AES_128_CBC_SHA = 0x002F;
-  static const int TLS_DH_DSS_WITH_AES_128_CBC_SHA = 0x0030;
-  static const int TLS_DHE_DSS_WITH_AES_128_CBC_SHA = 0x0032;
-  static const int TLS_DHE_RSA_WITH_AES_128_CBC_SHA = 0x0033;
-  static const int TLS_DH_ANON_WITH_AES_128_CBC_SHA = 0x0034;
-  static const int TLS_RSA_WITH_AES_256_CBC_SHA = 0x0035;
-  static const int TLS_DH_DSS_WITH_AES_256_CBC_SHA = 0x0036;
-  static const int TLS_DHE_DSS_WITH_AES_256_CBC_SHA = 0x0038;
-  static const int TLS_DHE_RSA_WITH_AES_256_CBC_SHA = 0x0039;
-  static const int TLS_DH_ANON_WITH_AES_256_CBC_SHA = 0x003A;
-  static const int TLS_RSA_WITH_NULL_SHA256 = 0x003B;
-  static const int TLS_RSA_WITH_AES_128_CBC_SHA256 = 0x003C;
-  static const int TLS_RSA_WITH_AES_256_CBC_SHA256 = 0x003D;
-  static const int TLS_DH_DSS_WITH_AES_128_CBC_SHA256 = 0x003E;
-  static const int TLS_DHE_DSS_WITH_AES_128_CBC_SHA256 = 0x0040;
-  static const int TLS_DHE_RSA_WITH_AES_128_CBC_SHA256 = 0x0067;
-  static const int TLS_DH_DSS_WITH_AES_256_CBC_SHA256 = 0x0068;
-  static const int TLS_DHE_DSS_WITH_AES_256_CBC_SHA256 = 0x006A;
-  static const int TLS_DHE_RSA_WITH_AES_256_CBC_SHA256 = 0x006B;
-  static const int TLS_DH_ANON_WITH_AES_128_CBC_SHA256 = 0x006C;
-  static const int TLS_DH_ANON_WITH_AES_256_CBC_SHA256 = 0x006D;
+  static const int tlsRsaWithNullMd5 = 0x0001;
+  static const int tlsRsaWithNullSha = 0x0002;
+  static const int tlsRsaWithRc4128Md5 = 0x0004;
+  static const int tlsRsaWithRc4128Sha = 0x0005;
+  static const int tlsRsaWith3desEdeCbcSha = 0x000A;
+  static const int tlsDhDssWith3desEdeCbcSha = 0x000D;
+  static const int tlsDheDssWith3desEdeCbcSha = 0x0013;
+  static const int tlsDheRsaWith3desEdeCbcSha = 0x0016;
+  static const int tlsDhAnonWithRc4128Md5 = 0x0018;
+  static const int tlsDhAnonWith3desEdeCbcSha = 0x001B;
+  static const int tlsRsaWithAes128CbcSha = 0x002F;
+  static const int tlsDhDssWithAes128CbcSha = 0x0030;
+  static const int tlsDheDssWithAes128CbcSha = 0x0032;
+  static const int tlsDheRsaWithAes128CbcSha = 0x0033;
+  static const int tlsDhAnonWithAes128CbcSha = 0x0034;
+  static const int tlsRsaWithAes256CbcSha = 0x0035;
+  static const int tlsDhDssWithAes256CbcSha = 0x0036;
+  static const int tlsDheDssWithAes256CbcSha = 0x0038;
+  static const int tlsDheRsaWithAes256CbcSha = 0x0039;
+  static const int tlsDhAnonWithAes256CbcSha = 0x003A;
+  static const int tlsRsaWithNullSha256 = 0x003B;
+  static const int tlsRsaWithAes128CbcSha256 = 0x003C;
+  static const int tlsRsaWithAes256CbcSha256 = 0x003D;
+  static const int tlsDhDssWithAes128CbcSha256 = 0x003E;
+  static const int tlsDheDssWithAes128CbcSha256 = 0x0040;
+  static const int tlsDheRsaWithAes128CbcSha256 = 0x0067;
+  static const int tlsDhDssWithAes256CbcSha256 = 0x0068;
+  static const int tlsDheDssWithAes256CbcSha256 = 0x006A;
+  static const int tlsDheRsaWithAes256CbcSha256 = 0x006B;
+  static const int tlsDhAnonWithAes128CbcSha256 = 0x006C;
+  static const int tlsDhAnonWithAes256CbcSha256 = 0x006D;
 
   // RFC 5288 - AES-GCM ciphers for TLSv1.2
-  static const int TLS_RSA_WITH_AES_128_GCM_SHA256 = 0x009C;
-  static const int TLS_RSA_WITH_AES_256_GCM_SHA384 = 0x009D;
-  static const int TLS_DHE_RSA_WITH_AES_128_GCM_SHA256 = 0x009E;
-  static const int TLS_DHE_RSA_WITH_AES_256_GCM_SHA384 = 0x009F;
-  static const int TLS_DHE_DSS_WITH_AES_128_GCM_SHA256 = 0x00A2;
-  static const int TLS_DHE_DSS_WITH_AES_256_GCM_SHA384 = 0x00A3;
-  static const int TLS_DH_DSS_WITH_AES_128_GCM_SHA256 = 0x00A4;
-  static const int TLS_DH_DSS_WITH_AES_256_GCM_SHA384 = 0x00A5;
-  static const int TLS_DH_ANON_WITH_AES_128_GCM_SHA256 = 0x00A6;
-  static const int TLS_DH_ANON_WITH_AES_256_GCM_SHA384 = 0x00A7;
+  static const int tlsRsaWithAes128GcmSha256 = 0x009C;
+  static const int tlsRsaWithAes256GcmSha384 = 0x009D;
+  static const int tlsDheRsaWithAes128GcmSha256 = 0x009E;
+  static const int tlsDheRsaWithAes256GcmSha384 = 0x009F;
+  static const int tlsDheDssWithAes128GcmSha256 = 0x00A2;
+  static const int tlsDheDssWithAes256GcmSha384 = 0x00A3;
+  static const int tlsDhDssWithAes128GcmSha256 = 0x00A4;
+  static const int tlsDhDssWithAes256GcmSha384 = 0x00A5;
+  static const int tlsDhAnonWithAes128GcmSha256 = 0x00A6;
+  static const int tlsDhAnonWithAes256GcmSha384 = 0x00A7;
 
   // RFC 6655 - AES-CCM ciphers for TLSv1.2
-  static const int TLS_RSA_WITH_AES_128_CCM = 0xC09C;
-  static const int TLS_RSA_WITH_AES_256_CCM = 0xC09D;
-  static const int TLS_DHE_RSA_WITH_AES_128_CCM = 0xC09E;
-  static const int TLS_DHE_RSA_WITH_AES_256_CCM = 0xC09F;
-  static const int TLS_RSA_WITH_AES_128_CCM_8 = 0xC0A0;
-  static const int TLS_RSA_WITH_AES_256_CCM_8 = 0xC0A1;
-  static const int TLS_DHE_RSA_WITH_AES_128_CCM_8 = 0xC0A2;
-  static const int TLS_DHE_RSA_WITH_AES_256_CCM_8 = 0xC0A3;
+  static const int tlsRsaWithAes128Ccm = 0xC09C;
+  static const int tlsRsaWithAes256Ccm = 0xC09D;
+  static const int tlsDheRsaWithAes128Ccm = 0xC09E;
+  static const int tlsDheRsaWithAes256Ccm = 0xC09F;
+  static const int tlsRsaWithAes128Ccm8 = 0xC0A0;
+  static const int tlsRsaWithAes256Ccm8 = 0xC0A1;
+  static const int tlsDheRsaWithAes128Ccm8 = 0xC0A2;
+  static const int tlsDheRsaWithAes256Ccm8 = 0xC0A3;
 
   // Weird pseudo-ciphersuite from RFC 5746
-  static const int TLS_EMPTY_RENEGOTIATION_INFO_SCSV = 0x00FF;
+  static const int tlsEmptyRenegotiationInfoScsv = 0x00FF;
 
   // TLS 1.3 ciphersuites
-  static const int TLS_AES_128_GCM_SHA256 = 0x1301;
-  static const int TLS_AES_256_GCM_SHA384 = 0x1302;
-  static const int TLS_CHACHA20_POLY1305_SHA256 = 0x1303;
-  static const int TLS_AES_128_CCM_SHA256 = 0x1304;
-  static const int TLS_AES_128_CCM_8_SHA256 = 0x1305;
+  static const int tlsAes128GcmSha256 = 0x1301;
+  static const int tlsAes256GcmSha384 = 0x1302;
+  static const int tlsChacha20Poly1305Sha256 = 0x1303;
+  static const int tlsAes128CcmSha256 = 0x1304;
+  static const int tlsAes128Ccm8Sha256 = 0x1305;
 
   // RFC 7507 - Fallback SCSV
-  static const int TLS_FALLBACK_SCSV = 0x5600;
+  static const int tlsFallbackScsv = 0x5600;
 
   // RFC 4492 - ECC Cipher Suites for TLS
-  static const int TLS_ECDH_ECDSA_WITH_NULL_SHA = 0xC001;
-  static const int TLS_ECDH_ECDSA_WITH_RC4_128_SHA = 0xC002;
-  static const int TLS_ECDH_ECDSA_WITH_3DES_EDE_CBC_SHA = 0xC003;
-  static const int TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA = 0xC004;
-  static const int TLS_ECDH_ECDSA_WITH_AES_256_CBC_SHA = 0xC005;
-  static const int TLS_ECDHE_ECDSA_WITH_NULL_SHA = 0xC006;
-  static const int TLS_ECDHE_ECDSA_WITH_RC4_128_SHA = 0xC007;
-  static const int TLS_ECDHE_ECDSA_WITH_3DES_EDE_CBC_SHA = 0xC008;
-  static const int TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA = 0xC009;
-  static const int TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA = 0xC00A;
-  static const int TLS_ECDH_RSA_WITH_NULL_SHA = 0xC00B;
-  static const int TLS_ECDH_RSA_WITH_RC4_128_SHA = 0xC00C;
-  static const int TLS_ECDH_RSA_WITH_3DES_EDE_CBC_SHA = 0xC00D;
-  static const int TLS_ECDH_RSA_WITH_AES_128_CBC_SHA = 0xC00E;
-  static const int TLS_ECDH_RSA_WITH_AES_256_CBC_SHA = 0xC00F;
-  static const int TLS_ECDHE_RSA_WITH_NULL_SHA = 0xC010;
-  static const int TLS_ECDHE_RSA_WITH_RC4_128_SHA = 0xC011;
-  static const int TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA = 0xC012;
-  static const int TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA = 0xC013;
-  static const int TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA = 0xC014;
-  static const int TLS_ECDH_ANON_WITH_NULL_SHA = 0xC015;
-  static const int TLS_ECDH_ANON_WITH_RC4_128_SHA = 0xC016;
-  static const int TLS_ECDH_ANON_WITH_3DES_EDE_CBC_SHA = 0xC017;
-  static const int TLS_ECDH_ANON_WITH_AES_128_CBC_SHA = 0xC018;
-  static const int TLS_ECDH_ANON_WITH_AES_256_CBC_SHA = 0xC019;
+  static const int tlsEcdhEcdsaWithNullSha = 0xC001;
+  static const int tlsEcdhEcdsaWithRc4128Sha = 0xC002;
+  static const int tlsEcdhEcdsaWith3desEdeCbcSha = 0xC003;
+  static const int tlsEcdhEcdsaWithAes128CbcSha = 0xC004;
+  static const int tlsEcdhEcdsaWithAes256CbcSha = 0xC005;
+  static const int tlsEcdheEcdsaWithNullSha = 0xC006;
+  static const int tlsEcdheEcdsaWithRc4128Sha = 0xC007;
+  static const int tlsEcdheEcdsaWith3desEdeCbcSha = 0xC008;
+  static const int tlsEcdheEcdsaWithAes128CbcSha = 0xC009;
+  static const int tlsEcdheEcdsaWithAes256CbcSha = 0xC00A;
+  static const int tlsEcdhRsaWithNullSha = 0xC00B;
+  static const int tlsEcdhRsaWithRc4128Sha = 0xC00C;
+  static const int tlsEcdhRsaWith3desEdeCbcSha = 0xC00D;
+  static const int tlsEcdhRsaWithAes128CbcSha = 0xC00E;
+  static const int tlsEcdhRsaWithAes256CbcSha = 0xC00F;
+  static const int tlsEcdheRsaWithNullSha = 0xC010;
+  static const int tlsEcdheRsaWithRc4128Sha = 0xC011;
+  static const int tlsEcdheRsaWith3desEdeCbcSha = 0xC012;
+  static const int tlsEcdheRsaWithAes128CbcSha = 0xC013;
+  static const int tlsEcdheRsaWithAes256CbcSha = 0xC014;
+  static const int tlsEcdhAnonWithNullSha = 0xC015;
+  static const int tlsEcdhAnonWithRc4128Sha = 0xC016;
+  static const int tlsEcdhAnonWith3desEdeCbcSha = 0xC017;
+  static const int tlsEcdhAnonWithAes128CbcSha = 0xC018;
+  static const int tlsEcdhAnonWithAes256CbcSha = 0xC019;
 
   // RFC 5054 - SRP
-  static const int TLS_SRP_SHA_WITH_3DES_EDE_CBC_SHA = 0xC01A;
-  static const int TLS_SRP_SHA_RSA_WITH_3DES_EDE_CBC_SHA = 0xC01B;
-  static const int TLS_SRP_SHA_DSS_WITH_3DES_EDE_CBC_SHA = 0xC01C;
-  static const int TLS_SRP_SHA_WITH_AES_128_CBC_SHA = 0xC01D;
-  static const int TLS_SRP_SHA_RSA_WITH_AES_128_CBC_SHA = 0xC01E;
-  static const int TLS_SRP_SHA_DSS_WITH_AES_128_CBC_SHA = 0xC01F;
-  static const int TLS_SRP_SHA_WITH_AES_256_CBC_SHA = 0xC020;
-  static const int TLS_SRP_SHA_RSA_WITH_AES_256_CBC_SHA = 0xC021;
-  static const int TLS_SRP_SHA_DSS_WITH_AES_256_CBC_SHA = 0xC022;
+  static const int tlsSrpShaWith3desEdeCbcSha = 0xC01A;
+  static const int tlsSrpShaRsaWith3desEdeCbcSha = 0xC01B;
+  static const int tlsSrpShaDssWith3desEdeCbcSha = 0xC01C;
+  static const int tlsSrpShaWithAes128CbcSha = 0xC01D;
+  static const int tlsSrpShaRsaWithAes128CbcSha = 0xC01E;
+  static const int tlsSrpShaDssWithAes128CbcSha = 0xC01F;
+  static const int tlsSrpShaWithAes256CbcSha = 0xC020;
+  static const int tlsSrpShaRsaWithAes256CbcSha = 0xC021;
+  static const int tlsSrpShaDssWithAes256CbcSha = 0xC022;
 
   // RFC 5289 - ECC with SHA-256/384 HMAC and AES-GCM
-  static const int TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256 = 0xC023;
-  static const int TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384 = 0xC024;
-  static const int TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA256 = 0xC025;
-  static const int TLS_ECDH_ECDSA_WITH_AES_256_CBC_SHA384 = 0xC026;
-  static const int TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256 = 0xC027;
-  static const int TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384 = 0xC028;
-  static const int TLS_ECDH_RSA_WITH_AES_128_CBC_SHA256 = 0xC029;
-  static const int TLS_ECDH_RSA_WITH_AES_256_CBC_SHA384 = 0xC02A;
-  static const int TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 = 0xC02B;
-  static const int TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 = 0xC02C;
-  static const int TLS_ECDH_ECDSA_WITH_AES_128_GCM_SHA256 = 0xC02D;
-  static const int TLS_ECDH_ECDSA_WITH_AES_256_GCM_SHA384 = 0xC02E;
-  static const int TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 = 0xC02F;
-  static const int TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 = 0xC030;
-  static const int TLS_ECDH_RSA_WITH_AES_128_GCM_SHA256 = 0xC031;
-  static const int TLS_ECDH_RSA_WITH_AES_256_GCM_SHA384 = 0xC032;
+  static const int tlsEcdheEcdsaWithAes128CbcSha256 = 0xC023;
+  static const int tlsEcdheEcdsaWithAes256CbcSha384 = 0xC024;
+  static const int tlsEcdhEcdsaWithAes128CbcSha256 = 0xC025;
+  static const int tlsEcdhEcdsaWithAes256CbcSha384 = 0xC026;
+  static const int tlsEcdheRsaWithAes128CbcSha256 = 0xC027;
+  static const int tlsEcdheRsaWithAes256CbcSha384 = 0xC028;
+  static const int tlsEcdhRsaWithAes128CbcSha256 = 0xC029;
+  static const int tlsEcdhRsaWithAes256CbcSha384 = 0xC02A;
+  static const int tlsEcdheEcdsaWithAes128GcmSha256 = 0xC02B;
+  static const int tlsEcdheEcdsaWithAes256GcmSha384 = 0xC02C;
+  static const int tlsEcdhEcdsaWithAes128GcmSha256 = 0xC02D;
+  static const int tlsEcdhEcdsaWithAes256GcmSha384 = 0xC02E;
+  static const int tlsEcdheRsaWithAes128GcmSha256 = 0xC02F;
+  static const int tlsEcdheRsaWithAes256GcmSha384 = 0xC030;
+  static const int tlsEcdhRsaWithAes128GcmSha256 = 0xC031;
+  static const int tlsEcdhRsaWithAes256GcmSha384 = 0xC032;
 
   // draft-ietf-tls-chacha20-poly1305-00
-  static const int TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_draft_00 = 0xCCA1;
-  static const int TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_draft_00 = 0xCCA2;
-  static const int TLS_DHE_RSA_WITH_CHACHA20_POLY1305_draft_00 = 0xCCA3;
+  static const int tlsEcdheRsaWithChacha20Poly1305Draft00 = 0xCCA1;
+  static const int tlsEcdheEcdsaWithChacha20Poly1305Draft00 = 0xCCA2;
+  static const int tlsDheRsaWithChacha20Poly1305Draft00 = 0xCCA3;
 
   // RFC 7905 - ChaCha20-Poly1305
-  static const int TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256 = 0xCCA8;
-  static const int TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256 = 0xCCA9;
-  static const int TLS_DHE_RSA_WITH_CHACHA20_POLY1305_SHA256 = 0xCCAA;
+  static const int tlsEcdheRsaWithChacha20Poly1305Sha256 = 0xCCA8;
+  static const int tlsEcdheEcdsaWithChacha20Poly1305Sha256 = 0xCCA9;
+  static const int tlsDheRsaWithChacha20Poly1305Sha256 = 0xCCAA;
 
   // RFC 7251 - AES-CCM ECC
-  static const int TLS_ECDHE_ECDSA_WITH_AES_128_CCM = 0xC0AC;
-  static const int TLS_ECDHE_ECDSA_WITH_AES_256_CCM = 0xC0AD;
-  static const int TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8 = 0xC0AE;
-  static const int TLS_ECDHE_ECDSA_WITH_AES_256_CCM_8 = 0xC0AF;
+  static const int tlsEcdheEcdsaWithAes128Ccm = 0xC0AC;
+  static const int tlsEcdheEcdsaWithAes256Ccm = 0xC0AD;
+  static const int tlsEcdheEcdsaWithAes128Ccm8 = 0xC0AE;
+  static const int tlsEcdheEcdsaWithAes256Ccm8 = 0xC0AF;
 
   // --- Cipher Suite Families ---
 
   /// 3DES CBC ciphers
   static const List<int> tripleDESSuites = [
-    TLS_ECDHE_ECDSA_WITH_3DES_EDE_CBC_SHA,
-    TLS_ECDH_ECDSA_WITH_3DES_EDE_CBC_SHA, // unsupported
-    TLS_ECDH_RSA_WITH_3DES_EDE_CBC_SHA, // unsupported
-    TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA,
-    TLS_SRP_SHA_WITH_3DES_EDE_CBC_SHA,
-    TLS_SRP_SHA_RSA_WITH_3DES_EDE_CBC_SHA,
-    TLS_RSA_WITH_3DES_EDE_CBC_SHA,
-    TLS_DHE_RSA_WITH_3DES_EDE_CBC_SHA,
-    TLS_DH_ANON_WITH_3DES_EDE_CBC_SHA,
-    TLS_ECDH_ANON_WITH_3DES_EDE_CBC_SHA,
-    TLS_DH_DSS_WITH_3DES_EDE_CBC_SHA, // unsupported
-    TLS_DHE_DSS_WITH_3DES_EDE_CBC_SHA, // unsupported
-    TLS_SRP_SHA_DSS_WITH_3DES_EDE_CBC_SHA, // unsupported
+    tlsEcdheEcdsaWith3desEdeCbcSha,
+    tlsEcdhEcdsaWith3desEdeCbcSha, // unsupported
+    tlsEcdhRsaWith3desEdeCbcSha, // unsupported
+    tlsEcdheRsaWith3desEdeCbcSha,
+    tlsSrpShaWith3desEdeCbcSha,
+    tlsSrpShaRsaWith3desEdeCbcSha,
+    tlsRsaWith3desEdeCbcSha,
+    tlsDheRsaWith3desEdeCbcSha,
+    tlsDhAnonWith3desEdeCbcSha,
+    tlsEcdhAnonWith3desEdeCbcSha,
+    tlsDhDssWith3desEdeCbcSha, // unsupported
+    tlsDheDssWith3desEdeCbcSha, // unsupported
+    tlsSrpShaDssWith3desEdeCbcSha, // unsupported
   ];
 
   /// AES-128 CBC ciphers
   static const List<int> aes128Suites = [
-    TLS_SRP_SHA_WITH_AES_128_CBC_SHA,
-    TLS_SRP_SHA_RSA_WITH_AES_128_CBC_SHA,
-    TLS_RSA_WITH_AES_128_CBC_SHA,
-    TLS_DHE_RSA_WITH_AES_128_CBC_SHA,
-    TLS_DH_ANON_WITH_AES_128_CBC_SHA,
-    TLS_RSA_WITH_AES_128_CBC_SHA256,
-    TLS_DHE_RSA_WITH_AES_128_CBC_SHA256,
-    TLS_DH_ANON_WITH_AES_128_CBC_SHA256,
-    TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256,
-    TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
-    TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA256, // unsupported
-    TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA, // unsupported
-    TLS_ECDH_RSA_WITH_AES_128_CBC_SHA256, // unsupported
-    TLS_ECDH_RSA_WITH_AES_128_CBC_SHA, // unsupported
-    TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
-    TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,
-    TLS_ECDH_ANON_WITH_AES_128_CBC_SHA,
-    TLS_DH_DSS_WITH_AES_128_CBC_SHA, // unsupported
-    TLS_DHE_DSS_WITH_AES_128_CBC_SHA, // unsupported
-    TLS_DH_DSS_WITH_AES_128_CBC_SHA256, // unsupported
-    TLS_DHE_DSS_WITH_AES_128_CBC_SHA256, // unsupported
-    TLS_SRP_SHA_DSS_WITH_AES_128_CBC_SHA, // unsupported
+    tlsSrpShaWithAes128CbcSha,
+    tlsSrpShaRsaWithAes128CbcSha,
+    tlsRsaWithAes128CbcSha,
+    tlsDheRsaWithAes128CbcSha,
+    tlsDhAnonWithAes128CbcSha,
+    tlsRsaWithAes128CbcSha256,
+    tlsDheRsaWithAes128CbcSha256,
+    tlsDhAnonWithAes128CbcSha256,
+    tlsEcdheEcdsaWithAes128CbcSha256,
+    tlsEcdheEcdsaWithAes128CbcSha,
+    tlsEcdhEcdsaWithAes128CbcSha256, // unsupported
+    tlsEcdhEcdsaWithAes128CbcSha, // unsupported
+    tlsEcdhRsaWithAes128CbcSha256, // unsupported
+    tlsEcdhRsaWithAes128CbcSha, // unsupported
+    tlsEcdheRsaWithAes128CbcSha,
+    tlsEcdheRsaWithAes128CbcSha256,
+    tlsEcdhAnonWithAes128CbcSha,
+    tlsDhDssWithAes128CbcSha, // unsupported
+    tlsDheDssWithAes128CbcSha, // unsupported
+    tlsDhDssWithAes128CbcSha256, // unsupported
+    tlsDheDssWithAes128CbcSha256, // unsupported
+    tlsSrpShaDssWithAes128CbcSha, // unsupported
   ];
 
   /// AES-256 CBC ciphers
   static const List<int> aes256Suites = [
-    TLS_SRP_SHA_WITH_AES_256_CBC_SHA,
-    TLS_SRP_SHA_RSA_WITH_AES_256_CBC_SHA,
-    TLS_RSA_WITH_AES_256_CBC_SHA,
-    TLS_DH_ANON_WITH_AES_256_CBC_SHA,
-    TLS_DHE_RSA_WITH_AES_256_CBC_SHA,
-    TLS_RSA_WITH_AES_256_CBC_SHA256,
-    TLS_DHE_RSA_WITH_AES_256_CBC_SHA256,
-    TLS_DH_ANON_WITH_AES_256_CBC_SHA256,
-    TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384,
-    TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
-    TLS_ECDH_ECDSA_WITH_AES_256_CBC_SHA384, // unsupported
-    TLS_ECDH_ECDSA_WITH_AES_256_CBC_SHA, // unsupported
-    TLS_ECDH_RSA_WITH_AES_256_CBC_SHA384, // unsupported
-    TLS_ECDH_RSA_WITH_AES_256_CBC_SHA, // unsupported
-    TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
-    TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384,
-    TLS_ECDH_ANON_WITH_AES_256_CBC_SHA,
-    TLS_DH_DSS_WITH_AES_256_CBC_SHA, // unsupported
-    TLS_DHE_DSS_WITH_AES_256_CBC_SHA, // unsupported
-    TLS_DH_DSS_WITH_AES_256_CBC_SHA256, // unsupported
-    TLS_DHE_DSS_WITH_AES_256_CBC_SHA256, // unsupported
-    TLS_SRP_SHA_DSS_WITH_AES_256_CBC_SHA, // unsupported
+    tlsSrpShaWithAes256CbcSha,
+    tlsSrpShaRsaWithAes256CbcSha,
+    tlsRsaWithAes256CbcSha,
+    tlsDhAnonWithAes256CbcSha,
+    tlsDheRsaWithAes256CbcSha,
+    tlsRsaWithAes256CbcSha256,
+    tlsDheRsaWithAes256CbcSha256,
+    tlsDhAnonWithAes256CbcSha256,
+    tlsEcdheEcdsaWithAes256CbcSha384,
+    tlsEcdheEcdsaWithAes256CbcSha,
+    tlsEcdhEcdsaWithAes256CbcSha384, // unsupported
+    tlsEcdhEcdsaWithAes256CbcSha, // unsupported
+    tlsEcdhRsaWithAes256CbcSha384, // unsupported
+    tlsEcdhRsaWithAes256CbcSha, // unsupported
+    tlsEcdheRsaWithAes256CbcSha,
+    tlsEcdheRsaWithAes256CbcSha384,
+    tlsEcdhAnonWithAes256CbcSha,
+    tlsDhDssWithAes256CbcSha, // unsupported
+    tlsDheDssWithAes256CbcSha, // unsupported
+    tlsDhDssWithAes256CbcSha256, // unsupported
+    tlsDheDssWithAes256CbcSha256, // unsupported
+    tlsSrpShaDssWithAes256CbcSha, // unsupported
   ];
 
   /// AES-128 GCM ciphers
   static const List<int> aes128GcmSuites = [
-    TLS_RSA_WITH_AES_128_GCM_SHA256,
-    TLS_DHE_RSA_WITH_AES_128_GCM_SHA256,
-    TLS_DH_ANON_WITH_AES_128_GCM_SHA256,
-    TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-    TLS_ECDH_ECDSA_WITH_AES_128_GCM_SHA256, // unsupported
-    TLS_ECDH_RSA_WITH_AES_128_GCM_SHA256, // unsupported
-    TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-    TLS_AES_128_GCM_SHA256, // TLS 1.3
-    TLS_DHE_DSS_WITH_AES_128_GCM_SHA256, // unsupported
-    TLS_DH_DSS_WITH_AES_128_GCM_SHA256, // unsupported
+    tlsRsaWithAes128GcmSha256,
+    tlsDheRsaWithAes128GcmSha256,
+    tlsDhAnonWithAes128GcmSha256,
+    tlsEcdheEcdsaWithAes128GcmSha256,
+    tlsEcdhEcdsaWithAes128GcmSha256, // unsupported
+    tlsEcdhRsaWithAes128GcmSha256, // unsupported
+    tlsEcdheRsaWithAes128GcmSha256,
+    tlsAes128GcmSha256, // TLS 1.3
+    tlsDheDssWithAes128GcmSha256, // unsupported
+    tlsDhDssWithAes128GcmSha256, // unsupported
   ];
 
   /// AES-256-GCM ciphers (implicit SHA384)
   static const List<int> aes256GcmSuites = [
-    TLS_RSA_WITH_AES_256_GCM_SHA384,
-    TLS_DHE_RSA_WITH_AES_256_GCM_SHA384,
-    TLS_DH_ANON_WITH_AES_256_GCM_SHA384,
-    TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-    TLS_ECDH_ECDSA_WITH_AES_256_GCM_SHA384, // unsupported
-    TLS_ECDH_RSA_WITH_AES_256_GCM_SHA384, // unsupported
-    TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-    TLS_AES_256_GCM_SHA384, // TLS 1.3
-    TLS_DHE_DSS_WITH_AES_256_GCM_SHA384, // unsupported
-    TLS_DH_DSS_WITH_AES_256_GCM_SHA384, // unsupported
+    tlsRsaWithAes256GcmSha384,
+    tlsDheRsaWithAes256GcmSha384,
+    tlsDhAnonWithAes256GcmSha384,
+    tlsEcdheEcdsaWithAes256GcmSha384,
+    tlsEcdhEcdsaWithAes256GcmSha384, // unsupported
+    tlsEcdhRsaWithAes256GcmSha384, // unsupported
+    tlsEcdheRsaWithAes256GcmSha384,
+    tlsAes256GcmSha384, // TLS 1.3
+    tlsDheDssWithAes256GcmSha384, // unsupported
+    tlsDhDssWithAes256GcmSha384, // unsupported
   ];
 
   /// AES-128 CCM_8 ciphers
   static const List<int> aes128Ccm_8Suites = [
-    TLS_RSA_WITH_AES_128_CCM_8,
-    TLS_DHE_RSA_WITH_AES_128_CCM_8,
-    TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8,
-    TLS_AES_128_CCM_8_SHA256, // TLS 1.3
+    tlsRsaWithAes128Ccm8,
+    tlsDheRsaWithAes128Ccm8,
+    tlsEcdheEcdsaWithAes128Ccm8,
+    tlsAes128Ccm8Sha256, // TLS 1.3
   ];
 
   /// AES-128 CCM ciphers
   static const List<int> aes128CcmSuites = [
-    TLS_RSA_WITH_AES_128_CCM,
-    TLS_DHE_RSA_WITH_AES_128_CCM,
-    TLS_ECDHE_ECDSA_WITH_AES_128_CCM,
-    TLS_AES_128_CCM_SHA256, // TLS 1.3
+    tlsRsaWithAes128Ccm,
+    tlsDheRsaWithAes128Ccm,
+    tlsEcdheEcdsaWithAes128Ccm,
+    tlsAes128CcmSha256, // TLS 1.3
   ];
 
   /// AES-256 CCM_8 ciphers
   static const List<int> aes256Ccm_8Suites = [
-    TLS_RSA_WITH_AES_256_CCM_8,
-    TLS_DHE_RSA_WITH_AES_256_CCM_8,
-    TLS_ECDHE_ECDSA_WITH_AES_256_CCM_8,
+    tlsRsaWithAes256Ccm8,
+    tlsDheRsaWithAes256Ccm8,
+    tlsEcdheEcdsaWithAes256Ccm8,
   ];
 
   /// AES-256 CCM ciphers
   static const List<int> aes256CcmSuites = [
-    TLS_RSA_WITH_AES_256_CCM,
-    TLS_DHE_RSA_WITH_AES_256_CCM,
-    TLS_ECDHE_ECDSA_WITH_AES_256_CCM,
+    tlsRsaWithAes256Ccm,
+    tlsDheRsaWithAes256Ccm,
+    tlsEcdheEcdsaWithAes256Ccm,
   ];
 
   /// CHACHA20 cipher, 00'th IETF draft (implicit POLY1305 authenticator)
   static const List<int> chacha20draft00Suites = [
-    TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_draft_00,
-    TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_draft_00,
-    TLS_DHE_RSA_WITH_CHACHA20_POLY1305_draft_00,
+    tlsEcdheRsaWithChacha20Poly1305Draft00,
+    tlsEcdheEcdsaWithChacha20Poly1305Draft00,
+    tlsDheRsaWithChacha20Poly1305Draft00,
   ];
 
   /// CHACHA20 cipher (implicit POLY1305 authenticator, SHA256 PRF)
   static const List<int> chacha20Suites = [
-    TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
-    TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
-    TLS_DHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
-    TLS_CHACHA20_POLY1305_SHA256, // TLS 1.3
+    tlsEcdheRsaWithChacha20Poly1305Sha256,
+    tlsEcdheEcdsaWithChacha20Poly1305Sha256,
+    tlsDheRsaWithChacha20Poly1305Sha256,
+    tlsChacha20Poly1305Sha256, // TLS 1.3
   ];
 
   /// RC4 128 stream cipher (Generally considered insecure)
   static const List<int> rc4Suites = [
-    TLS_ECDHE_RSA_WITH_RC4_128_SHA,
-    TLS_ECDHE_ECDSA_WITH_RC4_128_SHA,
-    TLS_ECDH_ECDSA_WITH_RC4_128_SHA, // unsupported
-    TLS_ECDH_RSA_WITH_RC4_128_SHA, // unsupported
-    TLS_DH_ANON_WITH_RC4_128_MD5,
-    TLS_RSA_WITH_RC4_128_SHA,
-    TLS_RSA_WITH_RC4_128_MD5,
-    TLS_ECDH_ANON_WITH_RC4_128_SHA,
+    tlsEcdheRsaWithRc4128Sha,
+    tlsEcdheEcdsaWithRc4128Sha,
+    tlsEcdhEcdsaWithRc4128Sha, // unsupported
+    tlsEcdhRsaWithRc4128Sha, // unsupported
+    tlsDhAnonWithRc4128Md5,
+    tlsRsaWithRc4128Sha,
+    tlsRsaWithRc4128Md5,
+    tlsEcdhAnonWithRc4128Sha,
   ];
 
   /// No encryption (Extremely insecure)
   static const List<int> nullSuites = [
-    TLS_RSA_WITH_NULL_MD5,
-    TLS_RSA_WITH_NULL_SHA,
-    TLS_RSA_WITH_NULL_SHA256,
-    TLS_ECDHE_ECDSA_WITH_NULL_SHA,
-    TLS_ECDH_ECDSA_WITH_NULL_SHA, // unsupported
-    TLS_ECDH_RSA_WITH_NULL_SHA, // unsupported
-    TLS_ECDHE_RSA_WITH_NULL_SHA,
-    TLS_ECDH_ANON_WITH_NULL_SHA,
+    tlsRsaWithNullMd5,
+    tlsRsaWithNullSha,
+    tlsRsaWithNullSha256,
+    tlsEcdheEcdsaWithNullSha,
+    tlsEcdhEcdsaWithNullSha, // unsupported
+    tlsEcdhRsaWithNullSha, // unsupported
+    tlsEcdheRsaWithNullSha,
+    tlsEcdhAnonWithNullSha,
   ];
 
   /// SHA-1 HMAC, protocol default PRF
   static const List<int> shaSuites = [
-    TLS_SRP_SHA_WITH_3DES_EDE_CBC_SHA,
-    TLS_SRP_SHA_WITH_AES_128_CBC_SHA,
-    TLS_SRP_SHA_WITH_AES_256_CBC_SHA,
-    TLS_SRP_SHA_RSA_WITH_3DES_EDE_CBC_SHA,
-    TLS_SRP_SHA_RSA_WITH_AES_128_CBC_SHA,
-    TLS_SRP_SHA_RSA_WITH_AES_256_CBC_SHA,
-    TLS_SRP_SHA_DSS_WITH_3DES_EDE_CBC_SHA, // unsupported
-    TLS_SRP_SHA_DSS_WITH_AES_128_CBC_SHA, // unsupported
-    TLS_SRP_SHA_DSS_WITH_AES_256_CBC_SHA, // unsupported
-    TLS_RSA_WITH_3DES_EDE_CBC_SHA,
-    TLS_RSA_WITH_AES_128_CBC_SHA,
-    TLS_RSA_WITH_AES_256_CBC_SHA,
-    TLS_RSA_WITH_RC4_128_SHA,
-    TLS_DHE_RSA_WITH_3DES_EDE_CBC_SHA,
-    TLS_DHE_RSA_WITH_AES_128_CBC_SHA,
-    TLS_DHE_RSA_WITH_AES_256_CBC_SHA,
-    TLS_DHE_DSS_WITH_3DES_EDE_CBC_SHA, // unsupported
-    TLS_DHE_DSS_WITH_AES_128_CBC_SHA, // unsupported
-    TLS_DHE_DSS_WITH_AES_256_CBC_SHA, // unsupported
-    TLS_DH_ANON_WITH_AES_128_CBC_SHA,
-    TLS_DH_ANON_WITH_AES_256_CBC_SHA,
-    TLS_DH_ANON_WITH_3DES_EDE_CBC_SHA,
-    TLS_DH_DSS_WITH_3DES_EDE_CBC_SHA, // unsupported
-    TLS_DH_DSS_WITH_AES_128_CBC_SHA, // unsupported
-    TLS_DH_DSS_WITH_AES_256_CBC_SHA, // unsupported
-    TLS_RSA_WITH_NULL_SHA,
-    TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
-    TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
-    TLS_ECDHE_ECDSA_WITH_3DES_EDE_CBC_SHA,
-    TLS_ECDHE_ECDSA_WITH_RC4_128_SHA,
-    TLS_ECDHE_ECDSA_WITH_NULL_SHA,
-    TLS_ECDH_ECDSA_WITH_AES_256_CBC_SHA, // unsupported
-    TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA, // unsupported
-    TLS_ECDH_ECDSA_WITH_3DES_EDE_CBC_SHA, // unsupported
-    TLS_ECDH_ECDSA_WITH_RC4_128_SHA, // unsupported
-    TLS_ECDH_ECDSA_WITH_NULL_SHA, // unsupported
-    TLS_ECDH_RSA_WITH_AES_256_CBC_SHA, // unsupported
-    TLS_ECDH_RSA_WITH_AES_128_CBC_SHA, // unsupported
-    TLS_ECDH_RSA_WITH_3DES_EDE_CBC_SHA, // unsupported
-    TLS_ECDH_RSA_WITH_RC4_128_SHA, // unsupported
-    TLS_ECDH_RSA_WITH_NULL_SHA, // unsupported
-    TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
-    TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
-    TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA,
-    TLS_ECDHE_RSA_WITH_RC4_128_SHA,
-    TLS_ECDHE_RSA_WITH_NULL_SHA,
-    TLS_ECDH_ANON_WITH_AES_256_CBC_SHA,
-    TLS_ECDH_ANON_WITH_AES_128_CBC_SHA,
-    TLS_ECDH_ANON_WITH_3DES_EDE_CBC_SHA,
-    TLS_ECDH_ANON_WITH_RC4_128_SHA,
-    TLS_ECDH_ANON_WITH_NULL_SHA,
+    tlsSrpShaWith3desEdeCbcSha,
+    tlsSrpShaWithAes128CbcSha,
+    tlsSrpShaWithAes256CbcSha,
+    tlsSrpShaRsaWith3desEdeCbcSha,
+    tlsSrpShaRsaWithAes128CbcSha,
+    tlsSrpShaRsaWithAes256CbcSha,
+    tlsSrpShaDssWith3desEdeCbcSha, // unsupported
+    tlsSrpShaDssWithAes128CbcSha, // unsupported
+    tlsSrpShaDssWithAes256CbcSha, // unsupported
+    tlsRsaWith3desEdeCbcSha,
+    tlsRsaWithAes128CbcSha,
+    tlsRsaWithAes256CbcSha,
+    tlsRsaWithRc4128Sha,
+    tlsDheRsaWith3desEdeCbcSha,
+    tlsDheRsaWithAes128CbcSha,
+    tlsDheRsaWithAes256CbcSha,
+    tlsDheDssWith3desEdeCbcSha, // unsupported
+    tlsDheDssWithAes128CbcSha, // unsupported
+    tlsDheDssWithAes256CbcSha, // unsupported
+    tlsDhAnonWithAes128CbcSha,
+    tlsDhAnonWithAes256CbcSha,
+    tlsDhAnonWith3desEdeCbcSha,
+    tlsDhDssWith3desEdeCbcSha, // unsupported
+    tlsDhDssWithAes128CbcSha, // unsupported
+    tlsDhDssWithAes256CbcSha, // unsupported
+    tlsRsaWithNullSha,
+    tlsEcdheEcdsaWithAes256CbcSha,
+    tlsEcdheEcdsaWithAes128CbcSha,
+    tlsEcdheEcdsaWith3desEdeCbcSha,
+    tlsEcdheEcdsaWithRc4128Sha,
+    tlsEcdheEcdsaWithNullSha,
+    tlsEcdhEcdsaWithAes256CbcSha, // unsupported
+    tlsEcdhEcdsaWithAes128CbcSha, // unsupported
+    tlsEcdhEcdsaWith3desEdeCbcSha, // unsupported
+    tlsEcdhEcdsaWithRc4128Sha, // unsupported
+    tlsEcdhEcdsaWithNullSha, // unsupported
+    tlsEcdhRsaWithAes256CbcSha, // unsupported
+    tlsEcdhRsaWithAes128CbcSha, // unsupported
+    tlsEcdhRsaWith3desEdeCbcSha, // unsupported
+    tlsEcdhRsaWithRc4128Sha, // unsupported
+    tlsEcdhRsaWithNullSha, // unsupported
+    tlsEcdheRsaWithAes128CbcSha,
+    tlsEcdheRsaWithAes256CbcSha,
+    tlsEcdheRsaWith3desEdeCbcSha,
+    tlsEcdheRsaWithRc4128Sha,
+    tlsEcdheRsaWithNullSha,
+    tlsEcdhAnonWithAes256CbcSha,
+    tlsEcdhAnonWithAes128CbcSha,
+    tlsEcdhAnonWith3desEdeCbcSha,
+    tlsEcdhAnonWithRc4128Sha,
+    tlsEcdhAnonWithNullSha,
   ];
 
   /// SHA-256 HMAC, SHA-256 PRF
   static const List<int> sha256Suites = [
-    TLS_RSA_WITH_AES_128_CBC_SHA256,
-    TLS_RSA_WITH_AES_256_CBC_SHA256,
-    TLS_DHE_RSA_WITH_AES_128_CBC_SHA256,
-    TLS_DHE_RSA_WITH_AES_256_CBC_SHA256,
-    TLS_RSA_WITH_NULL_SHA256,
-    TLS_DH_ANON_WITH_AES_128_CBC_SHA256,
-    TLS_DH_ANON_WITH_AES_256_CBC_SHA256,
-    TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256,
-    TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA256, // unsupported
-    TLS_ECDH_RSA_WITH_AES_128_CBC_SHA256, // unsupported
-    TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,
+    tlsRsaWithAes128CbcSha256,
+    tlsRsaWithAes256CbcSha256,
+    tlsDheRsaWithAes128CbcSha256,
+    tlsDheRsaWithAes256CbcSha256,
+    tlsRsaWithNullSha256,
+    tlsDhAnonWithAes128CbcSha256,
+    tlsDhAnonWithAes256CbcSha256,
+    tlsEcdheEcdsaWithAes128CbcSha256,
+    tlsEcdhEcdsaWithAes128CbcSha256, // unsupported
+    tlsEcdhRsaWithAes128CbcSha256, // unsupported
+    tlsEcdheRsaWithAes128CbcSha256,
     // TLS 1.3 suites using SHA256 implicitly are handled separately
   ];
 
   /// SHA-384 HMAC, SHA-384 PRF
   static const List<int> sha384Suites = [
-    TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384,
-    TLS_ECDH_ECDSA_WITH_AES_256_CBC_SHA384, // unsupported
-    TLS_ECDH_RSA_WITH_AES_256_CBC_SHA384, // unsupported
-    TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384,
-    TLS_DHE_DSS_WITH_AES_256_GCM_SHA384, // unsupported (also GCM)
-    TLS_DH_DSS_WITH_AES_256_GCM_SHA384, // unsupported (also GCM)
+    tlsEcdheEcdsaWithAes256CbcSha384,
+    tlsEcdhEcdsaWithAes256CbcSha384, // unsupported
+    tlsEcdhRsaWithAes256CbcSha384, // unsupported
+    tlsEcdheRsaWithAes256CbcSha384,
+    tlsDheDssWithAes256GcmSha384, // unsupported (also GCM)
+    tlsDhDssWithAes256GcmSha384, // unsupported (also GCM)
     // GCM suites using SHA384 are handled separately (in aes256GcmSuites)
   ];
 
@@ -1846,9 +1849,9 @@ class CipherSuite {
 
   /// MD-5 HMAC, protocol default PRF (Insecure)
   static const List<int> md5Suites = [
-    TLS_DH_ANON_WITH_RC4_128_MD5,
-    TLS_RSA_WITH_RC4_128_MD5,
-    TLS_RSA_WITH_NULL_MD5,
+    tlsDhAnonWithRc4128Md5,
+    tlsRsaWithRc4128Md5,
+    tlsRsaWithNullMd5,
   ];
 
   /// SSL3, TLS1.0, TLS1.1 compatible ciphers
@@ -1860,11 +1863,11 @@ class CipherSuite {
   // --- TLS 1.3 Handling ---
   /// TLS1.3 specific ciphersuites
   static const List<int> tls13Suites = [
-    TLS_AES_128_GCM_SHA256,
-    TLS_AES_256_GCM_SHA384,
-    TLS_CHACHA20_POLY1305_SHA256,
-    TLS_AES_128_CCM_SHA256,
-    TLS_AES_128_CCM_8_SHA256,
+    tlsAes128GcmSha256,
+    tlsAes256GcmSha384,
+    tlsChacha20Poly1305Sha256,
+    tlsAes128CcmSha256,
+    tlsAes128Ccm8Sha256,
   ];
 
   // Generate TLS 1.2 specific suites by removing TLS 1.3 ones from combined lists
@@ -1961,16 +1964,16 @@ class CipherSuite {
       includeSuites.addAll(CipherSuite.sha256PrfSuites);
       // Also include TLS 1.3 suites implicitly using SHA256
       includeSuites.addAll([
-        TLS_AES_128_GCM_SHA256,
-        TLS_CHACHA20_POLY1305_SHA256,
-        TLS_AES_128_CCM_SHA256,
-        TLS_AES_128_CCM_8_SHA256
+        tlsAes128GcmSha256,
+        tlsChacha20Poly1305Sha256,
+        tlsAes128CcmSha256,
+        tlsAes128Ccm8Sha256
       ]);
     }
     if (actualPrfs.contains("sha384")) {
       includeSuites.addAll(CipherSuite.sha384PrfSuites);
       // Also include TLS 1.3 suites implicitly using SHA384
-      includeSuites.add(TLS_AES_256_GCM_SHA384);
+      includeSuites.add(tlsAes256GcmSha384);
     }
 
     // For suites compatible with TLS < 1.2, PRF isn't explicitly SHA256/384
@@ -2104,9 +2107,9 @@ class CipherSuite {
 
   /// SRP key exchange, no certificate base authentication
   static const List<int> srpSuites = [
-    TLS_SRP_SHA_WITH_AES_256_CBC_SHA,
-    TLS_SRP_SHA_WITH_AES_128_CBC_SHA,
-    TLS_SRP_SHA_WITH_3DES_EDE_CBC_SHA,
+    tlsSrpShaWithAes256CbcSha,
+    tlsSrpShaWithAes128CbcSha,
+    tlsSrpShaWith3desEdeCbcSha,
   ];
 
   /// Return SRP cipher suites matching settings
@@ -2117,9 +2120,9 @@ class CipherSuite {
 
   /// SRP key exchange, RSA authentication
   static const List<int> srpCertSuites = [
-    TLS_SRP_SHA_RSA_WITH_AES_256_CBC_SHA,
-    TLS_SRP_SHA_RSA_WITH_AES_128_CBC_SHA,
-    TLS_SRP_SHA_RSA_WITH_3DES_EDE_CBC_SHA,
+    tlsSrpShaRsaWithAes256CbcSha,
+    tlsSrpShaRsaWithAes128CbcSha,
+    tlsSrpShaRsaWith3desEdeCbcSha,
   ];
 
   /// Return SRP cipher suites that use server certificates (RSA)
@@ -2130,9 +2133,9 @@ class CipherSuite {
 
   /// SRP key exchange, DSA authentication
   static const List<int> srpDsaSuites = [
-    TLS_SRP_SHA_DSS_WITH_3DES_EDE_CBC_SHA, // unsupported
-    TLS_SRP_SHA_DSS_WITH_AES_128_CBC_SHA, // unsupported
-    TLS_SRP_SHA_DSS_WITH_AES_256_CBC_SHA, // unsupported
+    tlsSrpShaDssWith3desEdeCbcSha, // unsupported
+    tlsSrpShaDssWithAes128CbcSha, // unsupported
+    tlsSrpShaDssWithAes256CbcSha, // unsupported
   ];
 
   /// Return SRP DSA cipher suites that use server certificates
@@ -2158,22 +2161,22 @@ class CipherSuite {
 
   /// RSA key exchange, RSA authentication
   static const List<int> certSuites = [
-    TLS_RSA_WITH_AES_256_GCM_SHA384,
-    TLS_RSA_WITH_AES_128_GCM_SHA256,
-    TLS_RSA_WITH_AES_256_CCM,
-    TLS_RSA_WITH_AES_128_CCM,
-    TLS_RSA_WITH_AES_256_CBC_SHA256,
-    TLS_RSA_WITH_AES_128_CBC_SHA256,
-    TLS_RSA_WITH_AES_256_CBC_SHA,
-    TLS_RSA_WITH_AES_128_CBC_SHA,
-    TLS_RSA_WITH_AES_256_CCM_8,
-    TLS_RSA_WITH_AES_128_CCM_8,
-    TLS_RSA_WITH_3DES_EDE_CBC_SHA,
-    TLS_RSA_WITH_RC4_128_SHA,
-    TLS_RSA_WITH_RC4_128_MD5,
-    TLS_RSA_WITH_NULL_MD5,
-    TLS_RSA_WITH_NULL_SHA,
-    TLS_RSA_WITH_NULL_SHA256,
+    tlsRsaWithAes256GcmSha384,
+    tlsRsaWithAes128GcmSha256,
+    tlsRsaWithAes256Ccm,
+    tlsRsaWithAes128Ccm,
+    tlsRsaWithAes256CbcSha256,
+    tlsRsaWithAes128CbcSha256,
+    tlsRsaWithAes256CbcSha,
+    tlsRsaWithAes128CbcSha,
+    tlsRsaWithAes256Ccm8,
+    tlsRsaWithAes128Ccm8,
+    tlsRsaWith3desEdeCbcSha,
+    tlsRsaWithRc4128Sha,
+    tlsRsaWithRc4128Md5,
+    tlsRsaWithNullMd5,
+    tlsRsaWithNullSha,
+    tlsRsaWithNullSha256,
   ];
 
   /// Return ciphers with RSA key exchange matching settings
@@ -2184,19 +2187,19 @@ class CipherSuite {
 
   /// FFDHE key exchange, RSA authentication
   static const List<int> dheCertSuites = [
-    TLS_DHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
-    TLS_DHE_RSA_WITH_CHACHA20_POLY1305_draft_00,
-    TLS_DHE_RSA_WITH_AES_256_GCM_SHA384,
-    TLS_DHE_RSA_WITH_AES_128_GCM_SHA256,
-    TLS_DHE_RSA_WITH_AES_256_CCM,
-    TLS_DHE_RSA_WITH_AES_128_CCM,
-    TLS_DHE_RSA_WITH_AES_256_CBC_SHA256,
-    TLS_DHE_RSA_WITH_AES_128_CBC_SHA256,
-    TLS_DHE_RSA_WITH_AES_256_CBC_SHA,
-    TLS_DHE_RSA_WITH_AES_128_CBC_SHA,
-    TLS_DHE_RSA_WITH_AES_256_CCM_8,
-    TLS_DHE_RSA_WITH_AES_128_CCM_8,
-    TLS_DHE_RSA_WITH_3DES_EDE_CBC_SHA,
+    tlsDheRsaWithChacha20Poly1305Sha256,
+    tlsDheRsaWithChacha20Poly1305Draft00,
+    tlsDheRsaWithAes256GcmSha384,
+    tlsDheRsaWithAes128GcmSha256,
+    tlsDheRsaWithAes256Ccm,
+    tlsDheRsaWithAes128Ccm,
+    tlsDheRsaWithAes256CbcSha256,
+    tlsDheRsaWithAes128CbcSha256,
+    tlsDheRsaWithAes256CbcSha,
+    tlsDheRsaWithAes128CbcSha,
+    tlsDheRsaWithAes256Ccm8,
+    tlsDheRsaWithAes128Ccm8,
+    tlsDheRsaWith3desEdeCbcSha,
   ];
 
   /// Provide authenticated DHE ciphersuites matching settings
@@ -2207,17 +2210,17 @@ class CipherSuite {
 
   /// ECDHE key exchange, RSA authentication
   static const List<int> ecdheCertSuites = [
-    TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
-    TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_draft_00,
-    TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-    TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-    TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384,
-    TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,
-    TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
-    TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
-    TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA,
-    TLS_ECDHE_RSA_WITH_RC4_128_SHA,
-    TLS_ECDHE_RSA_WITH_NULL_SHA,
+    tlsEcdheRsaWithChacha20Poly1305Sha256,
+    tlsEcdheRsaWithChacha20Poly1305Draft00,
+    tlsEcdheRsaWithAes256GcmSha384,
+    tlsEcdheRsaWithAes128GcmSha256,
+    tlsEcdheRsaWithAes256CbcSha384,
+    tlsEcdheRsaWithAes128CbcSha256,
+    tlsEcdheRsaWithAes256CbcSha,
+    tlsEcdheRsaWithAes128CbcSha,
+    tlsEcdheRsaWith3desEdeCbcSha,
+    tlsEcdheRsaWithRc4128Sha,
+    tlsEcdheRsaWithNullSha,
   ];
 
   /// Provide authenticated ECDHE_RSA ciphersuites matching settings
@@ -2236,21 +2239,21 @@ class CipherSuite {
 
   /// ECDHE key exchange, ECDSA authentication
   static const List<int> ecdheEcdsaSuites = [
-    TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
-    TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_draft_00,
-    TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-    TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-    TLS_ECDHE_ECDSA_WITH_AES_256_CCM,
-    TLS_ECDHE_ECDSA_WITH_AES_128_CCM,
-    TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384,
-    TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256,
-    TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
-    TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
-    TLS_ECDHE_ECDSA_WITH_3DES_EDE_CBC_SHA,
-    TLS_ECDHE_ECDSA_WITH_AES_256_CCM_8,
-    TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8,
-    TLS_ECDHE_ECDSA_WITH_RC4_128_SHA,
-    TLS_ECDHE_ECDSA_WITH_NULL_SHA,
+    tlsEcdheEcdsaWithChacha20Poly1305Sha256,
+    tlsEcdheEcdsaWithChacha20Poly1305Draft00,
+    tlsEcdheEcdsaWithAes256GcmSha384,
+    tlsEcdheEcdsaWithAes128GcmSha256,
+    tlsEcdheEcdsaWithAes256Ccm,
+    tlsEcdheEcdsaWithAes128Ccm,
+    tlsEcdheEcdsaWithAes256CbcSha384,
+    tlsEcdheEcdsaWithAes128CbcSha256,
+    tlsEcdheEcdsaWithAes256CbcSha,
+    tlsEcdheEcdsaWithAes128CbcSha,
+    tlsEcdheEcdsaWith3desEdeCbcSha,
+    tlsEcdheEcdsaWithAes256Ccm8,
+    tlsEcdheEcdsaWithAes128Ccm8,
+    tlsEcdheEcdsaWithRc4128Sha,
+    tlsEcdheEcdsaWithNullSha,
   ];
 
   /// Provide ECDSA authenticated ciphersuites matching settings
@@ -2261,13 +2264,13 @@ class CipherSuite {
 
   /// DHE key exchange, DSA authentication
   static const List<int> dheDsaSuites = [
-    TLS_DHE_DSS_WITH_AES_256_GCM_SHA384, // unsupported
-    TLS_DHE_DSS_WITH_AES_128_GCM_SHA256, // unsupported
-    TLS_DHE_DSS_WITH_AES_256_CBC_SHA256, // unsupported
-    TLS_DHE_DSS_WITH_AES_128_CBC_SHA256, // unsupported
-    TLS_DHE_DSS_WITH_AES_256_CBC_SHA, // unsupported
-    TLS_DHE_DSS_WITH_AES_128_CBC_SHA, // unsupported
-    TLS_DHE_DSS_WITH_3DES_EDE_CBC_SHA, // unsupported
+    tlsDheDssWithAes256GcmSha384, // unsupported
+    tlsDheDssWithAes128GcmSha256, // unsupported
+    tlsDheDssWithAes256CbcSha256, // unsupported
+    tlsDheDssWithAes128CbcSha256, // unsupported
+    tlsDheDssWithAes256CbcSha, // unsupported
+    tlsDheDssWithAes128CbcSha, // unsupported
+    tlsDheDssWith3desEdeCbcSha, // unsupported
   ];
 
   /// Provide DSA authenticated ciphersuites matching settings
@@ -2280,14 +2283,14 @@ class CipherSuite {
 
   /// anon FFDHE key exchange
   static const List<int> anonSuites = [
-    TLS_DH_ANON_WITH_AES_256_GCM_SHA384,
-    TLS_DH_ANON_WITH_AES_128_GCM_SHA256,
-    TLS_DH_ANON_WITH_AES_256_CBC_SHA256,
-    TLS_DH_ANON_WITH_AES_256_CBC_SHA,
-    TLS_DH_ANON_WITH_AES_128_CBC_SHA256,
-    TLS_DH_ANON_WITH_AES_128_CBC_SHA,
-    TLS_DH_ANON_WITH_3DES_EDE_CBC_SHA,
-    TLS_DH_ANON_WITH_RC4_128_MD5,
+    tlsDhAnonWithAes256GcmSha384,
+    tlsDhAnonWithAes128GcmSha256,
+    tlsDhAnonWithAes256CbcSha256,
+    tlsDhAnonWithAes256CbcSha,
+    tlsDhAnonWithAes128CbcSha256,
+    tlsDhAnonWithAes128CbcSha,
+    tlsDhAnonWith3desEdeCbcSha,
+    tlsDhAnonWithRc4128Md5,
   ];
 
   /// Provide anonymous DH ciphersuites matching settings
@@ -2305,11 +2308,11 @@ class CipherSuite {
 
   /// anon ECDHE key exchange
   static const List<int> ecdhAnonSuites = [
-    TLS_ECDH_ANON_WITH_AES_256_CBC_SHA,
-    TLS_ECDH_ANON_WITH_AES_128_CBC_SHA,
-    TLS_ECDH_ANON_WITH_3DES_EDE_CBC_SHA,
-    TLS_ECDH_ANON_WITH_RC4_128_SHA,
-    TLS_ECDH_ANON_WITH_NULL_SHA,
+    tlsEcdhAnonWithAes256CbcSha,
+    tlsEcdhAnonWithAes128CbcSha,
+    tlsEcdhAnonWith3desEdeCbcSha,
+    tlsEcdhAnonWithRc4128Sha,
+    tlsEcdhAnonWithNullSha,
   ];
 
   /// Provide anonymous ECDH ciphersuites matching settings
@@ -2393,17 +2396,17 @@ class Fault {
   /// Requires AlertDescription constants to be defined elsewhere.
   static final Map<int, List<int>> faultAlerts = {
     badUsername: [
-      AlertDescription.unknown_psk_identity,
-      AlertDescription.bad_record_mac
+      AlertDescription.unknownPskIdentity,
+      AlertDescription.badRecordMac
     ],
-    badPassword: [AlertDescription.bad_record_mac],
-    badA: [AlertDescription.illegal_parameter],
-    badPremasterPadding: [AlertDescription.bad_record_mac],
-    shortPremasterSecret: [AlertDescription.bad_record_mac],
-    badVerifyMessage: [AlertDescription.decrypt_error],
-    badFinished: [AlertDescription.decrypt_error],
-    badMAC: [AlertDescription.bad_record_mac],
-    badPadding: [AlertDescription.bad_record_mac],
+    badPassword: [AlertDescription.badRecordMac],
+    badA: [AlertDescription.illegalParameter],
+    badPremasterPadding: [AlertDescription.badRecordMac],
+    shortPremasterSecret: [AlertDescription.badRecordMac],
+    badVerifyMessage: [AlertDescription.decryptError],
+    badFinished: [AlertDescription.decryptError],
+    badMAC: [AlertDescription.badRecordMac],
+    badPadding: [AlertDescription.badRecordMac],
     // Note: badB is not mapped in the  code's faultAlerts dictionary
   };
 

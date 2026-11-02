@@ -1,9 +1,9 @@
 import 'dart:typed_data';
 import 'package:test/test.dart';
-import 'package:tlslite/src/brotli/dec/State.dart';
-import 'package:tlslite/src/brotli/dec/BitReader.dart';
-import 'package:tlslite/src/brotli/dec/Decode.dart';
-import 'package:tlslite/src/brotli/dec/BrotliRuntimeException.dart';
+import 'package:tlslite/src/brotli/dec/state.dart';
+import 'package:tlslite/src/brotli/dec/bit_reader.dart';
+import 'package:tlslite/src/brotli/dec/decode.dart';
+import 'package:tlslite/src/brotli/dec/brotli_runtime_exception.dart';
 
 void main() {
   group('BitReaderTest', () {
@@ -60,7 +60,7 @@ void main() {
         
         // The Java test expects IllegalStateException "Accumulator underloaded".
         // This comes from assertAccumulatorHealthy.
-        // In Dart BitReader.dart:
+        // In Dart bit_reader.dart:
         // static void assertAccumulatorHealthy(State s) {
         //   if (s.bitOffset > BITNESS) {
         //     throw StateError('Accumulator underloaded: ${s.bitOffset}');

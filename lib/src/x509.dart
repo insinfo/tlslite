@@ -1,3 +1,8 @@
+// Ported to Dart from tlslite-ng tlslite/x509.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'constants.dart';
@@ -46,11 +51,59 @@ class X509 {
   DateTime? notAfter;
 
   // Extensions
+
+  /// Textual subjectAltName entries (dNSName values and iPAddress values in
+  /// dotted / colon notation, mixed). Kept for compatibility; prefer
+  /// [dnsNames] and [ipAddresses], which keep the two name types apart.
   List<String>? subjectAltName;
+
+  /// subjectAltName dNSName entries, exactly as encoded in the certificate.
+  /// `null` when the certificate has no subjectAltName extension.
+  List<String>? dnsNames;
+
+  /// subjectAltName iPAddress entries as raw network-order bytes (4 bytes
+  /// for IPv4, 16 for IPv6). `null` when there is no subjectAltName.
+  List<Uint8List>? ipAddresses;
+
+  /// basicConstraints cA flag; `null` when the extension is absent.
   bool? isCA;
+
+  /// basicConstraints pathLenConstraint; `null` when absent.
   int? pathLenConstraint;
+
+  /// keyUsage bits by name (e.g. `keyCertSign`); `null` when absent.
   Set<String>? keyUsage;
+
+  /// extendedKeyUsage purpose OIDs in dotted notation; `null` when absent.
   List<String>? extendedKeyUsage;
+
+  /// nameConstraints permitted dNSName subtrees (`null` when not present).
+  List<String>? permittedDnsNames;
+
+  /// nameConstraints excluded dNSName subtrees (`null` when not present).
+  List<String>? excludedDnsNames;
+
+  /// nameConstraints permitted iPAddress subtrees, each address||mask
+  /// (8 bytes for IPv4, 32 for IPv6). `null` when not present.
+  List<Uint8List>? permittedIpRanges;
+
+  /// nameConstraints excluded iPAddress subtrees, each address||mask.
+  List<Uint8List>? excludedIpRanges;
+
+  /// Dotted OIDs of every extension marked critical.
+  final Set<String> criticalExtensions = <String>{};
+
+  /// Signature family of the certificate signature: `rsa-pkcs1`,
+  /// `rsa-pss`, `ecdsa`, `dsa`, `Ed25519` or `Ed448`; `null` if the
+  /// algorithm is not recognised (then [verify] returns false).
+  String? signatureKind;
+
+  /// Hash used by the certificate signature (`sha1`, `sha256`, ...), or
+  /// `intrinsic` for EdDSA.
+  String? signatureHashName;
+
+  /// RSASSA-PSS salt length (RFC 4055 default 20); only for `rsa-pss`.
+  int? signaturePssSaltLength;
 
   /// Raw signature bytes.
   Uint8List? signatureValue;
@@ -73,8 +126,13 @@ class X509 {
     final tbsCertificate = parser.getChild(0);
     
     final signatureAlgorithmIdentifier = parser.getChild(1);
-    signatureAlgorithm =
-        _resolveSignatureAlgorithm(signatureAlgorithmIdentifier);
+    try {
+      signatureAlgorithm =
+          _resolveSignatureAlgorithm(signatureAlgorithmIdentifier);
+    } on FormatException {
+      signatureAlgorithm = null;
+    }
+    _resolveSignatureParameters(signatureAlgorithmIdentifier);
         
     final signatureValueBitString = parser.getChild(2);
     signatureValue = Uint8List.fromList(_extractBitString(signatureValueBitString.value));
@@ -119,62 +177,143 @@ class X509 {
   }
 
   /// Verify the certificate signature against the issuer's public key.
+  ///
+  /// Supports RSA PKCS#1 v1.5 and RSASSA-PSS (SHA-1/224/256/384/512),
+  /// ECDSA (SHA-1/224/256/384/512 on any supported curve), DSA and
+  /// Ed25519/Ed448. Returns `false` when the signature does not verify, when
+  /// the key type does not match the signature algorithm, or when the
+  /// signature algorithm is not recognised.
   bool verify(Object issuerPublicKey) {
-    if (tbsCertificateBytes == null || signatureValue == null || signatureAlgorithm == null) {
+    final tbs = tbsCertificateBytes;
+    final sig = signatureValue;
+    if (tbs == null || sig == null) {
       throw StateError('Certificate not parsed or incomplete');
     }
-
-    String? hashName;
-    String? padding;
-    
-    if (signatureAlgorithm is int) {
-        final schemeName = SignatureScheme.toRepr(signatureAlgorithm);
-        if (schemeName == null) throw FormatException('Unknown signature scheme');
-        
-        hashName = SignatureScheme.getHash(schemeName);
-        padding = SignatureScheme.getPadding(schemeName);
-        if (padding.isEmpty) padding = null;
-        
-        // Handle EdDSA special case (intrinsic hash)
-        if (schemeName == 'ed25519' || schemeName == 'ed448') {
-            hashName = 'intrinsic';
-            padding = null;
-        }
-    } else if (signatureAlgorithm is List) {
-        // Legacy tuple [hashAlg, sigAlg]
-        final hashAlg = signatureAlgorithm[0];
-        final sigAlg = signatureAlgorithm[1];
-        hashName = HashAlgorithm.toRepr(hashAlg);
-        if (sigAlg == SignatureAlgorithm.rsa) {
-            padding = 'pkcs1';
-        } else if (sigAlg == SignatureAlgorithm.dsa) {
-            padding = null;
-        }
-    } else {
-        throw FormatException('Unknown signature algorithm format');
+    final kind = signatureKind;
+    final hashName = signatureHashName;
+    if (kind == null || hashName == null) {
+      return false;
     }
-
-    if (hashName == null) throw FormatException('Unknown hash algorithm');
-
-    // Calculate digest or use raw bytes
-    Uint8List dataToVerify;
-    if (hashName == 'intrinsic') {
-        dataToVerify = tbsCertificateBytes!;
-    } else {
-        dataToVerify = secureHash(tbsCertificateBytes!, hashName);
+    try {
+      switch (kind) {
+        case 'rsa-pkcs1':
+          if (issuerPublicKey is! RSAKey) return false;
+          return issuerPublicKey.verify(sig, secureHash(tbs, hashName),
+              padding: 'pkcs1', hashAlg: hashName);
+        case 'rsa-pss':
+          if (issuerPublicKey is! RSAKey) return false;
+          return issuerPublicKey.verify(sig, secureHash(tbs, hashName),
+              padding: 'pss',
+              hashAlg: hashName,
+              saltLen: signaturePssSaltLength ?? 20);
+        case 'ecdsa':
+          if (issuerPublicKey is! ECDSAKey) return false;
+          return issuerPublicKey.verify(sig, secureHash(tbs, hashName));
+        case 'dsa':
+          if (issuerPublicKey is! DSAKey) return false;
+          return issuerPublicKey.verify(sig, secureHash(tbs, hashName));
+        case 'Ed25519':
+        case 'Ed448':
+          if (issuerPublicKey is! EdDSAKey) return false;
+          return issuerPublicKey.hashAndVerify(sig, tbs);
+      }
+    } on ArgumentError {
+      return false;
+    } on FormatException {
+      return false;
+    } on StateError {
+      return false;
     }
+    return false;
+  }
 
-    // Verify
-    if (issuerPublicKey is RSAKey) {
-        return issuerPublicKey.verify(signatureValue!, dataToVerify, padding: padding ?? 'pkcs1', hashAlg: hashName);
-    } else if (issuerPublicKey is ECDSAKey) {
-        return issuerPublicKey.verify(signatureValue!, dataToVerify);
-    } else if (issuerPublicKey is EdDSAKey) {
-        return issuerPublicKey.hashAndVerify(signatureValue!, dataToVerify);
-    } else if (issuerPublicKey is DSAKey) {
-        return issuerPublicKey.verify(signatureValue!, dataToVerify);
-    } else {
-        throw UnimplementedError('Unsupported issuer key type: ${issuerPublicKey.runtimeType}');
+  /// Common name (CN) attribute values of the subject, in encoding order.
+  List<String> get subjectCommonNames {
+    final der = subject;
+    if (der == null) return const [];
+    return [
+      for (final attr in x509NameAttributes(der))
+        if (attr.key == '2.5.4.3') attr.value
+    ];
+  }
+
+  /// Human readable subject DN, e.g. `CN=example.com, O=Example`.
+  String get subjectString =>
+      subject == null ? '' : formatX509Name(subject!);
+
+  /// Human readable issuer DN.
+  String get issuerString => issuer == null ? '' : formatX509Name(issuer!);
+
+  void _resolveSignatureParameters(ASN1Parser algIdentifier) {
+    signatureKind = null;
+    signatureHashName = null;
+    signaturePssSaltLength = null;
+    final List<int> oid;
+    try {
+      oid = _decodeObjectIdentifier(algIdentifier.getChild(0).value);
+    } on Object {
+      return;
+    }
+    final dotted = oid.join('.');
+    final known = _signatureOids[dotted];
+    if (known != null) {
+      signatureKind = known.$1;
+      signatureHashName = known.$2;
+      return;
+    }
+    if (dotted == '1.2.840.113549.1.1.10') {
+      // RSASSA-PSS-params ::= SEQUENCE {
+      //   hashAlgorithm [0] HashAlgorithm DEFAULT sha1,
+      //   maskGenAlgorithm [1] MaskGenAlgorithm DEFAULT mgf1SHA1,
+      //   saltLength [2] INTEGER DEFAULT 20,
+      //   trailerField [3] TrailerField DEFAULT trailerFieldBC }
+      var hash = 'sha1';
+      var mgfHash = 'sha1';
+      var salt = 20;
+      try {
+        if (algIdentifier.getChildCount() > 1) {
+          final params = algIdentifier.getChild(1);
+          final count = params.getChildCount();
+          for (var i = 0; i < count; i++) {
+            final field = params.getChild(i);
+            if (field.type.tagClass != 2) continue;
+            final inner = ASN1Parser(field.value);
+            switch (field.type.tagId) {
+              case 0:
+                final h = _hashOids[
+                    _decodeObjectIdentifier(inner.getChild(0).value).join('.')];
+                if (h == null) return;
+                hash = h;
+                break;
+              case 1:
+                // MGF1 with a hash AlgorithmIdentifier parameter.
+                final mgfOid =
+                    _decodeObjectIdentifier(inner.getChild(0).value).join('.');
+                if (mgfOid != '1.2.840.113549.1.1.8') return;
+                final mgfParams = inner.getChild(1);
+                final h = _hashOids[
+                    _decodeObjectIdentifier(mgfParams.getChild(0).value)
+                        .join('.')];
+                if (h == null) return;
+                mgfHash = h;
+                break;
+              case 2:
+                salt = bytesToNumber(inner.value).toInt();
+                break;
+              case 3:
+                if (bytesToNumber(inner.value) != BigInt.one) return;
+                break;
+            }
+          }
+        }
+      } on Object {
+        return;
+      }
+      // The RSA backend uses the same hash for MGF1 as for the message.
+      if (mgfHash != hash) return;
+      signatureKind = 'rsa-pss';
+      signatureHashName = hash;
+      signaturePssSaltLength = salt;
     }
   }
 
@@ -183,10 +322,15 @@ class X509 {
     for (var i = 0; i < count; i++) {
       final extension = extensionsSeq.getChild(i);
       final oid = _decodeObjectIdentifier(extension.getChild(0).value);
-      
+
       var valueIndex = 1;
-      if (extension.getChild(1).type.tagId == 1) { // BOOLEAN (critical)
-         valueIndex = 2;
+      final second = extension.getChild(1);
+      if (second.type.tagClass == 0 && second.type.tagId == 1) {
+        // BOOLEAN (critical)
+        valueIndex = 2;
+        if (second.value.isNotEmpty && second.value[0] != 0) {
+          criticalExtensions.add(oid.join('.'));
+        }
       }
       
       final extValueOctet = extension.getChild(valueIndex);
@@ -201,6 +345,8 @@ class X509 {
         _parseKeyUsage(extValue);
       } else if (_oidEquals(oid, _oidExtendedKeyUsage)) {
         _parseExtendedKeyUsage(extValue);
+      } else if (_oidEquals(oid, _oidNameConstraints)) {
+        _parseNameConstraints(extValue);
       }
     }
   }
@@ -209,16 +355,23 @@ class X509 {
     final parser = ASN1Parser(data);
     final count = parser.getChildCount();
     subjectAltName = [];
+    dnsNames = [];
+    ipAddresses = [];
     for (var i = 0; i < count; i++) {
       final item = parser.getChild(i);
       // dNSName [2] IA5String
       if (item.type.tagClass == 2 && item.type.tagId == 2) {
-        subjectAltName!.add(String.fromCharCodes(item.value));
+        final name = String.fromCharCodes(item.value);
+        subjectAltName!.add(name);
+        dnsNames!.add(name);
       }
       // iPAddress [7] OCTET STRING
       else if (item.type.tagClass == 2 && item.type.tagId == 7) {
         // Convert IP bytes to string representation
         final ipBytes = item.value;
+        if (ipBytes.length == 4 || ipBytes.length == 16) {
+          ipAddresses!.add(Uint8List.fromList(ipBytes));
+        }
         if (ipBytes.length == 4) {
           // IPv4 address
           subjectAltName!.add(ipBytes.join('.'));
@@ -248,16 +401,20 @@ class X509 {
             pathLenConstraint = bytesToNumber(second.value).toInt();
           }
         }
+      } else if (first.type.tagId == 2) {
+        // cA omitted (DEFAULT FALSE) but pathLenConstraint present.
+        pathLenConstraint = bytesToNumber(first.value).toInt();
       }
     }
   }
 
   void _parseKeyUsage(Uint8List data) {
-    // KeyUsage ::= BIT STRING
-    // We need to parse the BIT STRING (skip unused bits byte)
-    if (data.length < 2) return; // Invalid
-    // First byte is number of unused bits, we ignore for now as we check specific bits
-    final bits = data.sublist(1);
+    // KeyUsage ::= BIT STRING. The extension value is the full DER
+    // encoding (tag, length, unused-bits octet, bits).
+    final bitString = ASN1Parser(data);
+    if (bitString.type.tagId != 3 || bitString.value.isEmpty) return;
+    // First value octet is the number of unused bits; we test named bits.
+    final bits = bitString.value.sublist(1);
     keyUsage = {};
     
     bool isBitSet(int byteIndex, int bitIndex) {
@@ -276,6 +433,39 @@ class X509 {
     if (isBitSet(1, 0)) keyUsage!.add('decipherOnly');
   }
 
+  void _parseNameConstraints(Uint8List data) {
+    // NameConstraints ::= SEQUENCE {
+    //   permittedSubtrees [0] GeneralSubtrees OPTIONAL,
+    //   excludedSubtrees  [1] GeneralSubtrees OPTIONAL }
+    final parser = ASN1Parser(data);
+    final count = parser.getChildCount();
+    for (var i = 0; i < count; i++) {
+      final subtrees = parser.getChild(i);
+      if (subtrees.type.tagClass != 2) continue;
+      final permitted = subtrees.type.tagId == 0;
+      final dns = <String>[];
+      final ips = <Uint8List>[];
+      // [n] IMPLICIT SEQUENCE OF GeneralSubtree: the value holds the items.
+      final n = subtrees.getChildCount();
+      for (var j = 0; j < n; j++) {
+        final subtree = subtrees.getChild(j);
+        final base = subtree.getChild(0);
+        if (base.type.tagClass == 2 && base.type.tagId == 2) {
+          dns.add(String.fromCharCodes(base.value));
+        } else if (base.type.tagClass == 2 && base.type.tagId == 7) {
+          ips.add(Uint8List.fromList(base.value));
+        }
+      }
+      if (permitted) {
+        permittedDnsNames = dns;
+        permittedIpRanges = ips;
+      } else {
+        excludedDnsNames = dns;
+        excludedIpRanges = ips;
+      }
+    }
+  }
+
   void _parseExtendedKeyUsage(Uint8List data) {
     final parser = ASN1Parser(data);
     final count = parser.getChildCount();
@@ -289,7 +479,7 @@ class X509 {
 
   /// Hex fingerprint of the certificate (SHA-1 ).
   String getFingerprint() {
-    final digestBytes = Uint8List.fromList(SHA1(bytes));
+    final digestBytes = Uint8List.fromList(sha1(bytes));
     return hexEncode(digestBytes);
   }
 
@@ -431,7 +621,7 @@ class X509 {
 
   dynamic _resolveSignatureAlgorithm(ASN1Parser algIdentifier) {
     final oidBytes = Uint8List.fromList(algIdentifier.getChildBytes(0));
-    if (_bytesEqual(oidBytes, RSA_PSS_OID)) {
+    if (_bytesEqual(oidBytes, rsaPssOid)) {
       if (algIdentifier.getChildCount() < 2) {
         throw const FormatException('RSASSA-PSS parameters missing');
       }
@@ -494,28 +684,8 @@ class X509 {
     return true;
   }
 
-  List<int> _decodeObjectIdentifier(Uint8List oidValue) {
-    if (oidValue.isEmpty) {
-      throw const FormatException('OID encoding is empty');
-    }
-    final arcs = <int>[];
-    final first = oidValue.first;
-    arcs.add(first ~/ 40);
-    arcs.add(first % 40);
-    var value = 0;
-    for (var i = 1; i < oidValue.length; i++) {
-      final byte = oidValue[i];
-      value = (value << 7) | (byte & 0x7f);
-      if ((byte & 0x80) == 0) {
-        arcs.add(value);
-        value = 0;
-      }
-    }
-    if (value != 0) {
-      arcs.add(value);
-    }
-    return arcs;
-  }
+  List<int> _decodeObjectIdentifier(Uint8List oidValue) =>
+      _decodeOidArcs(oidValue);
 
   bool _oidEquals(List<int> actual, List<int> expected) {
     if (actual.length != expected.length) {
@@ -537,7 +707,138 @@ const List<int> _oidEcdsa = [42, 134, 72, 206, 61, 2, 1];
 const List<int> _oidEd25519 = [43, 101, 112];
 const List<int> _oidEd448 = [43, 101, 113];
 
-const List<int> _oidSubjectAltName = [85, 29, 17];
-const List<int> _oidBasicConstraints = [85, 29, 19];
-const List<int> _oidKeyUsage = [85, 29, 15];
-const List<int> _oidExtendedKeyUsage = [85, 29, 37];
+// Extension OIDs are compared against decoded arcs.
+const List<int> _oidSubjectAltName = [2, 5, 29, 17];
+const List<int> _oidBasicConstraints = [2, 5, 29, 19];
+const List<int> _oidKeyUsage = [2, 5, 29, 15];
+const List<int> _oidExtendedKeyUsage = [2, 5, 29, 37];
+const List<int> _oidNameConstraints = [2, 5, 29, 30];
+
+/// Certificate signature algorithm OIDs -> (signature kind, hash).
+const Map<String, (String, String)> _signatureOids = {
+  '1.2.840.113549.1.1.4': ('rsa-pkcs1', 'md5'),
+  '1.2.840.113549.1.1.5': ('rsa-pkcs1', 'sha1'),
+  '1.2.840.113549.1.1.14': ('rsa-pkcs1', 'sha224'),
+  '1.2.840.113549.1.1.11': ('rsa-pkcs1', 'sha256'),
+  '1.2.840.113549.1.1.12': ('rsa-pkcs1', 'sha384'),
+  '1.2.840.113549.1.1.13': ('rsa-pkcs1', 'sha512'),
+  '1.2.840.10045.4.1': ('ecdsa', 'sha1'),
+  '1.2.840.10045.4.3.1': ('ecdsa', 'sha224'),
+  '1.2.840.10045.4.3.2': ('ecdsa', 'sha256'),
+  '1.2.840.10045.4.3.3': ('ecdsa', 'sha384'),
+  '1.2.840.10045.4.3.4': ('ecdsa', 'sha512'),
+  '1.2.840.10040.4.3': ('dsa', 'sha1'),
+  '2.16.840.1.101.3.4.3.1': ('dsa', 'sha224'),
+  '2.16.840.1.101.3.4.3.2': ('dsa', 'sha256'),
+  '1.3.101.112': ('Ed25519', 'intrinsic'),
+  '1.3.101.113': ('Ed448', 'intrinsic'),
+};
+
+/// Hash algorithm OIDs used inside RSASSA-PSS parameters.
+const Map<String, String> _hashOids = {
+  '1.3.14.3.2.26': 'sha1',
+  '2.16.840.1.101.3.4.2.4': 'sha224',
+  '2.16.840.1.101.3.4.2.1': 'sha256',
+  '2.16.840.1.101.3.4.2.2': 'sha384',
+  '2.16.840.1.101.3.4.2.3': 'sha512',
+};
+
+const Map<String, String> _nameAttributeShortNames = {
+  '2.5.4.3': 'CN',
+  '2.5.4.6': 'C',
+  '2.5.4.7': 'L',
+  '2.5.4.8': 'ST',
+  '2.5.4.10': 'O',
+  '2.5.4.11': 'OU',
+  '2.5.4.5': 'serialNumber',
+  '0.9.2342.19200300.100.1.25': 'DC',
+  '1.2.840.113549.1.9.1': 'emailAddress',
+};
+
+/// Decodes a DER X.501 `Name` into (dotted attribute OID, string value)
+/// pairs, in encoding order. Values that are not strings are rendered as
+/// `#hex`.
+List<MapEntry<String, String>> x509NameAttributes(Uint8List nameDer) {
+  final result = <MapEntry<String, String>>[];
+  final name = ASN1Parser(nameDer);
+  final rdnCount = name.getChildCount();
+  for (var i = 0; i < rdnCount; i++) {
+    final rdn = name.getChild(i);
+    final attrCount = rdn.getChildCount();
+    for (var j = 0; j < attrCount; j++) {
+      final attr = rdn.getChild(j);
+      final oid = _decodeOidArcs(attr.getChild(0).value).join('.');
+      final value = attr.getChild(1);
+      result.add(MapEntry(oid, _decodeDirectoryString(value)));
+    }
+  }
+  return result;
+}
+
+/// Formats a DER X.501 `Name` as `CN=..., O=...` (encoding order).
+String formatX509Name(Uint8List nameDer) {
+  try {
+    return x509NameAttributes(nameDer)
+        .map((e) => '${_nameAttributeShortNames[e.key] ?? e.key}=${e.value}')
+        .join(', ');
+  } on Object {
+    return '<unparseable name>';
+  }
+}
+
+String _decodeDirectoryString(ASN1Parser value) {
+  final bytes = value.value;
+  if (value.type.tagClass != 0) return '#${hexEncode(bytes)}';
+  switch (value.type.tagId) {
+    case 12: // UTF8String
+      return utf8.decode(bytes, allowMalformed: true);
+    case 19: // PrintableString
+    case 22: // IA5String
+    case 20: // TeletexString (treated as Latin-1)
+    case 26: // VisibleString
+      return String.fromCharCodes(bytes);
+    case 30: // BMPString (UTF-16BE)
+      final units = <int>[];
+      for (var i = 0; i + 1 < bytes.length; i += 2) {
+        units.add((bytes[i] << 8) | bytes[i + 1]);
+      }
+      return String.fromCharCodes(units);
+    case 28: // UniversalString (UTF-32BE)
+      final runes = <int>[];
+      for (var i = 0; i + 3 < bytes.length; i += 4) {
+        runes.add((bytes[i] << 24) |
+            (bytes[i + 1] << 16) |
+            (bytes[i + 2] << 8) |
+            bytes[i + 3]);
+      }
+      return String.fromCharCodes(runes);
+    default:
+      return '#${hexEncode(bytes)}';
+  }
+}
+
+List<int> _decodeOidArcs(Uint8List oidValue) {
+  if (oidValue.isEmpty) {
+    throw const FormatException('OID encoding is empty');
+  }
+  final arcs = <int>[];
+  var value = 0;
+  var first = true;
+  for (final byte in oidValue) {
+    value = (value << 7) | (byte & 0x7f);
+    if ((byte & 0x80) == 0) {
+      if (first) {
+        if (value < 80) {
+          arcs..add(value ~/ 40)..add(value % 40);
+        } else {
+          arcs..add(2)..add(value - 80);
+        }
+        first = false;
+      } else {
+        arcs.add(value);
+      }
+      value = 0;
+    }
+  }
+  return arcs;
+}

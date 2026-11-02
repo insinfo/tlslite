@@ -166,7 +166,7 @@ void main() {
       conn.session = session;
 
       final verifyData = conn.buildFinishedVerifyData(forClient: true);
-      final finishedKey = HKDF_expand_label(
+      final finishedKey = hkdfExpandLabel(
         clientHs,
         Uint8List.fromList('finished'.codeUnits),
         Uint8List(0),
@@ -517,7 +517,7 @@ void main() {
 
       final alertPayload = Uint8List.fromList([
         AlertLevel.warning,
-        AlertDescription.close_notify,
+        AlertDescription.closeNotify,
       ]);
       final alertHeader = RecordHeader3().create(const TlsProtocolVersion(3, 1),
           ContentType.alert, alertPayload.length);
@@ -568,7 +568,7 @@ void main() {
       harness.connection.heartbeatCanReceive = true;
 
       final request = TlsHeartbeat(
-        messageType: HeartbeatMessageType.heartbeat_request,
+        messageType: HeartbeatMessageType.heartbeatRequest,
         payload: const [0x01, 0x02],
         padding: List<int>.filled(16, 0xAB),
       );
@@ -593,7 +593,7 @@ void main() {
           .firstWhere((m) => m.contentType == ContentType.heartbeat);
       final response = TlsHeartbeat.parse(hbRecord.data);
       expect(response.messageType,
-          equals(HeartbeatMessageType.heartbeat_response));
+          equals(HeartbeatMessageType.heartbeatResponse));
       expect(response.payload, equals(request.payload));
       expect(response.padding.length, equals(request.padding.length));
     });
@@ -631,7 +631,7 @@ void main() {
           alertRecord.data,
           equals(Uint8List.fromList([
             AlertLevel.warning,
-            AlertDescription.no_renegotiation,
+            AlertDescription.noRenegotiation,
           ])));
     });
 
@@ -642,7 +642,7 @@ void main() {
 
       final appPayload = Uint8List.fromList([0x99, 0x00]);
       final appHeader = RecordHeader3().create(const TlsProtocolVersion(3, 3),
-          ContentType.application_data, appPayload.length);
+          ContentType.applicationData, appPayload.length);
       harness.connection.queueRecord(appHeader, appPayload);
 
       final handshakePayload = _handshakeFragment([
@@ -658,7 +658,7 @@ void main() {
       expect(msg.handshakeType, equals(TlsHandshakeType.helloRequest));
 
       final (header, parser) = await harness.connection.recvMessage();
-      expect(header.type, equals(ContentType.application_data));
+      expect(header.type, equals(ContentType.applicationData));
       expect(parser.getRemainingLength(), equals(appPayload.length));
       expect(parser.getFixBytes(appPayload.length), equals(appPayload));
     });
@@ -853,7 +853,7 @@ void main() {
 
       final appPayload = Uint8List.fromList([0xDE, 0xAD]);
       final appHeader = RecordHeader3().create(const TlsProtocolVersion(3, 3),
-          ContentType.application_data, appPayload.length);
+          ContentType.applicationData, appPayload.length);
       harness.connection.queueRecord(appHeader, appPayload);
 
       await expectLater(() => harness.connection.recvHandshakeMessage(),
@@ -865,7 +865,7 @@ void main() {
           alertRecord.data,
           equals(Uint8List.fromList([
             AlertLevel.fatal,
-            AlertDescription.unexpected_message,
+            AlertDescription.unexpectedMessage,
           ])));
     });
 
@@ -899,7 +899,7 @@ void main() {
           alertRecord.data,
           equals(Uint8List.fromList([
             AlertLevel.fatal,
-            AlertDescription.unexpected_message,
+            AlertDescription.unexpectedMessage,
           ])));
     });
   });
@@ -1035,7 +1035,7 @@ Defragmenter _testDefragmenter() {
   final defragmenter = Defragmenter();
   defragmenter.addDynamicSize(ContentType.handshake, 1, 3);
   defragmenter.addStaticSize(ContentType.alert, 2);
-  defragmenter.addStaticSize(ContentType.change_cipher_spec, 1);
+  defragmenter.addStaticSize(ContentType.changeCipherSpec, 1);
   return defragmenter;
 }
 

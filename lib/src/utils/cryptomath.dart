@@ -1,3 +1,7 @@
+// Ported to Dart from tlslite-ng tlslite/utils/cryptomath.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 //cryptomath.dart
 
 /// cryptomath module
@@ -6,20 +10,9 @@
 import 'dart:typed_data';
 import 'dart:math' as math;
 import 'dart:convert' show utf8;
-import 'package:crypto/crypto.dart' as crypto;
-import 'package:pointycastle/api.dart';
-import 'package:pointycastle/random/fortuna_random.dart';
-import 'package:pointycastle/digests/md5.dart';
-import 'package:pointycastle/digests/sha1.dart';
-import 'package:pointycastle/digests/sha256.dart';
-import 'package:pointycastle/digests/sha384.dart';
-import 'package:pointycastle/digests/sha512.dart';
-import 'package:pointycastle/src/platform_check/platform_check.dart'
-    show Platform;
-
 
 import 'codec.dart'; 
-import 'tlshmac.dart';
+import 'digest/digest.dart' as dg;
 
 // --- Helper Functions ---
 
@@ -58,93 +51,69 @@ BigInt _bytesToBigInt(Uint8List bytes) {
 }
 
 // **************************************************************************
-// PRNG Functions (Usando PointyCastle)
+// PRNG Functions
 // **************************************************************************
 
-// Configuração do SecureRandom (exemplo com Fortuna)
-final SecureRandom _secureRandom = FortunaRandom()
-  ..seed(KeyParameter(Platform.instance.platformEntropySource().getBytes(32)));
+/// CSPRNG do sistema operacional (getrandom/arc4random/BCryptGenRandom).
+final math.Random _secureRandom = math.Random.secure();
 
 /// Gera um Uint8List de bytes aleatórios seguros.
 Uint8List getRandomBytes(int howMany) {
-  final bytes = _secureRandom.nextBytes(howMany);
-  assert(bytes.length == howMany);
+  final bytes = Uint8List(howMany);
+  var i = 0;
+  for (; i + 4 <= howMany; i += 4) {
+    final v = _secureRandom.nextInt(0x100000000);
+    bytes[i] = v;
+    bytes[i + 1] = v >>> 8;
+    bytes[i + 2] = v >>> 16;
+    bytes[i + 3] = v >>> 24;
+  }
+  for (; i < howMany; i++) {
+    bytes[i] = _secureRandom.nextInt(256);
+  }
   return bytes;
 }
 
-const String prngName = "PointyCastle Fortuna";
+const String prngName = "Dart Random.secure";
 
 // **************************************************************************
 // Simple hash functions
 // **************************************************************************
 
-Digest _getDigest(String algorithm) {
-  switch (algorithm.toLowerCase()) {
-    case 'md5':
-      return MD5Digest();
-    case 'sha1':
-      return SHA1Digest();
-    case 'sha256':
-      return SHA256Digest();
-    case 'sha384':
-      return SHA384Digest();
-    case 'sha512':
-      return SHA512Digest();
-    default:
-      throw ArgumentError('Unsupported hash algorithm: $algorithm');
-  }
-}
-
 /// Retorna um digest MD5 dos dados.
-Uint8List MD5(Uint8List b) {
-  return crypto.md5.convert(b).bytes as Uint8List;
+Uint8List md5(Uint8List b) {
+  return dg.md5Hash(b);
 }
 
 /// Retorna um digest SHA1 dos dados.
-Uint8List SHA1(Uint8List b) {
-  return crypto.sha1.convert(b).bytes as Uint8List;
+Uint8List sha1(Uint8List b) {
+  return dg.sha1Hash(b);
 }
 
-/// Retorna um digest dos `data` usando `algorithm`.
+/// Retorna um digest dos `data` usando `algorithm` (md5, sha1, sha224,
+/// sha256, sha384, sha512, sha3_224, sha3_256, sha3_384, sha3_512).
 Uint8List secureHash(Uint8List data, String algorithm) {
-  switch (algorithm.toLowerCase()) {
-    case 'md5':
-      return crypto.md5.convert(data).bytes as Uint8List;
-    case 'sha1':
-      return crypto.sha1.convert(data).bytes as Uint8List;
-    case 'sha256':
-      return crypto.sha256.convert(data).bytes as Uint8List;
-    case 'sha384':
-      return crypto.sha384.convert(data).bytes as Uint8List;
-    case 'sha512':
-      return crypto.sha512.convert(data).bytes as Uint8List;
-    default:
-      // Usando PointyCastle para flexibilidade se 'crypto' não suportar
-      final digest = _getDigest(algorithm);
-      return digest.process(data);
-  }
+  return dg.hashBytes(algorithm, data);
 }
 
 /// Retorna um HMAC usando `b` e `k` com `algorithm`.
 Uint8List secureHMAC(Uint8List k, Uint8List b, String algorithm) {
-  final mac = TlsHmac(k, digestmod: algorithm);
-  mac.update(b);
-  return mac.digest();
+  return dg.hmac(algorithm, k, b);
 }
 
-Uint8List HMAC_MD5(Uint8List k, Uint8List b) {
+Uint8List hmacMd5(Uint8List k, Uint8List b) {
   return secureHMAC(k, b, 'md5');
 }
 
-Uint8List HMAC_SHA1(Uint8List k, Uint8List b) {
+Uint8List hmacSha1(Uint8List k, Uint8List b) {
   return secureHMAC(k, b, 'sha1');
 }
 
-Uint8List HMAC_SHA256(Uint8List k, Uint8List b) {
+Uint8List hmacSha256(Uint8List k, Uint8List b) {
   return secureHMAC(k, b, 'sha256');
 }
 
-Uint8List HMAC_SHA384(Uint8List k, Uint8List b) {
+Uint8List hmacSha384(Uint8List k, Uint8List b) {
   return secureHMAC(k, b, 'sha384');
 }
 
@@ -162,31 +131,31 @@ int _getDigestSize(String algorithm) {
     case 'sha512':
       return 64;
     default:
-      // Use PointyCastle para calcular se não for um dos acima
-      return _getDigest(algorithm).digestSize;
+      return dg.createDigest(algorithm).digestSize;
   }
 }
 
-Uint8List HKDF_expand(Uint8List PRK, Uint8List info, int L, String algorithm) {
-  final digestSize = _getDigestSize(algorithm);
-  final N = divceil(BigInt.from(L), BigInt.from(digestSize)).toInt();
-  final T = BytesBuilder(); // Mais eficiente para concatenação
-  Uint8List Titer = Uint8List(0);
+Uint8List hkdfExpand(Uint8List prk, Uint8List info, int L, String algorithm) {
+  // HMAC chaveado uma única vez; cada bloco parte de um clone do estado.
+  final prf = dg.createHmac(algorithm, prk);
+  final digestSize = prf.digestSize;
+  final N = (L + digestSize - 1) ~/ digestSize;
+  final out = Uint8List(N * digestSize);
+  final counter = Uint8List(1);
+  Uint8List tIter = Uint8List(0);
 
   for (int i = 1; i <= N; i++) {
-    // O loop original ia até N+1, mas T só é adicionado *antes* do cálculo
-    // e o último Titer não é usado se for até N+1. O correto é até N.
-    // Construir a entrada para HMAC
-    final hmacInput = BytesBuilder();
-    hmacInput.add(Titer);
-    hmacInput.add(info);
-    hmacInput.addByte(i); // Adiciona o byte contador
-
-    Titer = secureHMAC(PRK, hmacInput.toBytes(), algorithm);
-    T.add(Titer);
+    // T(i) = HMAC(PRK, T(i-1) | info | i)
+    counter[0] = i;
+    tIter = (prf.clone()
+          ..update(tIter)
+          ..update(info)
+          ..update(counter))
+        .finish();
+    out.setRange((i - 1) * digestSize, i * digestSize, tIter);
   }
   // Retorna os primeiros L bytes
-  return T.toBytes().sublist(0, L);
+  return out.sublist(0, L);
 }
 
 /// PBKDF2 key derivation using HMAC with the requested [hashAlgorithm].
@@ -203,18 +172,20 @@ Uint8List pbkdf2(
   if (derivedKeyLength <= 0) {
     throw ArgumentError('derivedKeyLength must be positive');
   }
-  final hLen = _getDigestSize(hashAlgorithm);
-  final blocks = divceil(BigInt.from(derivedKeyLength), BigInt.from(hLen)).toInt();
+  // HMAC chaveado uma única vez; cada iteração parte de um clone do estado.
+  final prf = dg.createHmac(hashAlgorithm, password);
+  final hLen = prf.digestSize;
+  final blocks = (derivedKeyLength + hLen - 1) ~/ hLen;
   final derived = BytesBuilder();
   for (var blockIndex = 1; blockIndex <= blocks; blockIndex++) {
     final counter = numberToByteArray(BigInt.from(blockIndex), howManyBytes: 4);
-    final initial = BytesBuilder()
-      ..add(salt)
-      ..add(counter);
-    var u = secureHMAC(password, initial.toBytes(), hashAlgorithm);
+    var u = (prf.clone()
+          ..update(salt)
+          ..update(counter))
+        .finish();
     final block = Uint8List.fromList(u);
     for (var i = 1; i < iterations; i++) {
-      u = secureHMAC(password, u, hashAlgorithm);
+      u = (prf.clone()..update(u)).finish();
       for (var j = 0; j < block.length; j++) {
         block[j] ^= u[j];
       }
@@ -226,7 +197,7 @@ Uint8List pbkdf2(
 }
 
 /// Função de derivação de chave TLS 1.3 (HKDF-Expand-Label).
-Uint8List HKDF_expand_label(Uint8List secret, Uint8List label,
+Uint8List hkdfExpandLabel(Uint8List secret, Uint8List label,
     Uint8List hashValue, int length, String algorithm) {
   final hkdfLabel = Writer();
   hkdfLabel.addTwo(length);
@@ -238,29 +209,29 @@ Uint8List HKDF_expand_label(Uint8List secret, Uint8List label,
   hkdfLabel.addVarSeq(
       hashValue, 1, 1); // Assumindo que addVarSeq lida com Uint8List
 
-  return HKDF_expand(secret, hkdfLabel.bytes, length, algorithm);
+  return hkdfExpand(secret, hkdfLabel.bytes, length, algorithm);
 }
 
 /// Função de derivação de chave TLS 1.3 (Derive-Secret).
 /// Nota: O tipo HandshakeHashes não foi fornecido, então assumimos que ele tem
 /// um método `digest(String algorithm)` que retorna `Uint8List` ou é `null`.
-/// Se for diferente, ajuste a lógica de `hs_hash`.
-Uint8List derive_secret(Uint8List secret, Uint8List label,
-    dynamic /*HandshakeHashes?*/ handshake_hashes, String algorithm) {
-  Uint8List hs_hash;
-  if (handshake_hashes == null) {
-    hs_hash = secureHash(Uint8List(0), algorithm);
-  } else if (handshake_hashes is Uint8List) {
-    hs_hash = handshake_hashes;
-  } else if (handshake_hashes is List<int>) {
-    hs_hash = Uint8List.fromList(handshake_hashes);
+/// Se for diferente, ajuste a lógica de `hsHash`.
+Uint8List deriveSecret(Uint8List secret, Uint8List label,
+    dynamic /*HandshakeHashes?*/ handshakeHashes, String algorithm) {
+  Uint8List hsHash;
+  if (handshakeHashes == null) {
+    hsHash = secureHash(Uint8List(0), algorithm);
+  } else if (handshakeHashes is Uint8List) {
+    hsHash = handshakeHashes;
+  } else if (handshakeHashes is List<int>) {
+    hsHash = Uint8List.fromList(handshakeHashes);
   } else {
     // Assumindo que handshake_hashes tem um método digest
-    hs_hash = handshake_hashes.digest(algorithm) as Uint8List;
+    hsHash = handshakeHashes.digest(algorithm) as Uint8List;
   }
 
   final digestSize = _getDigestSize(algorithm);
-  return HKDF_expand_label(secret, label, hs_hash, digestSize, algorithm);
+  return hkdfExpandLabel(secret, label, hsHash, digestSize, algorithm);
 }
 
 // **************************************************************************

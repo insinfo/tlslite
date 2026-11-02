@@ -1,3 +1,7 @@
+// Ported to Dart from tlslite-ng tlslite/utils/datefuncs.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 // Helper functions for manipulating UTC timestamps.
 
 /// Parses a timestamp in the CCYY-MM-DDThh:mm:ssZ form into a UTC [DateTime].

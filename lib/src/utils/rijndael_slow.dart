@@ -1,3 +1,7 @@
+// Ported to Dart from tlslite-ng tlslite/utils/rijndael.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 // dart format width=5000
 import 'dart:typed_data';
 
@@ -1145,46 +1149,46 @@ class Rijndael {
 
     // Kd is already initialized by the constructor
 
-    final int BC = blockSize ~/ 4; // Block size in 32-bit words
-    final int ROUNDS = _kd.length - 1; // Number of rounds
+    final int bc = blockSize ~/ 4; // Block size in 32-bit words
+    final int rounds = _kd.length - 1; // Number of rounds
 
-    int SC; // Shift constant index
-    if (BC == 4) {
-      SC = 0;
-    } else if (BC == 6) {
-      SC = 1;
+    int sc; // Shift constant index
+    if (bc == 4) {
+      sc = 0;
+    } else if (bc == 6) {
+      sc = 1;
     } else {
       // BC == 8
-      SC = 2;
+      sc = 2;
     }
 
     // Inverse shift offsets (use the second value from the shifts table for decryption)
-    final int s1 = _shifts[SC][1][1];
-    final int s2 = _shifts[SC][2][1];
-    final int s3 = _shifts[SC][3][1];
+    final int s1 = _shifts[sc][1][1];
+    final int s2 = _shifts[sc][2][1];
+    final int s3 = _shifts[sc][3][1];
 
     // Temporary work arrays (32-bit words)
-    List<int> a = List<int>.filled(BC, 0);
-    List<int> t = List<int>.filled(BC, 0);
+    List<int> a = List<int>.filled(bc, 0);
+    List<int> t = List<int>.filled(bc, 0);
 
     // Use ByteData for easier 32-bit manipulation from Uint8List
     ByteData cipherData = ByteData.sublistView(ciphertext);
 
     // Initial round: AddRoundKey (XOR ciphertext with initial round key)
-    for (int i = 0; i < BC; i++) {
+    for (int i = 0; i < bc; i++) {
       // Read 32-bit word in Big Endian order
       t[i] = cipherData.getUint32(i * 4, Endian.big) ^ _kd[0][i];
     }
 
     // Apply round transforms (InvShiftRows, InvSubBytes, InvMixColumns, AddRoundKey)
     // The T tables (T5-T8) combine InvShiftRows, InvSubBytes, and InvMixColumns
-    for (int r = 1; r < ROUNDS; r++) {
-      for (int i = 0; i < BC; i++) {
+    for (int r = 1; r < rounds; r++) {
+      for (int i = 0; i < bc; i++) {
         // Apply the T-box transformations and XOR with the round key
         a[i] = (_t5[(t[i] >> 24) & 0xFF] ^ // Byte 3
-                _t6[(t[(i + s1) % BC] >> 16) & 0xFF] ^ // Byte 2 (shifted)
-                _t7[(t[(i + s2) % BC] >> 8) & 0xFF] ^ // Byte 1 (shifted)
-                _t8[t[(i + s3) % BC] & 0xFF]) ^ // Byte 0 (shifted)
+                _t6[(t[(i + s1) % bc] >> 16) & 0xFF] ^ // Byte 2 (shifted)
+                _t7[(t[(i + s2) % bc] >> 8) & 0xFF] ^ // Byte 1 (shifted)
+                _t8[t[(i + s3) % bc] & 0xFF]) ^ // Byte 0 (shifted)
             _kd[r][i]; // AddRoundKey
       }
       // Copy the result of this round (a) to the state array (t) for the next round
@@ -1193,8 +1197,8 @@ class Rijndael {
 
     // Last round is special: InvShiftRows, InvSubBytes, AddRoundKey (no InvMixColumns)
     List<int> resultBytes = []; // Stores the final plaintext bytes
-    for (int i = 0; i < BC; i++) {
-      int tt = _kd[ROUNDS][i]; // Final round key word
+    for (int i = 0; i < bc; i++) {
+      int tt = _kd[rounds][i]; // Final round key word
 
       // Extract bytes from the final round key for XORing
       int ttByte3 = (tt >> 24) & 0xFF;
@@ -1205,9 +1209,9 @@ class Rijndael {
       // Apply InvSubBytes (Si lookup) to the shifted state bytes and XOR with key bytes
       // The indexing t[(i+sX)%BC] implicitly performs InvShiftRows
       int resByte3 = (_si[(t[i] >> 24) & 0xFF] ^ ttByte3) & 0xFF;
-      int resByte2 = (_si[(t[(i + s1) % BC] >> 16) & 0xFF] ^ ttByte2) & 0xFF;
-      int resByte1 = (_si[(t[(i + s2) % BC] >> 8) & 0xFF] ^ ttByte1) & 0xFF;
-      int resByte0 = (_si[t[(i + s3) % BC] & 0xFF] ^ ttByte0) & 0xFF;
+      int resByte2 = (_si[(t[(i + s1) % bc] >> 16) & 0xFF] ^ ttByte2) & 0xFF;
+      int resByte1 = (_si[(t[(i + s2) % bc] >> 8) & 0xFF] ^ ttByte1) & 0xFF;
+      int resByte0 = (_si[t[(i + s3) % bc] & 0xFF] ^ ttByte0) & 0xFF;
 
       // Add the resulting bytes to the list in Big Endian order (byte 3, 2, 1, 0)
       resultBytes.add(resByte3);

@@ -75,7 +75,7 @@ class _KeyUpdateHarness {
       ..closed = false;
 
     final session = Session()
-      ..cipherSuite = tls_constants.CipherSuite.TLS_AES_128_GCM_SHA256
+      ..cipherSuite = tls_constants.CipherSuite.tlsAes128GcmSha256
       ..clAppSecret = Uint8List.fromList(List<int>.generate(32, (i) => i + 1))
       ..srAppSecret = Uint8List.fromList(List<int>.generate(32, (i) => i + 65));
     layer.session = session;

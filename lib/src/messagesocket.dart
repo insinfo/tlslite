@@ -1,3 +1,7 @@
+// Ported to Dart from tlslite-ng tlslite/messagesocket.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 
 /// Wrapper of TLS RecordLayer providing message-level abstraction
 
@@ -34,9 +38,9 @@ class MessageSocket extends RecordLayer {
 
   /// Data types which will be passed as-read
   final unfragmentedDataTypes = [
-    ContentType.application_data,
+    ContentType.applicationData,
     ContentType.heartbeat,
-    ContentType.change_cipher_spec,
+    ContentType.changeCipherSpec,
     ContentType.alert,
   ];
 

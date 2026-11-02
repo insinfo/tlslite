@@ -1,6 +1,6 @@
 part of tlslite_socket_native_ffi;
 
-const int _INVALID_SOCKET = -1;
+const int _invalidSocket = -1;
 
 DynamicLibrary? _windowsLib;
 
@@ -36,12 +36,12 @@ int Function(int, Pointer<Utf8>, Pointer)? _inetPtonWinPtr;
 Pointer<Utf8> Function(int, Pointer, Pointer<Utf8>, int)? _inetNtopWinPtr;
 int Function(Pointer<Uint8>, int)? _gethostnameWinPtr;
 
-int Function(int, Pointer<WSADATA>) get _WSAStartup =>
+int Function(int, Pointer<WSADATA>) get _wsaStartup =>
     _wsaStartupPtr ??= _winLib().lookupFunction<
         Int32 Function(Uint16, Pointer<WSADATA>),
         int Function(int, Pointer<WSADATA>)>('WSAStartup');
 
-int Function() get _WSACleanup => _wsaCleanupPtr ??=
+int Function() get _wsaCleanup => _wsaCleanupPtr ??=
     _winLib().lookupFunction<Int32 Function(), int Function()>('WSACleanup');
 
 SocketHandle Function(int, int, int) get _socketWin => _socketWinPtr ??=
@@ -109,7 +109,7 @@ int Function(SocketHandle, Pointer, Pointer<Int32>) get _getsocknameWin =>
         Int32 Function(IntPtr, Pointer, Pointer<Int32>),
         int Function(int, Pointer, Pointer<Int32>)>('getsockname');
 
-int Function() get _WSAGetLastError => _wsaGetLastErrorPtr ??=
+int Function() get _wsaGetLastError => _wsaGetLastErrorPtr ??=
     _winLib().lookupFunction<Int32 Function(), int Function()>('WSAGetLastError');
 
 int Function(SocketHandle, int, int, Pointer<Uint8>, int) get _setsockoptWin =>

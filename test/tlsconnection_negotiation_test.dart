@@ -39,7 +39,7 @@ void main() {
         await connection.handshakeClient(anonParams: true);
         fail('Should have thrown TLSLocalAlert');
       } on TLSLocalAlert catch (e) {
-        expect(e.description, equals(AlertDescription.illegal_parameter));
+        expect(e.description, equals(AlertDescription.illegalParameter));
       } catch (e) {
         fail('Unexpected exception: ' + e.toString());
       }
@@ -84,7 +84,7 @@ void main() {
         fail('Should have thrown TLSLocalAlert');
       } on TLSLocalAlert catch (e) {
         // protocol_version or illegal_parameter
-        expect(e.description, equals(AlertDescription.protocol_version));
+        expect(e.description, equals(AlertDescription.protocolVersion));
       } catch (e) {
         fail('Unexpected exception: ' + e.toString());
       }

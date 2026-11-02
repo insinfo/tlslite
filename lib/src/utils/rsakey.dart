@@ -1,3 +1,7 @@
+// Ported to Dart from tlslite-ng tlslite/utils/rsakey.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 import 'dart:typed_data';
 
 import '../errors.dart';
@@ -88,7 +92,7 @@ abstract class RSAKey {
     );
   }
 
-  Uint8List MGF1(Uint8List mgfSeed, int maskLen, String hAlg) {
+  Uint8List mgf1(Uint8List mgfSeed, int maskLen, String hAlg) {
     final hashLen = _digestSize(hAlg);
     final maxMaskLen = (BigInt.one << 32) * BigInt.from(hashLen);
     if (BigInt.from(maskLen) > maxMaskLen) {
@@ -110,7 +114,7 @@ abstract class RSAKey {
     return Uint8List.fromList(mask.sublist(0, maskLen));
   }
 
-  Uint8List EMSA_PSS_encode(
+  Uint8List emsaPssEncode(
     Uint8List mHash,
     int emBits,
     String hAlg, {
@@ -132,7 +136,7 @@ abstract class RSAKey {
       ..add(ps)
       ..addByte(0x01)
       ..add(salt);
-    final dbMask = MGF1(h, emLen - hashLen - 1, hAlg);
+    final dbMask = mgf1(h, emLen - hashLen - 1, hAlg);
     final maskedDb = Uint8List(db.length);
     final dbBytes = db.toBytes();
     for (var i = 0; i < maskedDb.length; i++) {
@@ -148,27 +152,27 @@ abstract class RSAKey {
     return builder.toBytes();
   }
 
-  Uint8List RSASSA_PSS_sign(
+  Uint8List rsassaPssSign(
     Uint8List mHash,
     String hAlg, {
     int saltLen = 0,
   }) {
-    final em = EMSA_PSS_encode(
+    final em = emsaPssEncode(
       mHash,
       numBits(n) - 1,
       hAlg,
       saltLen: saltLen,
     );
     try {
-      return _raw_private_key_op_bytes(em);
+      return _rawPrivateKeyOpBytes(em);
     } on ArgumentError {
       throw MessageTooLongError('Encode output too long');
     }
   }
 
-  bool EMSA_PSS_verify(
+  bool emsaPssVerify(
     Uint8List mHash,
-    Uint8List EM,
+    Uint8List em,
     int emBits,
     String hAlg, {
     int saltLen = 0,
@@ -178,17 +182,17 @@ abstract class RSAKey {
     if (emLen < hashLen + saltLen + 2) {
       throw InvalidSignature('Invalid signature');
     }
-    if (EM.isEmpty || EM.last != 0xbc) {
+    if (em.isEmpty || em.last != 0xbc) {
       throw InvalidSignature('Invalid signature');
     }
-    final maskedDB = EM.sublist(0, emLen - hashLen - 1);
-    final h = EM.sublist(emLen - hashLen - 1, emLen - 1);
+    final maskedDB = em.sublist(0, emLen - hashLen - 1);
+    final h = em.sublist(emLen - hashLen - 1, emLen - 1);
     var dbHelpMask = 1 << (8 - ((8 * emLen) - emBits));
     dbHelpMask = (~(dbHelpMask - 1)) & 0xff;
     if ((maskedDB[0] & dbHelpMask) != 0) {
       throw InvalidSignature('Invalid signature');
     }
-    final dbMask = MGF1(h, emLen - hashLen - 1, hAlg);
+    final dbMask = mgf1(h, emLen - hashLen - 1, hAlg);
     final db = Uint8List(maskedDB.length);
     for (var i = 0; i < maskedDB.length; i++) {
       db[i] = maskedDB[i] ^ dbMask[i];
@@ -217,7 +221,7 @@ abstract class RSAKey {
     return true;
   }
 
-  bool RSASSA_PSS_verify(
+  bool rsassaPssVerify(
     Uint8List mHash,
     Uint8List signature,
     String hAlg, {
@@ -225,11 +229,11 @@ abstract class RSAKey {
   }) {
     late Uint8List em;
     try {
-      em = _raw_public_key_op_bytes(signature);
+      em = _rawPublicKeyOpBytes(signature);
     } on ArgumentError {
       throw InvalidSignature('Invalid signature');
     }
-    final result = EMSA_PSS_verify(
+    final result = emsaPssVerify(
       mHash,
       em,
       numBits(n) - 1,
@@ -242,12 +246,12 @@ abstract class RSAKey {
     throw InvalidSignature('Invalid signature');
   }
 
-  Uint8List _raw_pkcs1_sign(Uint8List bytes) {
+  Uint8List _rawPkcs1Sign(Uint8List bytes) {
     if (!hasPrivateKey()) {
       throw AssertionError('Private key required');
     }
     final padded = _addPKCS1Padding(bytes, 1);
-    return _raw_private_key_op_bytes(padded);
+    return _rawPrivateKeyOpBytes(padded);
   }
 
   Uint8List sign(
@@ -259,20 +263,20 @@ abstract class RSAKey {
     final mode = padding.toLowerCase();
     if (mode == 'pkcs1') {
       final payload = hashAlg != null ? addPKCS1Prefix(bytes, hashAlg) : bytes;
-      return _raw_pkcs1_sign(payload);
+      return _rawPkcs1Sign(payload);
     } else if (mode == 'pss') {
       if (hashAlg == null) {
         throw ArgumentError('hashAlg is required for PSS signatures');
       }
-      return RSASSA_PSS_sign(bytes, hashAlg, saltLen: saltLen);
+      return rsassaPssSign(bytes, hashAlg, saltLen: saltLen);
     } else {
       throw UnknownRSAType('Unknown RSA algorithm type: $padding');
     }
   }
 
-  bool _raw_pkcs1_verify(Uint8List sigBytes, Uint8List bytes) {
+  bool _rawPkcs1Verify(Uint8List sigBytes, Uint8List bytes) {
     try {
-      final check = _raw_public_key_op_bytes(sigBytes);
+      final check = _rawPublicKeyOpBytes(sigBytes);
       final padded = _addPKCS1Padding(bytes, 1);
       return _listsEqual(check, padded);
     } on ArgumentError {
@@ -294,17 +298,17 @@ abstract class RSAKey {
     if (mode == 'pkcs1' && (hashAlg?.toLowerCase() == 'sha1')) {
       final prefixed1 = addPKCS1SHA1Prefix(bytes, withNull: false);
       final prefixed2 = addPKCS1SHA1Prefix(bytes, withNull: true);
-      return _raw_pkcs1_verify(sigBytes, prefixed1) ||
-          _raw_pkcs1_verify(sigBytes, prefixed2);
+      return _rawPkcs1Verify(sigBytes, prefixed1) ||
+          _rawPkcs1Verify(sigBytes, prefixed2);
     } else if (mode == 'pkcs1') {
       final payload = hashAlg != null ? addPKCS1Prefix(bytes, hashAlg) : bytes;
-      return _raw_pkcs1_verify(sigBytes, payload);
+      return _rawPkcs1Verify(sigBytes, payload);
     } else if (mode == 'pss') {
       if (hashAlg == null) {
         throw ArgumentError('hashAlg is required for PSS verification');
       }
       try {
-        return RSASSA_PSS_verify(bytes, sigBytes, hashAlg, saltLen: saltLen);
+        return rsassaPssVerify(bytes, sigBytes, hashAlg, saltLen: saltLen);
       } on InvalidSignature {
         return false;
       }
@@ -314,7 +318,7 @@ abstract class RSAKey {
 
   Uint8List encrypt(Uint8List bytes) {
     final padded = _addPKCS1Padding(bytes, 2);
-    return _raw_public_key_op_bytes(padded);
+    return _rawPublicKeyOpBytes(padded);
   }
 
   Uint8List _decPrf(Uint8List key, Uint8List label, int outLenBits) {
@@ -345,7 +349,7 @@ abstract class RSAKey {
     }
     Uint8List decBytes;
     try {
-      decBytes = _raw_private_key_op_bytes(encBytes);
+      decBytes = _rawPrivateKeyOpBytes(encBytes);
     } on ArgumentError {
       return null;
     }
@@ -412,7 +416,7 @@ abstract class RSAKey {
 
   BigInt _rawPublicKeyOp(BigInt ciphertext);
 
-  Uint8List _raw_private_key_op_bytes(Uint8List message) {
+  Uint8List _rawPrivateKeyOpBytes(Uint8List message) {
     final expectedLen = numBytes(n);
     if (message.length != expectedLen) {
       throw ArgumentError('Message has incorrect length for the key size');
@@ -425,7 +429,7 @@ abstract class RSAKey {
     return numberToByteArray(decInt, howManyBytes: expectedLen);
   }
 
-  Uint8List _raw_public_key_op_bytes(Uint8List ciphertext) {
+  Uint8List _rawPublicKeyOpBytes(Uint8List ciphertext) {
     final expectedLen = numBytes(n);
     if (ciphertext.length != expectedLen) {
       throw ArgumentError('Message has incorrect length for the key size');

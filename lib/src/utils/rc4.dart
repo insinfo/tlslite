@@ -1,3 +1,7 @@
+// Ported to Dart from tlslite-ng tlslite/utils/rc4.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 import 'dart:typed_data';
 
 /// Representação abstrata da cifra de fluxo RC4.

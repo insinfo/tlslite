@@ -1,3 +1,7 @@
+// Ported to Dart from tlslite-ng tlslite/tlsrecordlayer.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
@@ -28,7 +32,7 @@ class TLSRecordLayer {
         _handshakeHash = HandshakeHashes() {
     // Match the static sizing hints from so that once the
     // handshake/message code lands the buffering behaviour stays consistent.
-    _defragmenter.addStaticSize(ContentType.change_cipher_spec, 1);
+    _defragmenter.addStaticSize(ContentType.changeCipherSpec, 1);
     _defragmenter.addStaticSize(ContentType.alert, 2);
     _defragmenter.addDynamicSize(ContentType.handshake, 1, 3);
     clearReadBuffer();
@@ -268,15 +272,15 @@ class TLSRecordLayer {
     }
 
     final allowedTypes = <int>{
-      ContentType.application_data,
+      ContentType.applicationData,
       ContentType.heartbeat,
     };
     Set<int>? allowedHandshakeTypes;
     if (_isTls13Connection) {
       allowedTypes.add(ContentType.handshake);
       allowedHandshakeTypes = <int>{
-        HandshakeType.new_session_ticket,
-        HandshakeType.key_update,
+        HandshakeType.newSessionTicket,
+        HandshakeType.keyUpdate,
       };
     }
 
@@ -294,7 +298,7 @@ class TLSRecordLayer {
         }
       }
     } on TLSRemoteAlert catch (alert) {
-      if (alert.description != AlertDescription.close_notify) {
+      if (alert.description != AlertDescription.closeNotify) {
         rethrow;
       }
     } on TLSAbruptCloseError {
@@ -354,7 +358,7 @@ class TLSRecordLayer {
     final padding =
         paddingLength == 0 ? Uint8List(0) : getRandomBytes(paddingLength);
     final heartbeat = tlsmsg.TlsHeartbeat(
-      messageType: HeartbeatMessageType.heartbeat_request,
+      messageType: HeartbeatMessageType.heartbeatRequest,
       payload: payload,
       padding: padding,
     );
@@ -369,7 +373,7 @@ class TLSRecordLayer {
   Future<void> handleKeyUpdateRequest(tlsmsg.TlsKeyUpdate request) async {
     if (!_isTls13Connection) {
       await _sendError(
-        AlertDescription.illegal_parameter,
+        AlertDescription.illegalParameter,
         'KeyUpdate is only defined for TLS 1.3',
       );
     }
@@ -377,13 +381,13 @@ class TLSRecordLayer {
     final activeSession = session;
     if (activeSession == null) {
       await _sendError(
-        AlertDescription.internal_error,
+        AlertDescription.internalError,
         'KeyUpdate received without an active session',
       );
     } else if (activeSession.clAppSecret.isEmpty ||
         activeSession.srAppSecret.isEmpty) {
       await _sendError(
-        AlertDescription.internal_error,
+        AlertDescription.internalError,
         'KeyUpdate received before traffic secrets were established',
       );
     } else {
@@ -470,7 +474,7 @@ class TLSRecordLayer {
     }
 
     throw TLSLocalAlert(
-      AlertDescription.unexpected_message,
+      AlertDescription.unexpectedMessage,
       AlertLevel.fatal,
       detailedMessage: 'Received unsupported record ${message.runtimeType}',
     );
@@ -495,16 +499,16 @@ class TLSRecordLayer {
   Future<void> _handleHeartbeatMessage(tlsmsg.TlsHeartbeat heartbeat) async {
     if (!heartbeatSupported) {
       await _sendError(
-        AlertDescription.unexpected_message,
+        AlertDescription.unexpectedMessage,
         'Heartbeat message received without negotiation',
       );
     }
 
     switch (heartbeat.messageType) {
-      case HeartbeatMessageType.heartbeat_request:
+      case HeartbeatMessageType.heartbeatRequest:
         if (!heartbeatCanReceive) {
           await _sendError(
-            AlertDescription.unexpected_message,
+            AlertDescription.unexpectedMessage,
             'Received Heartbeat request while peer_not_allowed_to_send is set',
           );
         }
@@ -514,7 +518,7 @@ class TLSRecordLayer {
         }
         final paddingLength = heartbeat.padding.length;
         final response = tlsmsg.TlsHeartbeat(
-          messageType: HeartbeatMessageType.heartbeat_response,
+          messageType: HeartbeatMessageType.heartbeatResponse,
           payload: heartbeat.payload,
           padding:
               paddingLength == 0 ? Uint8List(0) : getRandomBytes(paddingLength),
@@ -525,12 +529,12 @@ class TLSRecordLayer {
           updateHandshakeHash: false,
         );
         return;
-      case HeartbeatMessageType.heartbeat_response:
+      case HeartbeatMessageType.heartbeatResponse:
         heartbeatResponseCallback?.call(heartbeat);
         return;
       default:
         await _sendError(
-          AlertDescription.illegal_parameter,
+          AlertDescription.illegalParameter,
           'Heartbeat message with unknown type ${heartbeat.messageType}',
         );
     }
@@ -567,7 +571,7 @@ class TLSRecordLayer {
     final needsFirstByteMasking = randomizeFirstBlock &&
         version <= const TlsProtocolVersion(3, 1) &&
         _recordLayer.isCBCMode() &&
-        contentType == ContentType.application_data;
+        contentType == ContentType.applicationData;
 
     if (needsFirstByteMasking) {
       final firstByte = Uint8List.fromList(<int>[remaining.first]);
@@ -631,12 +635,12 @@ class TLSRecordLayer {
         if (_isTls13Connection &&
             expectedTypes.contains(ContentType.handshake) &&
             _middleboxCompatMode &&
-            recordType == ContentType.change_cipher_spec) {
+            recordType == ContentType.changeCipherSpec) {
           final fragment = parser.getFixBytes(parser.getRemainingLength());
           final ccs = tlsmsg.TlsChangeCipherSpec.parse(fragment);
           if (ccs.value != 1) {
             await _sendError(
-              AlertDescription.unexpected_message,
+              AlertDescription.unexpectedMessage,
               'Invalid CCS message received',
             );
           }
@@ -647,7 +651,7 @@ class TLSRecordLayer {
             recordType != ContentType.handshake &&
             _defragmenter.hasPending(ContentType.handshake)) {
           await _sendError(
-            AlertDescription.unexpected_message,
+            AlertDescription.unexpectedMessage,
             'Interleaved Handshake and non-handshake messages',
           );
         }
@@ -664,32 +668,32 @@ class TLSRecordLayer {
             if (_isRenegotiationAttempt(handshakeType) && session != null) {
               await _sendAlert(
                 level: AlertLevel.warning,
-                description: AlertDescription.no_renegotiation,
+                description: AlertDescription.noRenegotiation,
               );
               continue;
             }
           }
 
           await _sendError(
-            AlertDescription.unexpected_message,
+            AlertDescription.unexpectedMessage,
             'received type=$recordType',
           );
         }
 
         switch (recordType) {
-          case ContentType.change_cipher_spec:
+          case ContentType.changeCipherSpec:
             final fragment = parser.getFixBytes(parser.getRemainingLength());
             return tlsmsg.TlsChangeCipherSpec.parse(fragment);
           case ContentType.alert:
             await _handleIncomingAlert(parser);
             continue;
-          case ContentType.application_data:
+          case ContentType.applicationData:
             final payload = parser.getFixBytes(parser.getRemainingLength());
             return tlsmsg.TlsApplicationData(data: payload);
           case ContentType.handshake:
             if (header is RecordHeader2) {
               await _sendError(
-                AlertDescription.protocol_version,
+                AlertDescription.protocolVersion,
                 'SSLv2 ClientHello is not supported yet',
               );
             }
@@ -703,13 +707,13 @@ class TLSRecordLayer {
             );
             if (messages.isEmpty) {
               await _sendError(
-                AlertDescription.decode_error,
+                AlertDescription.decodeError,
                 'Empty handshake message payload',
               );
             }
             if (messages.length != 1) {
               await _sendError(
-                AlertDescription.unexpected_message,
+                AlertDescription.unexpectedMessage,
                 'Expected a single handshake message per fragment',
               );
             }
@@ -718,7 +722,7 @@ class TLSRecordLayer {
             if (allowedHandshakeTypes != null &&
                 !allowedHandshakeTypes.contains(handshakeCode)) {
               await _sendError(
-                AlertDescription.unexpected_message,
+                AlertDescription.unexpectedMessage,
                 'Expecting ${_describeHandshakeTypes(allowedHandshakeTypes)}, '
                 'got ${handshake.handshakeType.name}',
               );
@@ -727,7 +731,7 @@ class TLSRecordLayer {
                 _requiresRecordAlignment(handshakeCode) &&
                 !_defragmenter.isEmpty()) {
               await _sendError(
-                AlertDescription.unexpected_message,
+                AlertDescription.unexpectedMessage,
                 'CH, EOED, SH, Finished, or KU not aligned with record boundary',
               );
             }
@@ -738,17 +742,17 @@ class TLSRecordLayer {
             return tlsmsg.TlsHeartbeat.parse(payload);
           default:
             await _sendError(
-              AlertDescription.unexpected_message,
+              AlertDescription.unexpectedMessage,
               'Unsupported record type $recordType',
             );
         }
       }
     } on TLSIllegalParameterException {
-      await _sendError(AlertDescription.illegal_parameter);
+      await _sendError(AlertDescription.illegalParameter);
     } on BadCertificateError catch (error) {
-      await _sendError(AlertDescription.bad_certificate, error.message);
+      await _sendError(AlertDescription.badCertificate, error.message);
     } on DecodeError catch (error) {
-      await _sendError(AlertDescription.decode_error, error.message);
+      await _sendError(AlertDescription.decodeError, error.message);
     }
   }
 
@@ -772,8 +776,8 @@ class TLSRecordLayer {
       final recordType = _resolveRecordType(header);
 
       final isTls13Ccs = version > const TlsProtocolVersion(3, 3) &&
-          recordType == ContentType.change_cipher_spec;
-      if (recordType == ContentType.application_data || isTls13Ccs) {
+          recordType == ContentType.changeCipherSpec;
+      if (recordType == ContentType.applicationData || isTls13Ccs) {
         if (isTls13Ccs) {
           _recordLayer.earlyDataOk = earlyDataOk;
         }
@@ -794,19 +798,19 @@ class TLSRecordLayer {
     try {
       record = await _recordLayer.recvRecord();
     } on TLSUnexpectedMessage {
-      await _sendError(AlertDescription.unexpected_message);
+      await _sendError(AlertDescription.unexpectedMessage);
     } on TLSRecordOverflow {
-      await _sendError(AlertDescription.record_overflow);
+      await _sendError(AlertDescription.recordOverflow);
     } on TLSIllegalParameterException {
-      await _sendError(AlertDescription.illegal_parameter);
+      await _sendError(AlertDescription.illegalParameter);
     } on TLSDecryptionFailed {
       await _sendError(
-        AlertDescription.decryption_failed,
+        AlertDescription.decryptionFailed,
         'Encrypted data not a multiple of blocksize',
       );
     } on TLSBadRecordMAC {
       await _sendError(
-        AlertDescription.bad_record_mac,
+        AlertDescription.badRecordMac,
         'MAC failure (or padding failure)',
       );
     }
@@ -814,16 +818,16 @@ class TLSRecordLayer {
     final (header, parser) = record;
     if (header is! RecordHeader2 &&
         parser.getRemainingLength() == 0 &&
-        header.type != ContentType.application_data) {
+        header.type != ContentType.applicationData) {
       await _sendError(
-        AlertDescription.unexpected_message,
+        AlertDescription.unexpectedMessage,
         'Received empty non-application data record',
       );
     }
 
     if (header is! RecordHeader2 && !ContentType.all.contains(header.type)) {
       await _sendError(
-        AlertDescription.unexpected_message,
+        AlertDescription.unexpectedMessage,
         'Received record with unknown ContentType',
       );
     }
@@ -841,14 +845,14 @@ class TLSRecordLayer {
   Future<void> _handleIncomingAlert(Parser parser) async {
     if (parser.getRemainingLength() < 2) {
       await _sendError(
-        AlertDescription.decode_error,
+        AlertDescription.decodeError,
         'Alert message truncated',
       );
     }
 
     final level = parser.get(1);
     final description = parser.get(1);
-    final isCloseNotify = description == AlertDescription.close_notify;
+    final isCloseNotify = description == AlertDescription.closeNotify;
     final isWarning = level == AlertLevel.warning;
 
     if (isCloseNotify || isWarning) {
@@ -856,7 +860,7 @@ class TLSRecordLayer {
         try {
           await _sendAlert(
             level: AlertLevel.warning,
-            description: AlertDescription.close_notify,
+            description: AlertDescription.closeNotify,
           );
         } catch (_) {
           // Ignore transport errors while acknowledging alerts.
@@ -878,10 +882,10 @@ class TLSRecordLayer {
     if (handshakeType == null) {
       return false;
     }
-    if (isClient && handshakeType == HandshakeType.hello_request) {
+    if (isClient && handshakeType == HandshakeType.helloRequest) {
       return true;
     }
-    if (!isClient && handshakeType == HandshakeType.client_hello) {
+    if (!isClient && handshakeType == HandshakeType.clientHello) {
       return true;
     }
     return false;
@@ -889,11 +893,11 @@ class TLSRecordLayer {
 
   bool _requiresRecordAlignment(int handshakeType) {
     switch (handshakeType) {
-      case HandshakeType.client_hello:
-      case HandshakeType.end_of_early_data:
-      case HandshakeType.server_hello:
+      case HandshakeType.clientHello:
+      case HandshakeType.endOfEarlyData:
+      case HandshakeType.serverHello:
       case HandshakeType.finished:
-      case HandshakeType.key_update:
+      case HandshakeType.keyUpdate:
         return true;
       default:
         return false;

@@ -1,3 +1,7 @@
+// Ported to Dart from tlslite-ng tlslite/extensions.py
+// (https://github.com/tlsfuzzer/tlslite-ng); see LICENSE for the terms.
+// Modified in 2025-2026 by Isaque Neves.
+
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -42,36 +46,34 @@ typedef _ExtensionParser = TlsExtension Function(
 
 class TlsExtensionRegistry {
   static final Map<int, _ExtensionParser> _parsers = <int, _ExtensionParser>{
-    tls_constants.ExtensionType.server_name: _parseServerName,
+    tls_constants.ExtensionType.serverName: _parseServerName,
     tls_constants.ExtensionType.alpn: _parseAlpn,
-    tls_constants.ExtensionType.supported_versions: _parseSupportedVersions,
-    tls_constants.ExtensionType.supported_groups: _parseSupportedGroups,
-    tls_constants.ExtensionType.ec_point_formats: _parseEcPointFormats,
-    tls_constants.ExtensionType.status_request: _parseStatusRequest,
-    tls_constants.ExtensionType.status_request_v2: _parseStatusRequestV2,
-    tls_constants.ExtensionType.signature_algorithms: _parseSignatureAlgorithms,
-    tls_constants.ExtensionType.signature_algorithms_cert:
+    tls_constants.ExtensionType.supportedVersions: _parseSupportedVersions,
+    tls_constants.ExtensionType.supportedGroups: _parseSupportedGroups,
+    tls_constants.ExtensionType.ecPointFormats: _parseEcPointFormats,
+    tls_constants.ExtensionType.statusRequest: _parseStatusRequest,
+    tls_constants.ExtensionType.statusRequestV2: _parseStatusRequestV2,
+    tls_constants.ExtensionType.signatureAlgorithms: _parseSignatureAlgorithms,
+    tls_constants.ExtensionType.signatureAlgorithmsCert:
         _parseSignatureAlgorithmsCert,
-    tls_constants.ExtensionType.key_share: _parseKeyShare,
-    tls_constants.ExtensionType.pre_shared_key: _parsePreSharedKey,
-    tls_constants.ExtensionType.encrypt_then_mac: _parseEncryptThenMac,
-    tls_constants.ExtensionType.extended_master_secret:
+    tls_constants.ExtensionType.keyShare: _parseKeyShare,
+    tls_constants.ExtensionType.preSharedKey: _parsePreSharedKey,
+    tls_constants.ExtensionType.encryptThenMac: _parseEncryptThenMac,
+    tls_constants.ExtensionType.extendedMasterSecret:
         _parseExtendedMasterSecret,
     tls_constants.ExtensionType.heartbeat: _parseHeartbeat,
-    tls_constants.ExtensionType.psk_key_exchange_modes:
-        _parsePskKeyExchangeModes,
-    tls_constants.ExtensionType.record_size_limit: _parseRecordSizeLimit,
-    tls_constants.ExtensionType.session_ticket: _parseSessionTicket,
-    tls_constants.ExtensionType.compress_certificate:
+    tls_constants.ExtensionType.pskKeyExchangeModes: _parsePskKeyExchangeModes,
+    tls_constants.ExtensionType.recordSizeLimit: _parseRecordSizeLimit,
+    tls_constants.ExtensionType.sessionTicket: _parseSessionTicket,
+    tls_constants.ExtensionType.compressCertificate:
         _parseCompressedCertificate,
-    tls_constants.ExtensionType.post_handshake_auth: _parsePostHandshakeAuth,
-    tls_constants.ExtensionType.signed_certificate_timestamp:
-        _parseSctExtension,
-    tls_constants.ExtensionType.renegotiation_info: _parseRenegotiationInfo,
-    tls_constants.ExtensionType.supports_npn: _parseNextProto,
+    tls_constants.ExtensionType.postHandshakeAuth: _parsePostHandshakeAuth,
+    tls_constants.ExtensionType.signedCertificateTimestamp: _parseSctExtension,
+    tls_constants.ExtensionType.renegotiationInfo: _parseRenegotiationInfo,
+    tls_constants.ExtensionType.supportsNpn: _parseNextProto,
     tls_constants.ExtensionType.cookie: _parseCookie,
-    tls_constants.ExtensionType.early_data: _parseEarlyData,
-    tls_constants.ExtensionType.client_hello_padding: _parsePadding,
+    tls_constants.ExtensionType.earlyData: _parseEarlyData,
+    tls_constants.ExtensionType.clientHelloPadding: _parsePadding,
   };
 
   static TlsExtension parse(
@@ -105,7 +107,7 @@ class TlsExtensionRegistry {
       final nameType = namesParser.get(1);
       final nameLength = namesParser.get(2);
       final nameBytes = namesParser.getFixBytes(nameLength);
-      if (nameType == tls_constants.NameType.host_name) {
+      if (nameType == tls_constants.NameType.hostName) {
         names.add(utf8.decode(nameBytes));
       }
     }
@@ -627,7 +629,7 @@ class TlsExtensionBlock {
 class TlsServerNameExtension extends TlsExtension {
   TlsServerNameExtension({List<String>? hostNames})
       : hostNames = List<String>.unmodifiable(hostNames ?? const <String>[]),
-        super(tls_constants.ExtensionType.server_name);
+        super(tls_constants.ExtensionType.serverName);
 
   final List<String> hostNames;
 
@@ -636,7 +638,7 @@ class TlsServerNameExtension extends TlsExtension {
     final listWriter = Writer();
     for (final name in hostNames) {
       final bytes = utf8.encode(name);
-      listWriter.add(tls_constants.NameType.host_name, 1);
+      listWriter.add(tls_constants.NameType.hostName, 1);
       listWriter.add(bytes.length, 2);
       listWriter.addBytes(bytes);
     }
@@ -673,12 +675,12 @@ class TlsSupportedVersionsExtension extends TlsExtension {
   TlsSupportedVersionsExtension.client(List<TlsProtocolVersion> versions)
       : supportedVersions = List<TlsProtocolVersion>.unmodifiable(versions),
         selectedVersion = null,
-        super(tls_constants.ExtensionType.supported_versions);
+        super(tls_constants.ExtensionType.supportedVersions);
 
   TlsSupportedVersionsExtension.server(TlsProtocolVersion version)
       : supportedVersions = const <TlsProtocolVersion>[],
         selectedVersion = version,
-        super(tls_constants.ExtensionType.supported_versions);
+        super(tls_constants.ExtensionType.supportedVersions);
 
   final List<TlsProtocolVersion> supportedVersions;
   final TlsProtocolVersion? selectedVersion;
@@ -707,7 +709,7 @@ class TlsSignatureAlgorithmsCertExtension extends TlsExtension {
   TlsSignatureAlgorithmsCertExtension({List<int>? signatureSchemes})
       : signatureSchemes =
             List<int>.unmodifiable(signatureSchemes ?? const <int>[]),
-        super(tls_constants.ExtensionType.signature_algorithms_cert);
+        super(tls_constants.ExtensionType.signatureAlgorithmsCert);
 
   final List<int> signatureSchemes;
 
@@ -727,7 +729,7 @@ class TlsSignatureAlgorithmsExtension extends TlsExtension {
   TlsSignatureAlgorithmsExtension({List<int>? signatureSchemes})
       : signatureSchemes =
             List<int>.unmodifiable(signatureSchemes ?? const <int>[]),
-        super(tls_constants.ExtensionType.signature_algorithms);
+        super(tls_constants.ExtensionType.signatureAlgorithms);
 
   final List<int> signatureSchemes;
 
@@ -746,7 +748,7 @@ class TlsSignatureAlgorithmsExtension extends TlsExtension {
 class TlsEcPointFormatsExtension extends TlsExtension {
   TlsEcPointFormatsExtension({List<int>? formats})
       : formats = List<int>.unmodifiable(formats ?? const <int>[]),
-        super(tls_constants.ExtensionType.ec_point_formats);
+        super(tls_constants.ExtensionType.ecPointFormats);
 
   final List<int> formats;
 
@@ -764,7 +766,7 @@ class TlsEcPointFormatsExtension extends TlsExtension {
 class TlsSupportedGroupsExtension extends TlsExtension {
   TlsSupportedGroupsExtension({List<int>? groups})
       : groups = List<int>.unmodifiable(groups ?? const <int>[]),
-        super(tls_constants.ExtensionType.supported_groups);
+        super(tls_constants.ExtensionType.supportedGroups);
 
   final List<int> groups;
 
@@ -790,14 +792,14 @@ class TlsStatusRequestExtension extends TlsExtension {
         requestExtensions =
             Uint8List.fromList(requestExtensions ?? Uint8List(0)),
         _isAcknowledgement = false,
-        super(tls_constants.ExtensionType.status_request);
+        super(tls_constants.ExtensionType.statusRequest);
 
   TlsStatusRequestExtension.acknowledgement()
       : statusType = null,
         responderIds = const <Uint8List>[],
         requestExtensions = Uint8List(0),
         _isAcknowledgement = true,
-        super(tls_constants.ExtensionType.status_request);
+        super(tls_constants.ExtensionType.statusRequest);
 
   final int? statusType;
   final List<Uint8List> responderIds;
@@ -830,7 +832,7 @@ class TlsCertificateStatusExtension extends TlsExtension {
   TlsCertificateStatusExtension({
     required this.statusType,
     required this.response,
-  }) : super(tls_constants.ExtensionType.status_request);
+  }) : super(tls_constants.ExtensionType.statusRequest);
 
   final int statusType;
   final Uint8List response;
@@ -878,7 +880,7 @@ class TlsPreSharedKeyExtension extends TlsExtension {
           binders.map(Uint8List.fromList),
           growable: true,
         ),
-        super(tls_constants.ExtensionType.pre_shared_key);
+        super(tls_constants.ExtensionType.preSharedKey);
 
   final List<TlsPskIdentity> identities;
   final List<Uint8List> binders;
@@ -913,7 +915,7 @@ class TlsPreSharedKeyExtension extends TlsExtension {
 
 class TlsServerPreSharedKeyExtension extends TlsExtension {
   TlsServerPreSharedKeyExtension({required this.selectedIdentity})
-      : super(tls_constants.ExtensionType.pre_shared_key);
+      : super(tls_constants.ExtensionType.preSharedKey);
 
   final int selectedIdentity;
 
@@ -959,21 +961,21 @@ class TlsKeyShareExtension extends TlsExtension {
         clientShares = List<TlsKeyShareEntry>.unmodifiable(shares),
         serverShare = null,
         selectedGroup = null,
-        super(tls_constants.ExtensionType.key_share);
+        super(tls_constants.ExtensionType.keyShare);
 
   TlsKeyShareExtension.server(TlsKeyShareEntry? share)
       : variant = TlsKeyShareVariant.server,
         clientShares = const <TlsKeyShareEntry>[],
         serverShare = share,
         selectedGroup = null,
-        super(tls_constants.ExtensionType.key_share);
+        super(tls_constants.ExtensionType.keyShare);
 
   TlsKeyShareExtension.helloRetry(int group)
       : variant = TlsKeyShareVariant.helloRetry,
         clientShares = const <TlsKeyShareEntry>[],
         serverShare = null,
         selectedGroup = group,
-        super(tls_constants.ExtensionType.key_share);
+        super(tls_constants.ExtensionType.keyShare);
 
   final TlsKeyShareVariant variant;
   final List<TlsKeyShareEntry> clientShares;
@@ -1009,7 +1011,7 @@ class TlsKeyShareExtension extends TlsExtension {
 
 class TlsEncryptThenMacExtension extends TlsExtension {
   const TlsEncryptThenMacExtension()
-      : super(tls_constants.ExtensionType.encrypt_then_mac);
+      : super(tls_constants.ExtensionType.encryptThenMac);
 
   @override
   Uint8List serializeBody() => Uint8List(0);
@@ -1017,7 +1019,7 @@ class TlsEncryptThenMacExtension extends TlsExtension {
 
 class TlsExtendedMasterSecretExtension extends TlsExtension {
   const TlsExtendedMasterSecretExtension()
-      : super(tls_constants.ExtensionType.extended_master_secret);
+      : super(tls_constants.ExtensionType.extendedMasterSecret);
 
   @override
   Uint8List serializeBody() => Uint8List(0);
@@ -1025,7 +1027,7 @@ class TlsExtendedMasterSecretExtension extends TlsExtension {
 
 class TlsPostHandshakeAuthExtension extends TlsExtension {
   const TlsPostHandshakeAuthExtension()
-      : super(tls_constants.ExtensionType.post_handshake_auth);
+      : super(tls_constants.ExtensionType.postHandshakeAuth);
 
   @override
   Uint8List serializeBody() => Uint8List(0);
@@ -1048,7 +1050,7 @@ class TlsHeartbeatExtension extends TlsExtension {
 class TlsPskKeyExchangeModesExtension extends TlsExtension {
   TlsPskKeyExchangeModesExtension({List<int>? modes})
       : modes = List<int>.unmodifiable(modes ?? const <int>[]),
-        super(tls_constants.ExtensionType.psk_key_exchange_modes);
+        super(tls_constants.ExtensionType.pskKeyExchangeModes);
 
   final List<int> modes;
 
@@ -1065,7 +1067,7 @@ class TlsPskKeyExchangeModesExtension extends TlsExtension {
 
 class TlsRecordSizeLimitExtension extends TlsExtension {
   TlsRecordSizeLimitExtension({required this.recordSizeLimit})
-      : super(tls_constants.ExtensionType.record_size_limit);
+      : super(tls_constants.ExtensionType.recordSizeLimit);
 
   final int recordSizeLimit;
 
@@ -1080,7 +1082,7 @@ class TlsRecordSizeLimitExtension extends TlsExtension {
 class TlsSessionTicketExtension extends TlsExtension {
   TlsSessionTicketExtension({List<int>? ticket})
       : ticket = Uint8List.fromList(ticket ?? const <int>[]),
-        super(tls_constants.ExtensionType.session_ticket);
+        super(tls_constants.ExtensionType.sessionTicket);
 
   final Uint8List ticket;
 
@@ -1091,7 +1093,7 @@ class TlsSessionTicketExtension extends TlsExtension {
 class TlsCompressedCertificateExtension extends TlsExtension {
   TlsCompressedCertificateExtension({List<int>? algorithms})
       : algorithms = List<int>.unmodifiable(algorithms ?? const <int>[]),
-        super(tls_constants.ExtensionType.compress_certificate);
+        super(tls_constants.ExtensionType.compressCertificate);
 
   final List<int> algorithms;
 
@@ -1124,7 +1126,7 @@ class TlsCookieExtension extends TlsExtension {
 
 class TlsEarlyDataExtension extends TlsExtension {
   TlsEarlyDataExtension({this.maxEarlyDataSize})
-      : super(tls_constants.ExtensionType.early_data);
+      : super(tls_constants.ExtensionType.earlyData);
 
   final int? maxEarlyDataSize;
 
@@ -1142,7 +1144,7 @@ class TlsEarlyDataExtension extends TlsExtension {
 class TlsPaddingExtension extends TlsExtension {
   TlsPaddingExtension({required int length})
       : padding = Uint8List(length),
-        super(tls_constants.ExtensionType.client_hello_padding);
+        super(tls_constants.ExtensionType.clientHelloPadding);
 
   final Uint8List padding;
 
@@ -1154,7 +1156,7 @@ class TlsPaddingExtension extends TlsExtension {
 class TlsStatusRequestV2Extension extends TlsExtension {
   TlsStatusRequestV2Extension({required List<int> body})
       : body = Uint8List.fromList(body),
-        super(tls_constants.ExtensionType.status_request_v2);
+        super(tls_constants.ExtensionType.statusRequestV2);
 
   final Uint8List body;
 
@@ -1166,7 +1168,7 @@ class TlsStatusRequestV2Extension extends TlsExtension {
 class TlsSctExtension extends TlsExtension {
   TlsSctExtension({required List<int> sctList})
       : sctList = Uint8List.fromList(sctList),
-        super(tls_constants.ExtensionType.signed_certificate_timestamp);
+        super(tls_constants.ExtensionType.signedCertificateTimestamp);
 
   final Uint8List sctList;
 
@@ -1177,7 +1179,7 @@ class TlsSctExtension extends TlsExtension {
 /// Renegotiation Info (RFC 5746). Stores the renegotiated_connection bytes.
 class TlsRenegotiationInfoExtension extends TlsExtension {
   const TlsRenegotiationInfoExtension({required this.renegotiatedConnection})
-      : super(tls_constants.ExtensionType.renegotiation_info);
+      : super(tls_constants.ExtensionType.renegotiationInfo);
 
   final Uint8List renegotiatedConnection;
 
@@ -1194,7 +1196,7 @@ class TlsRenegotiationInfoExtension extends TlsExtension {
 class TlsNextProtoNegotiationExtension extends TlsExtension {
   TlsNextProtoNegotiationExtension({required List<int> data})
       : data = Uint8List.fromList(data),
-        super(tls_constants.ExtensionType.supports_npn);
+        super(tls_constants.ExtensionType.supportsNpn);
 
   final Uint8List data;
 

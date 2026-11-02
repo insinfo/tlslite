@@ -6,7 +6,6 @@ import "dart:io";
 import "dart:math";
 import "dart:typed_data";
 
-import "package:collection/collection.dart";
 import "buffer.dart";
 import "certificate.dart";
 import "dtls_alert.dart";
@@ -15,7 +14,7 @@ import "dtls_exception.dart";
 import "../../openssl/generated/ffi.dart";
 import "../../openssl/openssl_loader.dart";
 import "util.dart";
-import "package:ffi/ffi.dart";
+import 'package:tlslite/src/ffi/native_memory.dart';
 
 /// Callback signature for retrieving Pre-Shared Keys from a [DtlsServer]'s
 /// keystore.
@@ -668,7 +667,7 @@ int _dtlsCookieVerifyCallback(
 
   final peerCookie = cookie.cast<Uint8>().asTypedList(cookieLength);
 
-  return const ListEquality<int>().equals(connectionCookie, peerCookie) ? 1 : 0;
+  return _listEquals(connectionCookie, peerCookie) ? 1 : 0;
 }
 
 extension _ClintHelloParseExtension on Uint8List {
@@ -696,4 +695,12 @@ extension _ClintHelloParseExtension on Uint8List {
 
     return valid && this[index] == clientHelloCode;
   }
+}
+
+bool _listEquals(List<int> a, List<int> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
 }
